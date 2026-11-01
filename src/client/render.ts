@@ -32,11 +32,12 @@ export class Atlas {
   tex: Record<string, Texture> = {};
   frames: Record<string, Frame> = {};
 
-  static async load(base: string): Promise<Atlas> {
+  static async load(base: string, version = ''): Promise<Atlas> {
     const a = new Atlas();
+    const v = version ? `?v=${version}` : '';
     const [meta, blob] = await Promise.all([
-      fetch(`${base}/atlas.json`).then((r) => r.json()),
-      fetch(`${base}/atlas.png`).then((r) => r.blob()),
+      fetch(`${base}/atlas.json${v}`).then((r) => r.json()),
+      fetch(`${base}/atlas.png${v}`).then((r) => r.blob()),
     ]);
     // WebGL ignores its premultiply flag for ImageBitmaps, so premultiply here and tell Pixi it is done;
     // otherwise half-transparent edges are drawn too bright (light halos around every sprite)

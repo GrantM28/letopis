@@ -55,7 +55,7 @@ await app.init({
   autoDensity: true,
 });
 $('#stage').appendChild(app.canvas);
-const atlas = await Atlas.load('sprites');
+const atlas = await Atlas.load('sprites', __BUILD__);
 const r = new WorldRenderer(app, atlas);
 r.peopleLayer.sortableChildren = true;
 
@@ -200,6 +200,15 @@ function onTick(m: TickMessage) {
   if (activeTab === 'bands' || activeTab === 'stats') renderSide();
 }
 
+/** reload the page when the server runs a newer build (after an update of the container) */
+async function checkVersion() {
+  try {
+    const v = await fetch('version.json', { cache: 'no-store' }).then((r) => r.json());
+    if (v.build && v.build !== __BUILD__) location.reload();
+  } catch { /* offline: try again later */ }
+}
+setInterval(() => void checkVersion(), 60_000);
+
 function connect() {
   const ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`);
   ws.onmessage = (ev) => {
@@ -208,7 +217,7 @@ function connect() {
     else if (m.t === 'tick') onTick(m);
     else if (m.t === 'newworld') location.reload();
   };
-  ws.onopen = () => $('#conn').classList.remove('off');
+  ws.onopen = () => { $('#conn').classList.remove('off'); void checkVersion(); };
   ws.onclose = () => {
     $('#conn').classList.add('off');
     setTimeout(connect, 3000);
