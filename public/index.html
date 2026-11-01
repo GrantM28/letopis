@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="bg">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0d1424">
+  <title>Летопис</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="stage"></div>
+  <div id="loading">Светът се събужда…</div>
+
+  <header class="top">
+    <div class="brand">Летопис <span id="conn" class="conn off" title="Връзка със сървъра"></span></div>
+    <div class="time">
+      <div class="year" id="year">…</div>
+      <div class="sub"><span id="month"></span> · <span id="era"></span></div>
+      <div class="tick"><i id="tickBar"></i></div>
+    </div>
+    <div class="stats">
+      <div><span>Хора</span><b id="pop">0</b></div>
+      <div><span>Родове</span><b id="bandsCount">0</b></div>
+      <div class="wide"><span>Родени</span><b id="born">0</b></div>
+      <div class="wide"><span>Починали</span><b id="died">0</b></div>
+      <div class="wide"><span>Светът живее</span><b id="age">0</b></div>
+    </div>
+  </header>
+
+  <aside class="side">
+    <nav class="tabs" role="tablist">
+      <button class="tab" role="tab" data-tab="chronicle">Летопис</button>
+      <button class="tab" role="tab" data-tab="bands">Родове</button>
+      <button class="tab" role="tab" data-tab="heroes">Личности</button>
+      <button class="tab" role="tab" data-tab="stats">Статистика</button>
+    </nav>
+    <div id="sideBody" class="side-body"></div>
+  </aside>
+
+  <div class="controls">
+    <button id="zoomIn" class="btn round" title="Приближи">+</button>
+    <button id="zoomOut" class="btn round" title="Отдалечи">−</button>
+    <button id="tourBtn" class="btn" aria-pressed="false" title="Камерата сама обикаля света">Разходка</button>
+    <button id="kidsBtn" class="btn" aria-pressed="false" title="По-едри букви и детски обяснения">Детски режим</button>
+    <button id="sideToggle" class="btn" title="Скрий или покажи летописа">Панел</button>
+  </div>
+
+  <div id="toasts"></div>
+
+  <div id="card" class="card" hidden>
+    <button id="cardClose" class="btn round close" title="Затвори">×</button>
+    <div id="cardBody"></div>
+  </div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
