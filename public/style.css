@@ -110,3 +110,5 @@ h3 { font-family: var(--serif); font-weight: normal; color: var(--accent); margi
   #toasts { margin-left: 0; width: calc(100vw - 32px); bottom: calc(42vh + 64px); }
   .brand { display: none; }
 }
+
+.brand .build { display: block; font-family: var(--sans, system-ui, sans-serif); font-size: 10px; color: var(--muted); letter-spacing: 0.02em; margin-top: 2px; }

@@ -208,6 +208,13 @@ async function checkVersion() {
   } catch { /* offline: try again later */ }
 }
 setInterval(() => void checkVersion(), 60_000);
+// when this version was built, so it is easy to see that an update arrived
+{
+  const t = new Date(parseInt(__BUILD__, 36));
+  if (!Number.isNaN(t.getTime())) {
+    $('#build').textContent = `версия от ${t.toLocaleString('bg-BG', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}`;
+  }
+}
 
 function connect() {
   const ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`);
