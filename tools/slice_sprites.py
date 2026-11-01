@@ -16,7 +16,7 @@ SHEETS = os.path.join(ROOT, 'art', 'sheets')
 OUT = os.path.join(ROOT, 'art', 'cut')
 
 ALPHA_CUT = 128   # below this a pixel is background
-ERODE = 2         # px eaten from the outline: removes the coloured halo the generator leaves
+ERODE = 3         # px eaten from the outline: removes the coloured halo the generator leaves
 MIN_PART = 0.04   # parts smaller than this share of the biggest part are specks and are dropped
 
 

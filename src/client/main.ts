@@ -62,6 +62,8 @@ r.peopleLayer.sortableChildren = true;
 // ---------- camera ----------
 
 const cam = { x: 0, y: 0, zoom: 1, tx: 0, ty: 0, tz: 1 };
+/** person the camera follows; the card stays beside the selected person */
+let follow: number | null = null;
 function applyCam() {
   r.world.scale.set(cam.zoom);
   r.world.position.set(app.screen.width / 2 - cam.x * cam.zoom, app.screen.height / 2 - cam.y * cam.zoom);
@@ -93,7 +95,8 @@ canvas.addEventListener('pointermove', (e) => {
   if (pointers.size === 2) {
     const [a, b] = [...pointers.values()];
     const d = Math.hypot(a.x - b.x, a.y - b.y);
-    if (pinchDist > 0) zoomBy(d / pinchDist);
+    const rect = canvas.getBoundingClientRect();
+    if (pinchDist > 0) zoomBy(d / pinchDist, (a.x + b.x) / 2 - rect.left, (a.y + b.y) / 2 - rect.top);
     pinchDist = d;
     moved += 10;
     return;
@@ -104,7 +107,7 @@ canvas.addEventListener('pointermove', (e) => {
   cam.x -= dx / cam.zoom; cam.y -= dy / cam.zoom;
   cam.tx = cam.x; cam.ty = cam.y;
   last = { x: e.clientX, y: e.clientY };
-  if (moved > 6) stopTour();
+  if (moved > 6) { stopTour(); follow = null; }
 });
 const endPointer = (e: PointerEvent) => {
   pointers.delete(e.pointerId);
@@ -116,11 +119,20 @@ canvas.addEventListener('pointerup', endPointer);
 canvas.addEventListener('pointercancel', endPointer);
 canvas.addEventListener('wheel', (e) => {
   e.preventDefault();
-  zoomBy(Math.exp(-e.deltaY * 0.0015));
+  const rect = canvas.getBoundingClientRect();
+  zoomBy(Math.exp(-e.deltaY * 0.0015), e.clientX - rect.left, e.clientY - rect.top);
 }, { passive: false });
-function zoomBy(f: number) {
-  cam.zoom = Math.max(0.18, Math.min(4, cam.zoom * f));
-  cam.tz = cam.zoom;
+/** zoom keeping the point under the cursor (or between the fingers) in place */
+function zoomBy(f: number, sx = app.screen.width / 2, sy = app.screen.height / 2) {
+  const z0 = cam.zoom;
+  const z1 = Math.max(0.18, Math.min(4, z0 * f));
+  const W = app.screen.width, H = app.screen.height;
+  if (follow === null) {
+    const wx = cam.x + (sx - W / 2) / z0, wy = cam.y + (sy - H / 2) / z0;
+    cam.x = cam.tx = wx - (sx - W / 2) / z1;
+    cam.y = cam.ty = wy - (sy - H / 2) / z1;
+  }
+  cam.zoom = cam.tz = z1;
 }
 $('#zoomIn').onclick = () => { cam.tz = Math.min(4, cam.tz * 1.4); };
 $('#zoomOut').onclick = () => { cam.tz = Math.max(0.18, cam.tz / 1.4); };
@@ -343,11 +355,19 @@ $('#sideBody').addEventListener('click', (e) => {
 
 // ---------- cards ----------
 
-function openCard(html: string) {
+function openCard(html: string, beside = false) {
   $('#cardBody').innerHTML = html;
   $('#card').hidden = false;
+  $('#card').classList.toggle('beside', beside);
+  if (!beside) { follow = null; r.select(null); ($('#card') as HTMLElement).style.cssText = ''; }
 }
-$('#cardClose').onclick = () => { $('#card').hidden = true; };
+function closeCard() {
+  $('#card').hidden = true;
+  follow = null;
+  r.select(null);
+}
+$('#cardClose').onclick = closeCard;
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeCard(); });
 $('#card').addEventListener('click', (e) => {
   const el = (e.target as HTMLElement).closest<HTMLElement>('[data-person]');
   if (el?.dataset.person) showPerson(Number(el.dataset.person));
@@ -360,7 +380,8 @@ async function showPerson(id: number) {
   const genes = Object.entries(d.genes).map(([k, v]) => `<div class="gene"><span>${k}</span><div class="bar"><i style="width:${v}%"></i></div></div>`).join('');
   const alive = d.diedYear === null;
   const live = r.people.get(id);
-  if (live && alive) { stopTour(); cam.tx = live.c.x; cam.ty = live.c.y; cam.tz = Math.max(cam.tz, 2); }
+  const beside = !!(live && alive) && window.innerWidth > 760;
+  if (live && alive) { stopTour(); follow = id; r.select(id); cam.tz = Math.max(cam.tz, 2); }
   openCard(`
     <div class="person-head"><div class="avatar ${d.sex ? 'f' : 'm'}">${d.sex ? '👩' : '👨'}</div>
       <div><h2>${esc(d.name)}</h2>
@@ -372,7 +393,29 @@ async function showPerson(id: number) {
       <dt>Партньор</dt><dd>${link(d.partner)}</dd>
       <dt>Деца</dt><dd>${d.children.length ? d.children.map((c) => `<a href="#" data-person="${c.id}" class="${c.alive ? '' : 'dead'}">${esc(c.name)}</a>`).join(', ') : '<span class="muted">няма</span>'}</dd>
     </dl>
-    ${d.deeds.length ? `<h3>Дела</h3><ul class="deeds">${d.deeds.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}`);
+    ${d.deeds.length ? `<h3>Дела</h3><ul class="deeds">${d.deeds.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}`, beside);
+  if (live && alive) { follow = id; r.select(id); }
+}
+
+/** follow the chosen person and keep the card next to them */
+function followStep() {
+  const id = r.selectedId;
+  if (id === null) return;
+  const p = r.people.get(id);
+  if (!p) { r.select(null); follow = null; $('#card').classList.remove('beside'); ($('#card') as HTMLElement).style.cssText = ''; return; }
+  if (follow === id) { cam.tx = p.c.x; cam.ty = p.c.y - 6; }
+  const card = $('#card') as HTMLElement;
+  if (card.hidden || !card.classList.contains('beside')) return;
+  const sx = r.world.x + p.c.x * cam.zoom, sy = r.world.y + (p.c.y - 6) * cam.zoom;
+  const w = card.offsetWidth, h = card.offsetHeight;
+  const W = app.screen.width, H = app.screen.height;
+  const gap = 28 + 8 * cam.zoom;
+  const side = document.body.classList.contains('side-hidden') ? 0 : ($('.side') as HTMLElement).offsetWidth + 16;
+  let left = sx - gap - w;
+  if (left < 12) left = Math.min(sx + gap, W - side - w - 12);
+  const top = Math.max(12, Math.min(H - h - 12, sy - h / 2));
+  card.style.left = `${left}px`;
+  card.style.top = `${top}px`;
 }
 
 function showBand(b: BandView) {
@@ -464,6 +507,7 @@ $('#sideToggle').onclick = () => document.body.classList.toggle('side-hidden');
 app.ticker.add((t) => {
   const now = performance.now();
   tourStep(now);
+  followStep();
   const k = 1 - Math.pow(0.001, t.deltaMS / 1000 / (tour ? 4 : 0.6));
   cam.x += (cam.tx - cam.x) * k;
   cam.y += (cam.ty - cam.y) * k;

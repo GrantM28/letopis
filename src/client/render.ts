@@ -1,6 +1,8 @@
 import {
   AlphaFilter, Application, BlurFilter, Container, Filter, GlProgram, Graphics, ImageSource, Rectangle, Sprite, Text, Texture,
 } from 'pixi.js';
+import { Simplex } from '../shared/noise';
+import { Rng } from '../shared/rng';
 import { BandView, Biome, PersonRow, TASKS, WorldInfo, b64decode, isWater } from '../shared/types';
 
 export const TW = 32; // tile width
@@ -36,9 +38,12 @@ export class Atlas {
       fetch(`${base}/atlas.json`).then((r) => r.json()),
       fetch(`${base}/atlas.png`).then((r) => r.blob()),
     ]);
-    const bitmap = await createImageBitmap(blob, { premultiplyAlpha: 'none' });
+    // WebGL ignores its premultiply flag for ImageBitmaps, so premultiply here and tell Pixi it is done;
+    // otherwise half-transparent edges are drawn too bright (light halos around every sprite)
+    const bitmap = await createImageBitmap(blob, { premultiplyAlpha: 'premultiply' });
     const source = new ImageSource({
       resource: bitmap,
+      alphaMode: 'premultiplied-alpha',
       autoGenerateMipmaps: true,
       scaleMode: 'linear',
       mipmapFilter: 'linear',
@@ -150,11 +155,13 @@ export class WorldRenderer {
   fogChunks = new Map<number, Graphics>();
   objChunks = new Map<number, WorldObject[]>();
   chunkViews: { area: Rectangle; parts: Container[] }[] = [];
+  clumps = new Simplex(new Rng(20261101));
   fogReady = false;
   waterFilter: Filter | null = null;
   snowCold!: Container;
   snowCool!: Container;
   people = new Map<number, PersonSprite>();
+  selectedId: number | null = null;
   camps = new Map<number, CampSprite>();
   tex!: Record<string, Texture>;
   time = 0;
@@ -224,6 +231,11 @@ export class WorldRenderer {
     const { w, h } = this.info;
     if (x < 0 || y < 0 || x >= w || y >= h) return 0;
     return this.level[y * w + x];
+  }
+
+  /** small streams stay hidden; from a real river on, the tile is water */
+  private isRiver(i: number): boolean {
+    return this.river[i] >= 40 && !isWater(this.biome[i]);
   }
 
   private buildTerrain() {
@@ -306,7 +318,7 @@ export class WorldRenderer {
     const n = hash(x, y);
     let { name, tint } = this.groundOf(b, x, y, n);
     // rivers are strips of shallow water on the land
-    if (this.river[i] && !isWater(b)) { name = `shallow${Math.floor(hash(x, y + 3) * 4)}`; tint = 0xe8f4ff; }
+    if (this.isRiver(i)) { name = `shallow${hash(x, y + 3) < 0.7 ? 0 : 1}`; tint = 0xe8f4ff; }
     if (isWater(b)) {
       // water at the map edge shows its side, inside the sea only the surface
       const edge = x === this.info.w - 1 || y === this.info.h - 1;
@@ -336,7 +348,7 @@ export class WorldRenderer {
     land.addChild(s);
     // winter snow, faded in by season
     const t = this.temp[i] / 255;
-    if (b !== Biome.Snow && !this.river[i]) {
+    if (b !== Biome.Snow && !this.isRiver(i)) {
       const target = t < 0.33 ? cold : t < 0.5 ? cool : null;
       if (target) {
         const sn = this.atlas.sprite(`snow${Math.floor(hash(x + 5, y) * 4)}${drop > 0 ? '' : '_t'}`);
@@ -350,10 +362,12 @@ export class WorldRenderer {
     const { w } = this.info;
     const i = y * w + x;
     const b = this.biome[i];
-    if (isWater(b) || this.river[i]) return;
+    if (isWater(b) || this.isRiver(i)) return;
     const n = hash(x + 11, y + 7);
     const n2 = hash(x + 31, y + 17);
     const t = this.temp[i] / 255;
+    // groves and clearings: smooth noise decides how dense the trees are here (0..1)
+    const dense = 0.5 + 0.55 * this.clumps.noise(x * 0.11, y * 0.11);
     const add = (name: string, kind: ObjKind, ox: number, oy: number, size = 1) => {
       const p = iso(x, y);
       const s = this.atlas.sprite(name);
@@ -371,33 +385,32 @@ export class WorldRenderer {
     const isConifer = (name: string) => name.startsWith('spruce') || name.startsWith('pine');
     const tree = (name: string, ox: number, oy: number, size = 1) => add(name, isConifer(name) ? 'conifer' : 'decid', ox, oy, size);
     switch (b) {
+      // forests: clumps of trees with clearings, not a tree on every tile
       case Biome.Forest:
-        if (n > 0.08) tree(decid(n2), (n - 0.5) * 8, (n2 - 0.5) * 4);
-        if (n2 > 0.55) tree(decid(hash(x, y + 5)), (n2 - 0.75) * 24, 4, 0.8);
-        else if (n2 < 0.18) add(pick(['fern', 'mushroom', 'log', 'stump', 'berries', 'bush0'], n2 / 0.18), 'other', 6, 3);
+        if (n < dense - 0.12) tree(decid(n2), (n2 - 0.5) * 10, (hash(x, y + 41) - 0.5) * 4);
+        else if (n > 0.93) add(pick(['fern', 'mushroom', 'log', 'stump', 'berries', 'bush0'], (n - 0.93) / 0.07), 'other', (n2 - 0.5) * 8, 2);
         break;
       case Biome.Taiga:
-        if (n > 0.06) tree(conifer(n2), (n - 0.5) * 8, (n2 - 0.5) * 4);
-        if (n2 > 0.6) tree(conifer(hash(x, y + 5)), (n2 - 0.8) * 24, 4, 0.8);
-        else if (n2 < 0.12) add(pick(['fern', 'boulder0', 'stump', 'log'], n2 / 0.12), 'other', 5, 3);
+        if (n < dense - 0.05) tree(conifer(n2), (n2 - 0.5) * 10, (hash(x, y + 41) - 0.5) * 4);
+        else if (n > 0.95) add(pick(['fern', 'boulder0', 'stump', 'log'], (n - 0.95) / 0.05), 'other', (n2 - 0.5) * 8, 2);
         break;
       case Biome.Grassland:
-        if (n < 0.05) tree(pick(['oak0', 'apple', 'sapling', 'oak2', 'birch0'], n / 0.05), 0, 0);
-        else if (n < 0.13) add(pick(['bush0', 'bush1', 'berries', 'flowerbush', 'flowers', 'tuft'], (n - 0.05) / 0.08), 'other', (n2 - 0.5) * 10, 0);
+        if (n < 0.03) tree(pick(['oak0', 'apple', 'sapling', 'oak2', 'birch0'], n / 0.03), 0, 0);
+        else if (n < 0.07) add(pick(['bush0', 'bush1', 'berries', 'flowerbush', 'flowers', 'tuft'], (n - 0.03) / 0.04), 'other', (n2 - 0.5) * 10, 0);
         break;
       case Biome.Plains:
-        if (n < 0.02) tree('sapling', 0, 0);
-        else if (n < 0.1) add(pick(['tuft', 'stones', 'bush1', 'flowers'], (n - 0.02) / 0.08), 'other', (n2 - 0.5) * 10, 0);
+        if (n < 0.015) tree('sapling', 0, 0);
+        else if (n < 0.05) add(pick(['tuft', 'stones', 'bush1', 'flowers'], (n - 0.015) / 0.035), 'other', (n2 - 0.5) * 10, 0);
         break;
       case Biome.Hills:
-        if (n < 0.06) tree(pick(['oak2', 'pine1', 'bush0'], n / 0.06), 0, 0);
-        else if (n < 0.14) add(pick(['boulder0', 'boulder1', 'tuft', 'stones'], (n - 0.06) / 0.08), 'other', (n2 - 0.5) * 10, 0);
+        if (n < 0.04) tree(pick(['oak2', 'pine1', 'bush0'], n / 0.04), 0, 0);
+        else if (n < 0.08) add(pick(['boulder0', 'boulder1', 'tuft', 'stones'], (n - 0.04) / 0.04), 'other', (n2 - 0.5) * 10, 0);
         break;
       case Biome.Mountain:
-        if (n < 0.1) add(pick(['boulder0', 'boulder1', 'boulder2', 'boulder3'], n / 0.1), 'other', (n2 - 0.5) * 8, 0);
+        if (n < 0.06) add(pick(['boulder0', 'boulder1', 'boulder2', 'boulder3'], n / 0.06), 'other', (n2 - 0.5) * 8, 0);
         break;
       case Biome.Marsh:
-        if (n < 0.35) add('reeds', 'other', (n2 - 0.5) * 12, 0);
+        if (n < 0.2) add('reeds', 'other', (n2 - 0.5) * 12, 0);
         break;
       case Biome.Tundra:
         if (n < 0.07) add(pick(['stones', 'boulder3', 'tuft'], n / 0.07), 'other', (n2 - 0.5) * 8, 0);
@@ -424,7 +437,7 @@ export class WorldRenderer {
           if (key === 'winter' && t < 0.5 && o.base.startsWith('spruce')) name = 'spruce_snow';
         } else if (key === 'winter' && t < 0.7) {
           name = t < 0.5 ? 'bare_snow' : 'bare';
-        } else if (key === 'autumn' && o.n < 0.5) {
+        } else if (key === 'autumn' && o.n < 0.3) {
           name = 'autumn';
         } else if (key === 'spring' && o.base.startsWith('oak') && o.n < 0.35) {
           name = 'blossom';
@@ -564,6 +577,13 @@ export class WorldRenderer {
     if (this.info) this.updateCleared();
   }
 
+  /** red outline around the chosen person (null clears it) */
+  select(id: number | null) {
+    if (this.selectedId !== null) this.people.get(this.selectedId)?.setSelected(false);
+    this.selectedId = id;
+    if (id !== null) this.people.get(id)?.setSelected(true);
+  }
+
   updatePeople(rows: PersonRow[], bandColors: Map<number, number>, tickMs: number) {
     const seen = new Set<number>();
     for (const r of rows) {
@@ -572,6 +592,7 @@ export class WorldRenderer {
       if (!p) {
         p = new PersonSprite(this, r);
         this.people.set(r[0], p);
+        if (r[0] === this.selectedId) p.setSelected(true);
       }
       p.target(r, bandColors.get(r[4]) ?? 0xffffff, tickMs);
     }
@@ -644,6 +665,7 @@ export class PersonSprite {
   female = false;
   pose = '';
   facing = 1;
+  outline: Container | null = null;
 
   constructor(r: WorldRenderer, row: PersonRow) {
     this.r = r;
@@ -669,6 +691,33 @@ export class PersonSprite {
     this.pose = name;
     this.r.atlas.set(this.body, name);
     this.r.atlas.set(this.cloth, name + '_c');
+    this.updateOutline();
+  }
+
+  /** a red outline: the silhouette drawn in red, shifted in 8 directions behind the person */
+  setSelected(on: boolean) {
+    if (on && !this.outline) {
+      this.outline = new Container();
+      for (let k = 0; k < 8; k++) this.outline.addChild(new Sprite(), new Sprite());
+      this.c.addChildAt(this.outline, 0);
+      this.updateOutline();
+    } else if (!on && this.outline) {
+      this.outline.destroy({ children: true });
+      this.outline = null;
+    }
+  }
+
+  private updateOutline() {
+    if (!this.outline) return;
+    const d = 0.8 / Math.max(0.4, Math.abs(this.c.scale.y));
+    this.outline.children.forEach((ch, j) => {
+      const sp = ch as Sprite;
+      const k = j >> 1;
+      const a = (k / 8) * Math.PI * 2;
+      this.r.atlas.set(sp, j & 1 ? this.pose + '_c' : this.pose);
+      sp.tint = 0xff2a2a;
+      sp.position.set(Math.cos(a) * d, Math.sin(a) * d);
+    });
   }
 
   private idlePose(): string {
