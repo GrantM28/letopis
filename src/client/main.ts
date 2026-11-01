@@ -388,7 +388,7 @@ function showBand(b: BandView) {
     <div class="kpis"><div><span>Хора</span><b>${b.size}</b></div><div><span>Деца</span><b>${kidsN}</b></div><div><span>Запаси</span><b>${b.food}</b></div></div>
     <h3>Какво правят сега</h3><ul class="deeds">${[...tasks].sort((a, c) => c[1] - a[1]).map(([t, n]) => `<li>${n} ${esc(t)}</li>`).join('')}</ul>
     <h3>Какво знаят</h3><div class="techs">${b.techs.map((t) => `<span class="pill">${esc(t)}</span>`).join('') || '<span class="muted">Още нищо</span>'}</div>
-    <h3>Хората</h3><div class="names">${members.slice(0, 60).map((p) => `<a href="#" data-person="${p[0]}">#${p[0]}</a>`).join(' ')}</div>`);
+    <h3>Хората</h3><div class="names">${members.slice(0, 60).map((p) => `<a href="#" data-person="${p[0]}">#${p[0]}</a>`).join(', ')}</div>`);
   // names come from the server one by one; fill them in lazily
   const links = [...document.querySelectorAll<HTMLAnchorElement>('#cardBody .names a')];
   links.slice(0, 40).forEach(async (a) => {
