@@ -64,6 +64,7 @@ r.peopleLayer.sortableChildren = true;
 const cam = { x: 0, y: 0, zoom: 1, tx: 0, ty: 0, tz: 1 };
 /** person the camera follows; the card stays beside the selected person */
 let follow: number | null = null;
+let cardPos: { x: number; y: number } | null = null;
 function applyCam() {
   r.world.scale.set(cam.zoom);
   r.world.position.set(app.screen.width / 2 - cam.x * cam.zoom, app.screen.height / 2 - cam.y * cam.zoom);
@@ -403,10 +404,12 @@ function followStep() {
   if (id === null) return;
   const p = r.people.get(id);
   if (!p) { r.select(null); follow = null; $('#card').classList.remove('beside'); ($('#card') as HTMLElement).style.cssText = ''; return; }
-  if (follow === id) { cam.tx = p.c.x; cam.ty = p.c.y - 6; }
+  // follow where the person is heading, not every little step or hop, so nothing shakes
+  if (follow === id) { cam.tx = p.to.x; cam.ty = p.to.y - 6; }
   const card = $('#card') as HTMLElement;
-  if (card.hidden || !card.classList.contains('beside')) return;
-  const sx = r.world.x + p.c.x * cam.zoom, sy = r.world.y + (p.c.y - 6) * cam.zoom;
+  if (card.hidden || !card.classList.contains('beside')) { cardPos = null; return; }
+  const ax = follow === id ? cam.x : p.to.x, ay = follow === id ? cam.y : p.to.y - 6;
+  const sx = r.world.x + ax * cam.zoom, sy = r.world.y + ay * cam.zoom;
   const w = card.offsetWidth, h = card.offsetHeight;
   const W = app.screen.width, H = app.screen.height;
   const gap = 28 + 8 * cam.zoom;
@@ -414,8 +417,14 @@ function followStep() {
   let left = sx - gap - w;
   if (left < 12) left = Math.min(sx + gap, W - side - w - 12);
   const top = Math.max(12, Math.min(H - h - 12, sy - h / 2));
-  card.style.left = `${left}px`;
-  card.style.top = `${top}px`;
+  // glide to the new place and ignore small changes
+  if (!cardPos) cardPos = { x: left, y: top };
+  else if (Math.abs(left - cardPos.x) > 24 || Math.abs(top - cardPos.y) > 24) {
+    cardPos.x += (left - cardPos.x) * 0.12;
+    cardPos.y += (top - cardPos.y) * 0.12;
+  }
+  card.style.left = `${Math.round(cardPos.x)}px`;
+  card.style.top = `${Math.round(cardPos.y)}px`;
 }
 
 function showBand(b: BandView) {

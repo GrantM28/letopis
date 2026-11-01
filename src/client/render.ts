@@ -722,13 +722,14 @@ export class PersonSprite {
 
   private idlePose(): string {
     if (this.age < 12) return this.female ? 'woman' : 'man';
-    if (this.age > 55) return 'elder';
+    // the old man sprite has a beard: old women stay in the woman pose until there is an old woman sprite
+    if (this.age > 55) return this.female ? (this.r.atlas.has('oldwoman') ? 'oldwoman' : 'woman') : 'elder';
     switch (TASKS[this.task]) {
       case 'gather': case 'farm': return 'gatherer';
       case 'hunt': case 'fish': case 'herd': return 'hunter';
       case 'craft': return this.female ? 'potter' : 'carrier';
       case 'build': return 'carrier';
-      case 'elder': return 'elder';
+      case 'elder': return this.female ? (this.r.atlas.has('oldwoman') ? 'oldwoman' : 'woman') : 'elder';
       default: return this.female ? 'woman' : hash(this.id, 21) < 0.15 ? 'wave' : 'man';
     }
   }
