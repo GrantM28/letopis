@@ -720,17 +720,39 @@ export class PersonSprite {
     });
   }
 
+  /** a stable pick per person, so the pose does not flicker */
+  private choose(list: string[], salt: number): string {
+    return list[Math.floor(hash(this.id, salt) * list.length)];
+  }
+
   private idlePose(): string {
-    if (this.age < 12) return this.female ? 'woman' : 'man';
-    if (this.age > 55) return 'elder';
-    switch (TASKS[this.task]) {
-      case 'gather': case 'farm': return 'gatherer';
-      case 'hunt': case 'fish': case 'herd': return 'hunter';
-      case 'craft': return this.female ? 'potter' : 'carrier';
-      case 'build': return 'carrier';
-      case 'elder': return 'elder';
-      default: return this.female ? 'woman' : hash(this.id, 21) < 0.15 ? 'wave' : 'man';
+    const task = TASKS[this.task];
+    if (this.age < 12) {
+      return this.female
+        ? this.choose(['girl', 'girl', 'kidberries', 'kidwave', 'kidpuppy'], 31)
+        : this.choose(['boy', 'boy', 'kidtoy', 'kidstick', 'kidfish', 'kidpuppy'], 31);
     }
+    if (this.age > 55 || task === 'elder') {
+      if (!this.female) return 'elder';
+      if (task === 'gather' || task === 'farm') return 'oldbasket';
+      if (task === 'craft') return 'oldherbs';
+      return this.choose(['oldwoman', 'oldscarf', 'oldwoman'], 33);
+    }
+    switch (task) {
+      case 'gather': case 'farm': return 'gatherer';
+      case 'hunt': case 'herd': return 'hunter';
+      case 'fish': return this.female ? 'waterjar' : 'hunter';
+      case 'craft': return this.female ? this.choose(['potter', 'spinner'], 35) : 'carrier';
+      case 'build': return this.female ? 'reedcarrier' : 'carrier';
+      default: return this.female ? this.choose(['woman', 'woman2', 'woman', 'waterjar'], 37) : hash(this.id, 21) < 0.15 ? 'wave' : 'man';
+    }
+  }
+
+  private walkPose(now: number): string | null {
+    const f = Math.floor(now / 140 + this.seed) % 4;
+    if (this.age < 12) return `${this.female ? 'girlwalk' : 'boywalk'}${f}`;
+    if (this.age > 55) return this.female ? `oldwalk${f}` : null;
+    return `${this.female ? 'womanwalk' : 'walk'}${f}`;
   }
 
   target(row: PersonRow, color: number, tickMs: number) {
@@ -742,7 +764,7 @@ export class PersonSprite {
     this.cloth.tint = color;
     this.age = row[5];
     this.female = row[6] === 1;
-    const s = this.age < 12 ? 0.5 + this.age * 0.035 : this.age > 60 ? 0.95 : 1;
+    const s = this.age < 12 ? 0.75 + this.age * 0.02 : this.age > 60 ? 0.95 : 1;
     this.c.scale.set(this.facing * s, s);
     this.task = row[3];
     if (Math.abs(this.to.x - this.from.x) > 1) this.facing = this.to.x < this.from.x ? -1 : 1;
@@ -756,8 +778,9 @@ export class PersonSprite {
     const dist = Math.abs(this.to.x - this.from.x) + Math.abs(this.to.y - this.from.y);
     const walking = k < 0.95 && dist > 3;
     let bob = 0;
-    if (walking && !this.female && this.age >= 12 && this.age <= 55) {
-      this.setPose(`walk${Math.floor(now / 140 + this.seed) % 4}`);
+    const walk = walking ? this.walkPose(now) : null;
+    if (walk) {
+      this.setPose(walk);
     } else {
       this.setPose(this.idlePose());
       if (walking) bob = -Math.abs(Math.sin(now / 110 + this.seed)) * 1.2;
