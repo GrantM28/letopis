@@ -39,6 +39,18 @@ npm run dev   # x200 скорост, данни в ./data, http://localhost:2222
 
 Настройки (env): `LETOPIS_PORT` (2222), `LETOPIS_DATA` (/data), `LETOPIS_SPEED` (1, само за тест), `LETOPIS_SEED` (случайно).
 
+## Графика
+
+Спрайтовете са генерирани с ChatGPT по промптовете в [art/PROMPTS.md](art/PROMPTS.md). Листовете са в `art/sheets/`.
+Ако смениш или добавиш лист, пусни (нужни са Python, Pillow и NumPy):
+
+```sh
+python3 -I tools/slice_sprites.py   # реже листовете на отделни спрайтове в art/cut/ и чисти ореолите
+python3 -I tools/build_atlas.py     # сглобява public/sprites/atlas.png и atlas.json
+```
+
+Готовият атлас е в git, така че за компилиране на играта Python не е нужен.
+
 ## API
 
 `/api/health`, `/api/world`, `/api/snapshot`, `/api/chronicle?before=&after=&min=&limit=`, `/api/since?after=`,

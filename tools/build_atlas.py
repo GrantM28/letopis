@@ -1,0 +1,258 @@
+#!/usr/bin/env python3
+"""Pack the cut sprites from art/cut into public/sprites/atlas.png + atlas.json.
+
+Usage: python3 -I tools/build_atlas.py   (after tools/slice_sprites.py)
+
+Every frame in atlas.json: x, y, w, h (pixels in the atlas), ax, ay (anchor 0..1),
+s (world units per atlas pixel). Frames ending in "_c" hold only the cloth of a sprite,
+in grey, so the game can tint it with the colour of the band.
+"""
+import json
+import os
+import sys
+
+import numpy as np
+from PIL import Image, ImageFilter
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+CUT = os.path.join(ROOT, 'art', 'cut')
+OUT = os.path.join(ROOT, 'public', 'sprites')
+ATLAS = 2048
+PAD = 4
+
+TW = 32  # tile width in world units (same as src/client/render.ts)
+
+# name prefix -> (cut ids, kind, world width, texture width)
+GROUPS: list[tuple[str, list[str], str, float, int]] = []
+
+
+def group(prefix: str, ids: str, kind: str, world: float, tex: int):
+    GROUPS.append((prefix, ids.split(), kind, world, tex))
+
+
+# ground tiles (kind 'tile': anchor on the left/right corner of the diamond)
+group('grass', 'A11 A12 A13 A14', 'tile', TW + 3, 128)
+group('meadow', 'A21 A22 A23 A24', 'tile', TW + 3, 128)
+group('steppe', 'A31 A32 A33 A34', 'tile', TW + 3, 128)
+group('hill', 'A41 A42 A43 A44', 'tile', TW + 3, 128)
+group('sand', 'B11 B12 B13 B14', 'tile', TW + 3, 128)
+group('path', 'B21 B24', 'tile', TW + 3, 128)
+group('wheat', 'B31 B32 B33 B34', 'tile', TW + 3, 128)
+group('soil', 'B41 B42 B43 B44', 'tile', TW + 3, 128)
+group('shallow', 'C11 C12 C13 C14', 'tile', TW + 3, 128)
+group('deep', 'C21 C22 C23 C24', 'tile', TW + 3, 128)
+group('lily', 'C31 C32 C33 C34', 'tile', TW + 3, 128)
+group('marsh', 'C41 C42 C43 C44', 'tile', TW + 3, 128)
+group('rock', 'D11 D12 D13 D14', 'tile', TW + 3, 128)
+group('snow', 'D21 D22 D23 D24', 'tile', TW + 3, 128)
+group('tundra', 'D31 D32 D33 D34', 'tile', TW + 3, 128)
+group('crag', 'D41 D42 D43 D44', 'tile', TW + 3, 128)
+# trees (kind 'prop': anchor in the middle of the grass patch at the foot)
+group('oak', 'E11 E12 E14', 'prop', 30, 120)
+group('blossom', 'E13', 'prop', 30, 120)
+group('spruce', 'E21 E22', 'prop', 24, 96)
+group('pine', 'E23 E24', 'prop', 28, 112)
+group('birch', 'E31 E32', 'prop', 26, 104)
+group('sapling', 'E33', 'prop', 18, 72)
+group('apple', 'E34', 'prop', 26, 104)
+group('spruce_snow', 'E41', 'prop', 24, 96)
+group('bare_snow', 'E42', 'prop', 28, 112)
+group('autumn', 'E43', 'prop', 28, 112)
+group('bare', 'E44', 'prop', 28, 112)
+# small nature
+group('bush', 'F11 F12', 'prop', 15, 64)
+group('berries', 'F13', 'prop', 15, 64)
+group('flowerbush', 'F14', 'prop', 15, 64)
+group('boulder', 'F21 F22 F23 F24', 'prop', 14, 64)
+group('log', 'F31', 'prop', 14, 64)
+group('stump', 'F32', 'prop', 12, 56)
+group('mushroom', 'F33', 'prop', 9, 40)
+group('reeds', 'F34', 'prop', 12, 56)
+group('flowers', 'F41', 'prop', 11, 48)
+group('tuft', 'F42', 'prop', 11, 48)
+group('stones', 'F43', 'prop', 11, 48)
+group('fern', 'F44', 'prop', 12, 56)
+# stone age camp
+group('hearth', 'G11 G12 G13 G14', 'prop', 17, 80)
+group('tent', 'G21 G22', 'prop', 20, 88)
+group('leanto', 'G23', 'prop', 20, 88)
+group('bonehut', 'G24', 'prop', 21, 88)
+group('furbed', 'G31', 'prop', 15, 64)
+group('hiderack', 'G32', 'prop', 18, 80)
+group('logpile', 'G33', 'prop', 13, 56)
+group('embers', 'G34', 'prop', 17, 80)
+group('totem', 'G41', 'prop', 6, 32)
+group('banner', 'G42', 'cloth', 11, 56)
+group('flag', 'G43', 'cloth', 12, 56)
+group('cairn', 'G44', 'prop', 11, 48)
+# neolithic village
+group('roundhut', 'H11', 'prop', 21, 96)
+group('house', 'H12', 'prop', 25, 112)
+group('longhouse', 'H13', 'prop', 31, 128)
+group('granary', 'H14', 'prop', 17, 72)
+group('pen', 'H21', 'prop', 25, 112)
+group('kiln', 'H22', 'prop', 15, 64)
+group('well', 'H23', 'prop', 15, 64)
+group('fence', 'H24', 'prop', 16, 64)
+group('pots', 'H31', 'prop', 11, 48)
+group('quern', 'H32', 'prop', 11, 48)
+group('basket', 'H33', 'prop', 8, 40)
+group('fishtrap', 'H34', 'prop', 12, 56)
+group('canoe', 'H41', 'prop', 18, 80)
+group('haystack', 'H42', 'prop', 13, 56)
+group('sled', 'H43', 'prop', 15, 64)
+group('shrine', 'H44', 'prop', 15, 64)
+# people (world size is the height for these)
+group('man', 'I11', 'person', 11, 64)
+group('woman', 'I12', 'person', 11, 64)
+group('elder', 'I13', 'person', 11, 64)
+group('wave', 'I14', 'person', 11, 64)
+group('gatherer', 'I21', 'person', 11, 64)
+group('carrier', 'I22', 'person', 11, 64)
+group('hunter', 'I23', 'person', 11, 64)
+group('potter', 'I24', 'person', 11, 64)
+group('walk', 'I31 I32 I33 I34', 'person', 11, 64)
+# band symbols (white, tinted in game), same order as SYMBOLS in render.ts
+group('sym', 'J11 J12 J13 J14 J21 J22 J23 J24 J31 J32 J33 J34 J41 J42 J43 J44', 'symbol', 6, 64)
+
+
+def resize(img: Image.Image, w: int, h: int) -> Image.Image:
+    return img.convert('RGBa').resize((w, h), Image.LANCZOS).convert('RGBA')
+
+
+def corner_y(a: np.ndarray) -> float:
+    """Row of the left and right corners of an isometric tile (where it is widest)."""
+    m = a[..., 3] > 0
+    left = np.nonzero(m[:, :4].any(1))[0]
+    right = np.nonzero(m[:, -4:].any(1))[0]
+    return (left.min() + right.min()) / 2
+
+
+def top_only(img: Image.Image, cy: float) -> Image.Image:
+    """Only the top diamond of a tile, without the side wall: used where the tile in front is not lower,
+    so no wall can peek out between neighbours and the ground looks seamless.
+    The darker rim along the front edges is replaced by colours from inside the tile, so it does not
+    show as a grid line under the uneven back edge of the next tile."""
+    a = np.array(img).astype(np.float32)
+    h, w = a.shape[:2]
+    ys, xs = np.mgrid[0:h, 0:w]
+    edge = cy + (w / 4) * (1 - np.abs(xs - w / 2) / (w / 2))
+    inner = (ys < edge - 7) & (a[..., 3] > 200)
+    # average colour of the nearby inside, by a masked blur
+    rgbm = np.dstack([a[..., :3] * inner[..., None], inner * 255.0]).astype(np.uint8)
+    blur = np.array(Image.fromarray(rgbm, 'RGBA').filter(ImageFilter.GaussianBlur(7))).astype(np.float32)
+    mean = a[..., :3][inner].mean(0)
+    k = np.clip(blur[..., 3:4] / 40, 0, 1)
+    fill = (blur[..., :3] / np.maximum(blur[..., 3:4], 1) * 255) * k + mean * (1 - k)
+    t = np.clip((ys - (edge - 9)) / 6, 0, 1)[..., None]  # 0 inside -> 1 at the edge
+    band = (ys > edge - 9) & (xs >= 0)
+    out = a.copy()
+    out[..., :3] = np.where(band[..., None], a[..., :3] * (1 - t) + fill * t, a[..., :3])
+    # soften the light rim along the back edges too, keeping the uneven outline of the grass
+    top_edge = cy - (w / 4) * (1 - np.abs(xs - w / 2) / (w / 2))
+    tb = (np.clip(1 - (ys - top_edge) / 8, 0, 1) * 0.65 * (ys > top_edge - 8))[..., None]
+    out[..., :3] = out[..., :3] * (1 - tb) + fill * tb
+    out[..., 3] = np.where(band, 255, a[..., 3])
+    # cut below the front edges, keeping some overlap so no gap shows when zoomed out
+    out[ys > edge + 6, 3] = 0
+    out[ys < edge - 9, 3] = a[ys < edge - 9, 3]
+    # stray wall pixels at the left/right corners
+    out[(np.abs(xs - w / 2) > w / 2 - 7) & (ys < edge - 2), 3] = 0
+    out[out[..., 3] == 0, :3] = 0
+    return Image.fromarray(out.astype(np.uint8))
+
+
+def split_cloth(img: Image.Image, head: float) -> tuple[Image.Image, Image.Image]:
+    """Light grey/white cloth -> separate grey layer; the rest stays in the base."""
+    a = np.array(img).astype(np.float32)
+    rgb = a[..., :3] / 255
+    mx, mn = rgb.max(-1), rgb.min(-1)
+    sat = np.where(mx > 0, (mx - mn) / np.maximum(mx, 1e-6), 0)
+    cloth = (sat < 0.2) & (mx > 0.45) & (a[..., 3] > 0)
+    cloth[: int(a.shape[0] * head)] = False
+    base = a.copy()
+    base[cloth, 3] = 0
+    c = np.zeros_like(a)
+    lum = rgb.mean(-1)
+    # stretch so the brightest cloth is white: tint then gives the real band colour
+    top = np.percentile(lum[cloth], 95) if cloth.any() else 1
+    g = np.clip(lum / max(top, 1e-3), 0, 1) * 255
+    c[..., 0] = c[..., 1] = c[..., 2] = g
+    c[..., 3] = np.where(cloth, a[..., 3], 0)
+    return Image.fromarray(base.astype(np.uint8)), Image.fromarray(c.astype(np.uint8))
+
+
+def main() -> int:
+    items = []  # (name, image, ax, ay, s)
+    for prefix, ids, kind, world, tex in GROUPS:
+        for k, cid in enumerate(ids):
+            name = prefix if len(ids) == 1 else f'{prefix}{k}'
+            src = Image.open(os.path.join(CUT, f'{cid}.png')).convert('RGBA')
+            a = np.array(src)
+            w0, h0 = src.size
+            if kind == 'person':
+                h = tex
+                w = max(1, round(w0 * h / h0))
+                s = world / h
+            else:
+                w = tex
+                h = max(1, round(h0 * w / w0))
+                s = world / w
+            if kind == 'tile':
+                ay = corner_y(a) / h0
+            elif kind == 'person':
+                ay = 0.97
+            elif kind == 'symbol':
+                ay = 0.5
+            else:
+                # foot of a prop: the middle of its grass patch, about 8% of the width above the bottom
+                ay = max(0.5, 1 - 0.08 * w0 / h0)
+            if kind == 'symbol':
+                a[..., :3] = 255  # black silhouettes -> white, tinted in game
+                src = Image.fromarray(a)
+            img = resize(src, w, h)
+            if kind == 'tile':
+                items.append((name, img, 0.5, ay, s))
+                items.append((name + '_t', top_only(img, ay * h), 0.5, ay, s))
+                continue
+            if kind in ('person', 'cloth'):
+                base, cloth = split_cloth(img, head=0.48 if cid == 'I13' else 0.3 if kind == 'person' else 0)
+                items.append((name, base, 0.5, ay, s))
+                items.append((name + '_c', cloth, 0.5, ay, s))
+            else:
+                items.append((name, img, 0.5, ay, s))
+
+    # shelf packing, tallest first
+    items.sort(key=lambda it: -it[1].size[1])
+    atlas = Image.new('RGBA', (ATLAS, ATLAS), (0, 0, 0, 0))
+    frames = {}
+    x = y = PAD
+    shelf = 0
+    for name, img, ax, ay, s in items:
+        w, h = img.size
+        if x + w + PAD > ATLAS:
+            x = PAD
+            y += shelf + PAD
+            shelf = 0
+        if y + h + PAD > ATLAS:
+            print('atlas full', file=sys.stderr)
+            return 1
+        atlas.paste(img, (x, y))
+        frames[name] = {'x': x, 'y': y, 'w': w, 'h': h, 'ax': ax, 'ay': round(ay, 4), 's': round(s, 5)}
+        x += w + PAD
+        shelf = max(shelf, h)
+    used = y + shelf + PAD
+    os.makedirs(OUT, exist_ok=True)
+    # keep the height a power of two so mipmaps work everywhere
+    height = 1
+    while height < used:
+        height *= 2
+    atlas.crop((0, 0, ATLAS, height)).save(os.path.join(OUT, 'atlas.png'), optimize=True)
+    with open(os.path.join(OUT, 'atlas.json'), 'w', encoding='utf-8') as f:
+        json.dump({'size': [ATLAS, height], 'frames': dict(sorted(frames.items()))}, f, separators=(',', ':'))
+    print(f'{len(frames)} frames, atlas {ATLAS}x{height}, used {used} rows')
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())
