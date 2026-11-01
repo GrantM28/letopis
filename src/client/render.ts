@@ -109,6 +109,7 @@ export class WorldRenderer {
   time = 0;
   month = 0;
   zoom = 1;
+  night = true;
 
   constructor(app: Application) {
     this.app = app;
@@ -150,7 +151,26 @@ export class WorldRenderer {
         x.poly([0, 8, 10, 2, 20, 8, 10, 13]).fill(0xa0522d);
         x.rect(4, 13, 3, 5).fill(0x3a2a1a);
       }),
-      rug: g((x) => x.ellipse(6, 3, 6, 3).fill(0x7a5c3e)),
+      rug: g((x) => {
+        x.ellipse(8, 4, 8, 4).fill(0x6b4a2e).stroke({ color: 0x3e2a18, width: 1 });
+        x.ellipse(8, 4, 4, 2).fill(0x8a6a44);
+      }),
+      ground: g((x) => {
+        for (let i = 6; i > 0; i--) x.ellipse(44, 22, 20 + i * 4, 10 + i * 2).fill({ color: 0x8a6a42, alpha: 0.13 });
+        x.ellipse(44, 22, 22, 11).fill({ color: 0x9c7b50, alpha: 0.6 });
+      }),
+      hearth: g((x) => {
+        for (let i = 0; i < 8; i++) {
+          const a = (i / 8) * Math.PI * 2;
+          x.ellipse(9 + Math.cos(a) * 7, 5 + Math.sin(a) * 3.5, 2.2, 1.6).fill(i % 2 ? 0x8d8d86 : 0x6f6f6a);
+        }
+        x.ellipse(9, 5, 4, 2).fill(0x3a2f28);
+      }),
+      pole: g((x) => {
+        x.rect(0, 0, 2, 30).fill(0x5a3d22);
+        x.circle(1, 1, 2.2).fill(0xd9c9a0);
+      }),
+      flag: g((x) => x.poly([0, 0, 13, 3, 0, 8]).fill(0xffffff)),
       fire: g((x) => {
         x.poly([0, 8, 4, 0, 8, 8]).fill(0xff9a2e);
         x.poly([2, 8, 4, 3, 6, 8]).fill(0xffe066);
@@ -411,12 +431,12 @@ export class WorldRenderer {
     // a day lasts 8 real minutes, just for the mood
     const day = (nowMs / (8 * 60 * 1000)) % 1;
     const sun = Math.cos(day * Math.PI * 2); // 1 noon, -1 midnight
-    const dark = Math.max(0, Math.min(0.55, -sun * 0.7 + 0.05));
+    const dark = this.night ? Math.max(0, Math.min(0.55, -sun * 0.7 + 0.05)) : 0;
     this.nightOverlay.clear().rect(0, 0, this.app.screen.width, this.app.screen.height).fill({ color: 0x0a1030, alpha: dark });
     this.glowLayer.alpha = Math.min(1, dark * 2.2);
     const zoom = this.world.scale.x;
     this.peopleLayer.visible = zoom > 0.45;
-    this.labelLayer.alpha = zoom > 0.35 ? 1 : 0;
+    this.labelLayer.alpha = 1;
     for (const p of this.people.values()) p.frame(nowMs);
     for (const c of this.camps.values()) c.frame(nowMs, zoom);
   }
@@ -497,6 +517,12 @@ export class CampSprite {
   fire: Sprite;
   homes: Container = new Container();
   fields: Container = new Container();
+  ground: Sprite;
+  hearth: Sprite;
+  flag: Sprite;
+  tag = new Container();
+  tagBg = new Graphics();
+  tagText = '';
   id: number;
   key = '';
   pos = { x: 0, y: 0 };
@@ -514,10 +540,23 @@ export class CampSprite {
       resolution: 2,
     });
     this.label.anchor.set(0.5, 1);
-    this.c.addChild(this.fields, this.homes, this.fire);
+    // worn ground, a stone hearth and a totem pole with the colour of the band: easy to spot even without fire
+    this.ground = new Sprite(r.tex.ground);
+    this.ground.anchor.set(0.5);
+    this.ground.y = 4;
+    this.hearth = new Sprite(r.tex.hearth);
+    this.hearth.anchor.set(0.5, 0.6);
+    const pole = new Sprite(r.tex.pole);
+    pole.anchor.set(0.5, 1);
+    pole.position.set(-12, -2);
+    this.flag = new Sprite(r.tex.flag);
+    this.flag.position.set(-11, -31);
+    this.flag.tint = b.color;
+    this.c.addChild(this.ground, this.fields, this.hearth, this.homes, pole, this.flag, this.fire);
     r.campLayer.addChild(this.c);
     r.glowLayer.addChild(this.glow);
-    r.labelLayer.addChild(this.label);
+    this.tag.addChild(this.tagBg, this.label);
+    r.labelLayer.addChild(this.tag);
   }
 
   update(b: BandView, kids: boolean) {
@@ -529,7 +568,17 @@ export class CampSprite {
     this.glow.visible = b.hasFire || b.dwelling === 'house';
     this.label.text = b.settlementName ? `${b.settlementName} (${b.size})` : `${b.name.replace('Родът на ', '')} (${b.size})`;
     this.label.style.fontSize = kids ? 16 : 12;
-    this.label.position.set(p.x, p.y - 26);
+    this.flag.tint = b.color;
+    this.tag.position.set(p.x, p.y - 36);
+    if (this.label.text !== this.tagText) {
+      this.tagText = this.label.text;
+      const w = this.label.width + 14, h = this.label.height + 4;
+      this.tagBg.clear()
+        .roundRect(-w / 2, -h, w, h, h / 2).fill({ color: 0x101626, alpha: 0.78 })
+        .roundRect(-w / 2, -h, w, h, h / 2).stroke({ color: b.color, width: 2 })
+        .poly([-4, 0, 4, 0, 0, 5]).fill(b.color);
+      this.label.position.set(0, -2);
+    }
     const n = Math.max(1, Math.min(10, Math.round(b.size / (b.dwelling === 'house' ? 6 : 5))));
     const key = `${b.dwelling}:${n}:${b.settled}`;
     if (key === this.key) return;
@@ -565,12 +614,13 @@ export class CampSprite {
       this.fire.scale.set(f, f * 1.05);
       this.glow.scale.set(0.9 + f * 0.2);
     }
-    this.label.scale.set(1 / Math.max(0.5, Math.min(2, zoom)));
+    this.flag.skew.y = Math.sin(now / 400 + this.id) * 0.12;
+    this.tag.scale.set(1 / Math.max(0.3, Math.min(2, zoom)));
   }
 
   destroy() {
     this.c.destroy({ children: true });
     this.glow.destroy();
-    this.label.destroy();
+    this.tag.destroy({ children: true });
   }
 }

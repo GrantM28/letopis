@@ -447,6 +447,15 @@ $('#kidsBtn').onclick = () => {
 };
 document.body.classList.toggle('kids', kids);
 $('#kidsBtn').setAttribute('aria-pressed', String(kids));
+let night = store('letopis.night', true);
+r.night = night;
+$('#nightBtn').setAttribute('aria-pressed', String(night));
+$('#nightBtn').onclick = () => {
+  night = !night;
+  r.night = night;
+  save('letopis.night', night);
+  $('#nightBtn').setAttribute('aria-pressed', String(night));
+};
 $('#sideToggle').onclick = () => document.body.classList.toggle('side-hidden');
 
 // ---------- frame loop ----------

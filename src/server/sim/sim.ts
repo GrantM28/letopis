@@ -792,6 +792,8 @@ export class Simulation {
     if (i >= 0) this.s.bands.splice(i, 1);
     this.bandById.delete(b.id);
     this.techSets.delete(b.id);
+    // the name is free again for a future band
+    this.s.usedBands = this.s.usedBands.filter((n) => n !== b.name);
     if (!merged) {
       this.emit('extinct', 2, `${this.bandLabel(b, true)} угасна. Няма кой да запали огъня на тяхното място.`, `${this.bandLabel(b, true)} изчезна. Няма останали хора от този род.`, undefined, b.id);
     }
