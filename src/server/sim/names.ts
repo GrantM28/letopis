@@ -72,17 +72,26 @@ export function placeName(rng: Rng, used: Set<string>): string {
   return fallback;
 }
 
-const TOTEM = [
-  'Мечката', 'Вълка', 'Орела', 'Елена', 'Сокола', 'Глигана', 'Бизона', 'Лисицата', 'Бухала', 'Рибата',
-  'Дъба', 'Реката', 'Камъка', 'Огъня', 'Звездата', 'Луната', 'Слънцето', 'Вятъра', 'Гарвана', 'Риса',
-];
+// Totems in the form used after "Родът на ...": [masculine nouns, feminine nouns, neuter (no adjective)].
+const TOTEM_M = ['Вълка', 'Орела', 'Елена', 'Сокола', 'Глигана', 'Бизона', 'Бухала', 'Дъба', 'Камъка', 'Огъня', 'Вятъра', 'Гарвана', 'Риса', 'Бобъра', 'Коня', 'Ястреба', 'Бора', 'Облака', 'Лъва', 'Щъркела'];
+const TOTEM_F = ['Мечката', 'Лисицата', 'Рибата', 'Реката', 'Звездата', 'Луната', 'Сърната', 'Совата', 'Змията', 'Пчелата', 'Скалата', 'Планината', 'Росата', 'Гората', 'Зорницата', 'Лястовицата'];
+const TOTEM_N = ['Слънцето', 'Езерото', 'Еленчето', 'Пламъчето'];
+const ADJ_M = ['Белия', 'Сивия', 'Черния', 'Червения', 'Златния', 'Стария', 'Бързия', 'Тихия', 'Големия', 'Малкия', 'Мъдрия', 'Самотния'];
+const ADJ_F = ['Бялата', 'Сивата', 'Черната', 'Червената', 'Златната', 'Старата', 'Бързата', 'Тихата', 'Голямата', 'Малката', 'Мъдрата', 'Самотната'];
 
 export function bandName(rng: Rng, used: Set<string>): string {
-  for (let k = 0; k < 40; k++) {
-    const name = `Родът на ${rng.pick(TOTEM)}`;
+  for (let k = 0; k < 200; k++) {
+    let totem: string;
+    const r = rng.next();
+    // plain names first, adjectives once the plain ones are taken
+    const fancy = k > 8 || rng.chance(0.25);
+    if (r < 0.45) totem = fancy ? `${rng.pick(ADJ_M)} ${rng.pick(TOTEM_M)}` : rng.pick(TOTEM_M);
+    else if (r < 0.9) totem = fancy ? `${rng.pick(ADJ_F)} ${rng.pick(TOTEM_F)}` : rng.pick(TOTEM_F);
+    else totem = rng.pick(TOTEM_N);
+    const name = `Родът на ${totem}`;
     if (!used.has(name)) { used.add(name); return name; }
   }
-  const n = `Родът на ${rng.pick(TOTEM)} ${used.size}`;
+  const n = `Родът на ${rng.pick(TOTEM_F)} ${used.size}`;
   used.add(n);
   return n;
 }
