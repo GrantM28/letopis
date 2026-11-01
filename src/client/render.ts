@@ -1,4 +1,6 @@
-import { AlphaFilter, Application, BlurFilter, Container, Filter, GlProgram, Graphics, Sprite, Text, Texture } from 'pixi.js';
+import {
+  AlphaFilter, Application, BlurFilter, Container, Filter, GlProgram, Graphics, ImageSource, Rectangle, Sprite, Text, Texture,
+} from 'pixi.js';
 import { BandView, Biome, PersonRow, TASKS, WorldInfo, b64decode, isWater } from '../shared/types';
 
 export const TW = 32; // tile width
@@ -10,41 +12,82 @@ export function iso(x: number, y: number): { x: number; y: number } {
   return { x: (x - y) * (TW / 2), y: (x + y) * (TH / 2) };
 }
 
-const BIOME_COLOR: Record<number, number> = {
-  [Biome.DeepWater]: 0x1d4e7a,
-  [Biome.Water]: 0x2f74a8,
-  [Biome.Lake]: 0x3a86b8,
-  [Biome.Beach]: 0xd9c78f,
-  [Biome.Grassland]: 0x7fb24f,
-  [Biome.Plains]: 0xa8b45a,
-  [Biome.Forest]: 0x3f7f3a,
-  [Biome.Taiga]: 0x3d6b4f,
-  [Biome.Hills]: 0x8c9a5b,
-  [Biome.Mountain]: 0x8a8378,
-  [Biome.Snow]: 0xeef3f6,
-  [Biome.Desert]: 0xd8b56a,
-  [Biome.Tundra]: 0x9fae9a,
-  [Biome.Marsh]: 0x5d7f5a,
-};
-
 function hash(x: number, y: number): number {
   let h = (x * 374761393 + y * 668265263) | 0;
   h = (h ^ (h >>> 13)) * 1274126177;
   return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
 }
 
-function shade(c: number, f: number): number {
-  const r = Math.min(255, Math.max(0, Math.round(((c >> 16) & 255) * f)));
-  const g = Math.min(255, Math.max(0, Math.round(((c >> 8) & 255) * f)));
-  const b = Math.min(255, Math.max(0, Math.round((c & 255) * f)));
-  return (r << 16) | (g << 8) | b;
+function pick<T>(list: T[], n: number): T {
+  return list[Math.min(list.length - 1, Math.floor(n * list.length))];
 }
 
-function mix(a: number, b: number, t: number): number {
-  const r = ((a >> 16) & 255) * (1 - t) + ((b >> 16) & 255) * t;
-  const g = ((a >> 8) & 255) * (1 - t) + ((b >> 8) & 255) * t;
-  const bl = (a & 255) * (1 - t) + (b & 255) * t;
-  return (Math.round(r) << 16) | (Math.round(g) << 8) | Math.round(bl);
+// ---------- sprite atlas (made by tools/build_atlas.py from the AI sheets in art/) ----------
+
+interface Frame { x: number; y: number; w: number; h: number; ax: number; ay: number; s: number }
+
+export class Atlas {
+  tex: Record<string, Texture> = {};
+  frames: Record<string, Frame> = {};
+
+  static async load(base: string): Promise<Atlas> {
+    const a = new Atlas();
+    const [meta, blob] = await Promise.all([
+      fetch(`${base}/atlas.json`).then((r) => r.json()),
+      fetch(`${base}/atlas.png`).then((r) => r.blob()),
+    ]);
+    const bitmap = await createImageBitmap(blob, { premultiplyAlpha: 'none' });
+    const source = new ImageSource({
+      resource: bitmap,
+      autoGenerateMipmaps: true,
+      scaleMode: 'linear',
+      mipmapFilter: 'linear',
+      maxAnisotropy: 4,
+    });
+    a.frames = meta.frames;
+    for (const [name, f] of Object.entries(a.frames)) {
+      a.tex[name] = new Texture({ source, frame: new Rectangle(f.x, f.y, f.w, f.h) });
+    }
+    return a;
+  }
+
+  has(name: string): boolean {
+    return name in this.frames;
+  }
+
+  sprite(name: string): Sprite {
+    const s = new Sprite();
+    this.set(s, name);
+    return s;
+  }
+
+  /** world units per texture pixel */
+  scale(name: string): number {
+    return this.frames[name].s;
+  }
+
+  set(s: Sprite, name: string, mul = 1) {
+    const f = this.frames[name];
+    s.texture = this.tex[name];
+    s.anchor.set(f.ax, f.ay);
+    s.scale.set(f.s * mul);
+  }
+}
+
+// Totem in the band name -> symbol in the atlas (sym0..sym15, same order as sheet J).
+const SYM = {
+  paw: 0, wolf: 1, eagle: 2, antlers: 3, falcon: 4, boar: 5, bison: 6, fox: 7,
+  owl: 8, fish: 9, oak: 10, waves: 11, flame: 12, star: 13, moon: 14, sun: 15,
+};
+const TOTEM_SYMBOL: [RegExp, number][] = [
+  [/Мечка/, SYM.paw], [/Вълк/, SYM.wolf], [/Орел|Гарван|Щъркел/, SYM.eagle], [/Елен|Сърна/, SYM.antlers],
+  [/Сокол|Ястреб|Лястовиц/, SYM.falcon], [/Глиган|Бобър/, SYM.boar], [/Бизон|Кон|Лъв/, SYM.bison], [/Лисиц|Рис/, SYM.fox],
+  [/Бухал|Сова/, SYM.owl], [/Риба/, SYM.fish], [/Дъб|Бор|Гора/, SYM.oak], [/Река|Езеро|Змия|Роса|Вят|Облак/, SYM.waves],
+  [/Огън|Пламъч/, SYM.flame], [/Звезд|Зорниц/, SYM.star], [/Луна/, SYM.moon], [/Слън/, SYM.sun],
+];
+export function bandSymbol(name: string, id: number): number {
+  for (const [re, s] of TOTEM_SYMBOL) if (re.test(name)) return s;
+  return Math.floor(hash(id, 3) * 16);
 }
 
 // Own GLSL: gentle moving light on the water surface.
@@ -74,18 +117,23 @@ void main(void) {
   vec2 p = (gl_FragCoord.xy - uCam.xy) / uCam.z;
   float w = sin(p.x * 0.09 + uTime * 1.1) * sin(p.y * 0.21 - uTime * 0.8)
           + 0.5 * sin((p.x + p.y) * 0.05 - uTime * 0.6);
-  float glint = smoothstep(1.05, 1.4, w);
-  c.rgb += c.a * (vec3(0.03, 0.05, 0.07) * w + vec3(0.25, 0.3, 0.32) * glint);
+  float glint = smoothstep(1.1, 1.45, w);
+  c.rgb += c.a * (vec3(0.02, 0.035, 0.05) * w + vec3(0.16, 0.2, 0.22) * glint);
   finalColor = c;
 }
 `;
 
+type ObjKind = 'decid' | 'conifer' | 'other';
+interface WorldObject { s: Sprite; i: number; kind: ObjKind; base: string; n: number; size: number; flip: number }
+
 export class WorldRenderer {
   app: Application;
+  atlas: Atlas;
   world = new Container(); // camera moves this
   terrainLayer = new Container();
   waterLayer = new Container();
   snowLayer = new Container();
+  objLayer = new Container();
   fogLayer = new Container();
   campLayer = new Container();
   peopleLayer = new Container();
@@ -98,7 +146,10 @@ export class WorldRenderer {
   river!: Uint8Array;
   temp!: Uint8Array;
   explored: Uint8Array = new Uint8Array(0);
+  cleared = new Set<number>();
   fogChunks = new Map<number, Graphics>();
+  objChunks = new Map<number, WorldObject[]>();
+  chunkViews: { area: Rectangle; parts: Container[] }[] = [];
   fogReady = false;
   waterFilter: Filter | null = null;
   snowCold!: Container;
@@ -108,12 +159,14 @@ export class WorldRenderer {
   tex!: Record<string, Texture>;
   time = 0;
   month = 0;
+  seasonKey = '';
   zoom = 1;
   night = true;
 
-  constructor(app: Application) {
+  constructor(app: Application, atlas: Atlas) {
     this.app = app;
-    this.world.addChild(this.waterLayer, this.terrainLayer, this.snowLayer, this.campLayer, this.peopleLayer, this.fogLayer, this.glowLayer, this.labelLayer);
+    this.atlas = atlas;
+    this.world.addChild(this.waterLayer, this.terrainLayer, this.snowLayer, this.objLayer, this.campLayer, this.peopleLayer, this.fogLayer, this.glowLayer, this.labelLayer);
     app.stage.addChild(this.world, this.nightOverlay);
     this.snowCold = new Container();
     this.snowCool = new Container();
@@ -134,53 +187,12 @@ export class WorldRenderer {
       return t;
     };
     this.tex = {
-      body: g((x) => x.roundRect(0, 0, 5, 8, 2).fill(0xffffff)),
-      head: g((x) => x.circle(2, 2, 2).fill(0xe8c39e)),
-      tent: g((x) => {
-        x.poly([0, 14, 9, 0, 18, 14]).fill(0x8a6a4a).stroke({ color: 0x5a4330, width: 1 });
-        x.poly([7, 14, 9, 6, 11, 14]).fill(0x3a2a1a);
-      }),
-      hut: g((x) => {
-        x.ellipse(10, 12, 10, 5).fill(0x9a7b55);
-        x.poly([0, 11, 10, 0, 20, 11]).fill(0xc8a85a).stroke({ color: 0x8a6d32, width: 1 });
-        x.rect(8, 9, 4, 6).fill(0x3a2a1a);
-      }),
-      house: g((x) => {
-        x.poly([0, 8, 10, 13, 10, 22, 0, 17]).fill(0xc9b28f);
-        x.poly([10, 13, 20, 8, 20, 17, 10, 22]).fill(0xa8916e);
-        x.poly([0, 8, 10, 2, 20, 8, 10, 13]).fill(0xa0522d);
-        x.rect(4, 13, 3, 5).fill(0x3a2a1a);
-      }),
-      rug: g((x) => {
-        x.ellipse(8, 4, 8, 4).fill(0x6b4a2e).stroke({ color: 0x3e2a18, width: 1 });
-        x.ellipse(8, 4, 4, 2).fill(0x8a6a44);
-      }),
       ground: g((x) => {
-        for (let i = 6; i > 0; i--) x.ellipse(44, 22, 20 + i * 4, 10 + i * 2).fill({ color: 0x8a6a42, alpha: 0.13 });
-        x.ellipse(44, 22, 22, 11).fill({ color: 0x9c7b50, alpha: 0.6 });
-      }),
-      hearth: g((x) => {
-        for (let i = 0; i < 8; i++) {
-          const a = (i / 8) * Math.PI * 2;
-          x.ellipse(9 + Math.cos(a) * 7, 5 + Math.sin(a) * 3.5, 2.2, 1.6).fill(i % 2 ? 0x8d8d86 : 0x6f6f6a);
-        }
-        x.ellipse(9, 5, 4, 2).fill(0x3a2f28);
-      }),
-      pole: g((x) => {
-        x.rect(0, 0, 2, 30).fill(0x5a3d22);
-        x.circle(1, 1, 2.2).fill(0xd9c9a0);
-      }),
-      flag: g((x) => x.poly([0, 0, 13, 3, 0, 8]).fill(0xffffff)),
-      fire: g((x) => {
-        x.poly([0, 8, 4, 0, 8, 8]).fill(0xff9a2e);
-        x.poly([2, 8, 4, 3, 6, 8]).fill(0xffe066);
+        for (let i = 6; i > 0; i--) x.ellipse(52, 26, 24 + i * 4, 12 + i * 2).fill({ color: 0x7a5a36, alpha: 0.12 });
+        x.ellipse(52, 26, 26, 13).fill({ color: 0x8c6b44, alpha: 0.5 });
       }),
       glow: g((x) => {
         for (let i = 10; i > 0; i--) x.circle(40, 40, i * 4).fill({ color: 0xff8a2a, alpha: 0.035 });
-      }),
-      field: g((x) => {
-        x.poly([0, 8, 16, 0, 32, 8, 16, 16]).fill(0xc9b04a);
-        for (let i = 0; i < 4; i++) x.moveTo(4 + i * 6, 8 + i * 0 - 2).lineTo(12 + i * 6, 12 - 2).stroke({ color: 0x9a8530, width: 1 });
       }),
     };
   }
@@ -197,9 +209,13 @@ export class WorldRenderer {
       this.level[i] = isWater(this.biome[i]) ? 0 : 1 + Math.floor(Math.max(0, v) * 14);
     }
     this.explored = new Uint8Array(info.w * info.h);
-    for (const l of [this.terrainLayer, this.waterLayer, this.snowCold, this.snowCool, this.fogLayer]) l.removeChildren().forEach((c) => c.destroy());
+    this.cleared.clear();
+    for (const l of [this.terrainLayer, this.waterLayer, this.snowCold, this.snowCool, this.fogLayer, this.objLayer]) l.removeChildren().forEach((c) => c.destroy({ children: true }));
     this.fogChunks.clear();
+    this.objChunks.clear();
+    this.chunkViews = [];
     this.fogReady = false;
+    this.seasonKey = '';
     this.buildTerrain();
     this.setupWaterFilter();
   }
@@ -217,96 +233,205 @@ export class WorldRenderer {
       for (let cx = 0; cx < nch; cx++) {
         const cy = s - cx;
         if (cy < 0 || cy >= nch) continue;
-        const land = new Graphics();
-        const water = new Graphics();
-        const cold = new Graphics();
-        const cool = new Graphics();
+        const land = new Container();
+        const water = new Container();
+        const cold = new Container();
+        const cool = new Container();
+        const objs = new Container();
+        const list: WorldObject[] = [];
         for (let d = 0; d <= 2 * (CHUNK - 1); d++) {
           for (let lx = 0; lx < CHUNK; lx++) {
             const ly = d - lx;
             if (ly < 0 || ly >= CHUNK) continue;
             const x = cx * CHUNK + lx, y = cy * CHUNK + ly;
             if (x >= w || y >= h) continue;
-            this.drawTile(x, y, land, water, cold, cool);
+            this.placeTile(x, y, land, water, cold, cool);
+            this.placeObjects(x, y, objs, list);
           }
         }
-        for (const [g, layer] of [[land, this.terrainLayer], [water, this.waterLayer], [cold, this.snowCold], [cool, this.snowCool]] as [Graphics, Container][]) {
-          layer.addChild(g);
+        objs.sortableChildren = true;
+        // bounds of the chunk in world space, so the culler skips chunks off screen
+        const p0 = iso(cx * CHUNK, cy * CHUNK);
+        const area = new Rectangle(p0.x - CHUNK * TW / 2 - TW, p0.y - 15 * ELEV - 40, CHUNK * TW + 2 * TW, CHUNK * TH + 15 * ELEV + 80);
+        for (const [c, layer] of [[land, this.terrainLayer], [water, this.waterLayer], [cold, this.snowCold], [cool, this.snowCool], [objs, this.objLayer]] as [Container, Container][]) {
+          layer.addChild(c);
         }
+        const key = cy * nch + cx;
+        this.objChunks.set(key, list);
         const fog = new Graphics();
         this.fogLayer.addChild(fog);
-        this.fogChunks.set(cy * nch + cx, fog);
+        this.fogChunks.set(key, fog);
+        this.chunkViews.push({ area, parts: [land, water, cold, cool, objs, fog] });
       }
     }
+    for (const list of this.objChunks.values()) for (const o of list) o.s.visible = false;
   }
 
-  private drawTile(x: number, y: number, land: Graphics, water: Graphics, cold: Graphics, cool: Graphics) {
+  private groundOf(b: number, x: number, y: number, n: number): { name: string; tint: number } {
+    const v = Math.floor(hash(x * 3 + 1, y * 5 + 2) * 4);
+    let tint = 0xffffff;
+    let name: string;
+    switch (b) {
+      case Biome.DeepWater: name = `deep${hash(x, y + 9) < 0.85 ? 0 : 1}`; break;
+      case Biome.Water: {
+        let coast = false;
+        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) if (this.lv(x + dx, y + dy) > 0) coast = true;
+        name = coast ? `shallow${v}` : `deep${hash(x, y + 9) < 0.7 ? 0 : 1}`;
+        break;
+      }
+      case Biome.Lake: name = n < 0.35 ? `lily${v}` : `shallow${v % 2}`; break;
+      case Biome.Beach: name = `sand${v}`; break;
+      case Biome.Desert: name = `sand${v % 2}`; tint = 0xf2d6a8; break;
+      case Biome.Grassland: name = n < 0.22 ? `meadow${v}` : `grass${v}`; break;
+      case Biome.Plains: name = `steppe${v}`; break;
+      case Biome.Forest: name = `grass${v}`; tint = 0xd6e8c8; break;
+      case Biome.Taiga: name = `grass${v}`; tint = 0xa9c4b0; break;
+      case Biome.Hills: name = n < 0.5 ? `hill${v}` : `grass${v}`; break;
+      case Biome.Mountain: name = n < 0.55 ? `rock${v}` : `crag${v}`; break;
+      case Biome.Snow: name = `snow${v}`; break;
+      case Biome.Tundra: name = `tundra${v}`; break;
+      case Biome.Marsh: name = `marsh${v}`; break;
+      default: name = `grass${v}`;
+    }
+    return { name, tint };
+  }
+
+  private placeTile(x: number, y: number, land: Container, water: Container, cold: Container, cool: Container) {
     const { w } = this.info;
     const i = y * w + x;
     const b = this.biome[i];
     const L = this.level[i];
     const p = iso(x, y);
     const top = p.y - L * ELEV;
-    const diamond = [p.x, top, p.x + TW / 2, top + TH / 2, p.x, top + TH, p.x - TW / 2, top + TH / 2];
     const n = hash(x, y);
+    let { name, tint } = this.groundOf(b, x, y, n);
+    // rivers are strips of shallow water on the land
+    if (this.river[i] && !isWater(b)) { name = `shallow${Math.floor(hash(x, y + 3) * 4)}`; tint = 0xe8f4ff; }
     if (isWater(b)) {
-      let c = BIOME_COLOR[b];
-      // shallow water near the coast is lighter
-      let coast = 0;
-      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) if (this.lv(x + dx, y + dy) > 0) coast = 1;
-      if (coast) c = mix(c, 0x58a6c8, 0.45);
-      water.poly(diamond).fill(shade(c, 0.95 + n * 0.1));
+      // water at the map edge shows its side, inside the sea only the surface
+      const edge = x === this.info.w - 1 || y === this.info.h - 1;
+      const s = this.atlas.sprite(edge ? name : name + '_t');
+      s.position.set(p.x, top + TH / 2);
+      water.addChild(s);
       return;
     }
-    // light comes from the north-west
+    // light comes from the north-west: tiles facing it are a bit brighter
     const slope = (this.lv(x - 1, y) - L) + (this.lv(x, y - 1) - L);
-    let c = BIOME_COLOR[b] ?? 0xff00ff;
-    c = shade(c, 0.92 + n * 0.14 - slope * 0.06);
-    // side faces where the neighbour is lower
-    const south = this.lv(x, y + 1), east = this.lv(x + 1, y);
-    if (south < L) {
-      const dh = (L - south) * ELEV;
-      land.poly([p.x - TW / 2, top + TH / 2, p.x, top + TH, p.x, top + TH + dh, p.x - TW / 2, top + TH / 2 + dh]).fill(shade(c, 0.7));
-    }
-    if (east < L) {
-      const dh = (L - east) * ELEV;
-      land.poly([p.x, top + TH, p.x + TW / 2, top + TH / 2, p.x + TW / 2, top + TH / 2 + dh, p.x, top + TH + dh]).fill(shade(c, 0.55));
-    }
-    land.poly(diamond).fill(c);
-    // rivers
-    if (this.river[i]) {
-      const r = Math.min(1, 0.35 + this.river[i] / 120);
-      const k = 0.5 * r;
-      land.poly([
-        p.x, top + TH / 2 - (TH / 2) * k, p.x + (TW / 2) * k, top + TH / 2, p.x, top + TH / 2 + (TH / 2) * k, p.x - (TW / 2) * k, top + TH / 2,
-      ]).fill(0x4a90c2);
-    }
-    // decorations
-    if ((b === Biome.Forest || b === Biome.Taiga) && n > 0.15) {
-      const count = n > 0.6 ? 3 : 2;
-      for (let k = 0; k < count; k++) {
-        const ox = (hash(x + k * 7, y) - 0.5) * 18, oy = (hash(x, y + k * 5) - 0.5) * 7;
-        const tx = p.x + ox, ty = top + TH / 2 + oy;
-        land.rect(tx - 0.8, ty - 2, 1.6, 4).fill(0x5a3d22);
-        if (b === Biome.Taiga) land.poly([tx - 4, ty - 1, tx, ty - 12, tx + 4, ty - 1]).fill(shade(0x2d5a3c, 0.85 + hash(k, x) * 0.3));
-        else land.circle(tx, ty - 6, 4.5).fill(shade(0x3a7a32, 0.85 + hash(k, y) * 0.3));
+    const light = Math.max(0.78, Math.min(1.05, 1 - slope * 0.04));
+    // cliffs: the tile has its own short wall (one level); deeper drops get stacked earth or rock below it
+    const drop = L - Math.min(this.lv(x, y + 1), this.lv(x + 1, y));
+    if (drop > 1) {
+      const wall = L >= 6 || b === Biome.Mountain || b === Biome.Hills ? `rock${Math.floor(n * 4)}` : 'path0';
+      for (let k = drop - 1; k >= 1; k--) {
+        const s = this.atlas.sprite(wall);
+        s.position.set(p.x, top + TH / 2 + k * ELEV);
+        s.tint = scaleColor(0xd8d0c4, 0.75 + 0.2 * (1 - k / drop));
+        land.addChild(s);
       }
-    } else if (b === Biome.Mountain && n > 0.4) {
-      land.poly([p.x - 7, top + TH / 2 + 3, p.x - 1, top - 6, p.x + 6, top + TH / 2 + 3]).fill(shade(0x77706a, 0.9 + n * 0.2));
-      land.poly([p.x - 3, top - 1, p.x - 1, top - 6, p.x + 1.5, top - 1]).fill(0xf2f2f2);
-    } else if (b === Biome.Hills && n > 0.7) {
-      land.ellipse(p.x, top + TH / 2, 8, 3).fill(shade(c, 1.08));
-    } else if ((b === Biome.Grassland || b === Biome.Plains) && n > 0.85) {
-      land.circle(p.x + 3, top + 7, 1.2).fill(0xf2e36b);
-      land.circle(p.x - 4, top + 9, 1.2).fill(0xe8e8f2);
-    } else if (b === Biome.Marsh && n > 0.4) {
-      land.ellipse(p.x, top + TH / 2, 6, 2).fill(0x4f7c8a);
     }
-    // winter snow, drawn once and faded in by season
+    // the side wall is only drawn where the tile in front is lower; elsewhere just the top, so the ground looks seamless
+    const s = this.atlas.sprite(drop > 0 ? name : name + '_t');
+    s.position.set(p.x, top + TH / 2);
+    s.tint = scaleColor(tint, light);
+    land.addChild(s);
+    // winter snow, faded in by season
     const t = this.temp[i] / 255;
-    if (b !== Biome.Snow) {
-      if (t < 0.33) cold.poly(diamond).fill({ color: 0xf4f8fb, alpha: 0.85 });
-      else if (t < 0.5) cool.poly(diamond).fill({ color: 0xf4f8fb, alpha: 0.75 });
+    if (b !== Biome.Snow && !this.river[i]) {
+      const target = t < 0.33 ? cold : t < 0.5 ? cool : null;
+      if (target) {
+        const sn = this.atlas.sprite(`snow${Math.floor(hash(x + 5, y) * 4)}${drop > 0 ? '' : '_t'}`);
+        sn.position.set(p.x, top + TH / 2);
+        target.addChild(sn);
+      }
+    }
+  }
+
+  private placeObjects(x: number, y: number, objs: Container, list: WorldObject[]) {
+    const { w } = this.info;
+    const i = y * w + x;
+    const b = this.biome[i];
+    if (isWater(b) || this.river[i]) return;
+    const n = hash(x + 11, y + 7);
+    const n2 = hash(x + 31, y + 17);
+    const t = this.temp[i] / 255;
+    const add = (name: string, kind: ObjKind, ox: number, oy: number, size = 1) => {
+      const p = iso(x, y);
+      const s = this.atlas.sprite(name);
+      const mul = size * (0.85 + hash(x + ox * 7, y + oy * 3) * 0.3);
+      const flip = hash(x * 7 + ox, y) < 0.5 ? -1 : 1;
+      const sc = this.atlas.scale(name) * mul;
+      s.scale.set(flip * sc, sc);
+      s.position.set(p.x + ox, p.y - this.level[i] * ELEV + TH / 2 + oy);
+      s.zIndex = s.y;
+      objs.addChild(s);
+      list.push({ s, i, kind, base: name, n: hash(x + 3, y + 77), size: mul, flip });
+    };
+    const decid = (k: number) => pick(t < 0.42 ? ['pine0', 'birch0', 'birch1', 'oak1', 'spruce0'] : ['oak0', 'oak1', 'oak2', 'birch0', 'oak0', 'birch1', 'pine1'], k);
+    const conifer = (k: number) => pick(['spruce0', 'spruce1', 'spruce0', 'pine0'], k);
+    const isConifer = (name: string) => name.startsWith('spruce') || name.startsWith('pine');
+    const tree = (name: string, ox: number, oy: number, size = 1) => add(name, isConifer(name) ? 'conifer' : 'decid', ox, oy, size);
+    switch (b) {
+      case Biome.Forest:
+        if (n > 0.08) tree(decid(n2), (n - 0.5) * 8, (n2 - 0.5) * 4);
+        if (n2 > 0.55) tree(decid(hash(x, y + 5)), (n2 - 0.75) * 24, 4, 0.8);
+        else if (n2 < 0.18) add(pick(['fern', 'mushroom', 'log', 'stump', 'berries', 'bush0'], n2 / 0.18), 'other', 6, 3);
+        break;
+      case Biome.Taiga:
+        if (n > 0.06) tree(conifer(n2), (n - 0.5) * 8, (n2 - 0.5) * 4);
+        if (n2 > 0.6) tree(conifer(hash(x, y + 5)), (n2 - 0.8) * 24, 4, 0.8);
+        else if (n2 < 0.12) add(pick(['fern', 'boulder0', 'stump', 'log'], n2 / 0.12), 'other', 5, 3);
+        break;
+      case Biome.Grassland:
+        if (n < 0.05) tree(pick(['oak0', 'apple', 'sapling', 'oak2', 'birch0'], n / 0.05), 0, 0);
+        else if (n < 0.13) add(pick(['bush0', 'bush1', 'berries', 'flowerbush', 'flowers', 'tuft'], (n - 0.05) / 0.08), 'other', (n2 - 0.5) * 10, 0);
+        break;
+      case Biome.Plains:
+        if (n < 0.02) tree('sapling', 0, 0);
+        else if (n < 0.1) add(pick(['tuft', 'stones', 'bush1', 'flowers'], (n - 0.02) / 0.08), 'other', (n2 - 0.5) * 10, 0);
+        break;
+      case Biome.Hills:
+        if (n < 0.06) tree(pick(['oak2', 'pine1', 'bush0'], n / 0.06), 0, 0);
+        else if (n < 0.14) add(pick(['boulder0', 'boulder1', 'tuft', 'stones'], (n - 0.06) / 0.08), 'other', (n2 - 0.5) * 10, 0);
+        break;
+      case Biome.Mountain:
+        if (n < 0.1) add(pick(['boulder0', 'boulder1', 'boulder2', 'boulder3'], n / 0.1), 'other', (n2 - 0.5) * 8, 0);
+        break;
+      case Biome.Marsh:
+        if (n < 0.35) add('reeds', 'other', (n2 - 0.5) * 12, 0);
+        break;
+      case Biome.Tundra:
+        if (n < 0.07) add(pick(['stones', 'boulder3', 'tuft'], n / 0.07), 'other', (n2 - 0.5) * 8, 0);
+        break;
+      case Biome.Beach:
+        if (n < 0.03) add('stones', 'other', 0, 0, 0.8);
+        break;
+      default:
+    }
+  }
+
+  /** trees follow the seasons: bare or snowy in winter, red in autumn, some blossom in spring */
+  private applySeason() {
+    const m = this.month;
+    const key = m === 11 || m <= 1 ? 'winter' : m >= 9 ? 'autumn' : m === 3 || m === 4 ? 'spring' : 'summer';
+    if (key === this.seasonKey || !this.info) return;
+    this.seasonKey = key;
+    for (const list of this.objChunks.values()) {
+      for (const o of list) {
+        if (o.kind === 'other') continue;
+        const t = this.temp[o.i] / 255;
+        let name = o.base;
+        if (o.kind === 'conifer') {
+          if (key === 'winter' && t < 0.5 && o.base.startsWith('spruce')) name = 'spruce_snow';
+        } else if (key === 'winter' && t < 0.7) {
+          name = t < 0.5 ? 'bare_snow' : 'bare';
+        } else if (key === 'autumn' && o.n < 0.5) {
+          name = 'autumn';
+        } else if (key === 'spring' && o.base.startsWith('oak') && o.n < 0.35) {
+          name = 'blossom';
+        }
+        this.atlas.set(o.s, name, o.size);
+        o.s.scale.x *= o.flip;
+      }
     }
   }
 
@@ -343,7 +468,37 @@ export class WorldRenderer {
     }
     this.explored = next;
     this.fogReady = true;
-    for (const c of dirty) this.drawFog(c);
+    for (const c of dirty) {
+      this.drawFog(c);
+      this.refreshObjects(c);
+    }
+  }
+
+  private refreshObjects(chunk: number) {
+    for (const o of this.objChunks.get(chunk) ?? []) o.s.visible = !!this.explored[o.i] && !this.cleared.has(o.i);
+  }
+
+  /** bands clear the trees around their camp */
+  private updateCleared() {
+    const { w, h } = this.info;
+    const next = new Set<number>();
+    for (const c of this.camps.values()) {
+      const R = c.settled ? 4 : 2;
+      const bx = Math.round(c.tx), by = Math.round(c.ty);
+      for (let dy = -R; dy <= R; dy++) {
+        for (let dx = -R; dx <= R; dx++) {
+          if (dx * dx + dy * dy > R * R + 1) continue;
+          const x = bx + dx, y = by + dy;
+          if (x >= 0 && y >= 0 && x < w && y < h) next.add(y * w + x);
+        }
+      }
+    }
+    const nch = Math.ceil(w / CHUNK);
+    const dirty = new Set<number>();
+    for (const i of next) if (!this.cleared.has(i)) dirty.add(Math.floor(Math.floor(i / w) / CHUNK) * nch + Math.floor((i % w) / CHUNK));
+    for (const i of this.cleared) if (!next.has(i)) dirty.add(Math.floor(Math.floor(i / w) / CHUNK) * nch + Math.floor((i % w) / CHUNK));
+    this.cleared = next;
+    for (const c of dirty) this.refreshObjects(c);
   }
 
   private drawFog(chunk: number) {
@@ -366,7 +521,7 @@ export class WorldRenderer {
         // cover the tile and, when the tile in front is hidden too, its cliff
         const front = Math.min(this.lv(x + 1, y), this.lv(x, y + 1));
         const frontHidden = (x + 1 >= w || !this.explored[y * w + x + 1]) && (y + 1 >= h || !this.explored[(y + 1) * w + x]);
-        const skirt = frontHidden ? Math.max(0, L - front) * ELEV : 0;
+        const skirt = (frontHidden ? Math.max(0, L - front) * ELEV : 0) + ELEV;
         g.poly([p.x, top - 3, p.x + TW / 2 + 3, top + TH / 2, p.x + TW / 2 + 3, top + TH / 2 + skirt, p.x, top + TH + 3 + skirt, p.x - TW / 2 - 3, top + TH / 2 + skirt, p.x - TW / 2 - 3, top + TH / 2])
           .fill(0x0d1424);
       }
@@ -379,6 +534,17 @@ export class WorldRenderer {
     const L = this.level[yi * this.info.w + xi];
     const p = iso(x, y);
     return { x: p.x, y: p.y - L * ELEV + TH / 2 };
+  }
+
+  tempAt(x: number, y: number): number {
+    const xi = Math.max(0, Math.min(this.info.w - 1, Math.round(x)));
+    const yi = Math.max(0, Math.min(this.info.h - 1, Math.round(y)));
+    return this.temp[yi * this.info.w + xi] / 255;
+  }
+
+  landAt(x: number, y: number): boolean {
+    if (x < 0 || y < 0 || x >= this.info.w || y >= this.info.h) return false;
+    return !isWater(this.biome[y * this.info.w + x]);
   }
 
   // ---------- living things ----------
@@ -395,6 +561,7 @@ export class WorldRenderer {
       c.update(b, kids);
     }
     for (const [id, c] of this.camps) if (!seen.has(id)) { c.destroy(); this.camps.delete(id); }
+    if (this.info) this.updateCleared();
   }
 
   updatePeople(rows: PersonRow[], bandColors: Map<number, number>, tickMs: number) {
@@ -427,7 +594,10 @@ export class WorldRenderer {
     const m = this.month;
     const winter = m === 11 || m <= 1 ? 1 : m === 2 || m === 10 ? 0.45 : 0;
     this.snowCold.alpha = Math.min(1, winter * 1.2);
-    this.snowCool.alpha = winter >= 1 ? 0.65 : 0;
+    this.snowCool.alpha = winter >= 1 ? 0.7 : 0;
+    this.snowCold.visible = this.snowCold.alpha > 0;
+    this.snowCool.visible = this.snowCool.alpha > 0;
+    this.applySeason();
     // a day lasts 8 real minutes, just for the mood
     const day = (nowMs / (8 * 60 * 1000)) % 1;
     const sun = Math.cos(day * Math.PI * 2); // 1 noon, -1 midnight
@@ -435,18 +605,34 @@ export class WorldRenderer {
     this.nightOverlay.clear().rect(0, 0, this.app.screen.width, this.app.screen.height).fill({ color: 0x0a1030, alpha: dark });
     this.glowLayer.alpha = Math.min(1, dark * 2.2);
     const zoom = this.world.scale.x;
-    this.peopleLayer.visible = zoom > 0.45;
+    // draw only the chunks on screen
+    const vx = -this.world.x / zoom, vy = -this.world.y / zoom;
+    const vw = this.app.screen.width / zoom, vh = this.app.screen.height / zoom;
+    for (const c of this.chunkViews) {
+      const a = c.area;
+      const on = a.x < vx + vw && a.x + a.width > vx && a.y < vy + vh && a.y + a.height > vy;
+      for (const part of c.parts) part.visible = on;
+    }
+    this.peopleLayer.visible = zoom > 0.4;
     this.labelLayer.alpha = 1;
     for (const p of this.people.values()) p.frame(nowMs);
     for (const c of this.camps.values()) c.frame(nowMs, zoom);
   }
 }
 
+function scaleColor(c: number, f: number): number {
+  const r = Math.min(255, Math.max(0, Math.round(((c >> 16) & 255) * f)));
+  const g = Math.min(255, Math.max(0, Math.round(((c >> 8) & 255) * f)));
+  const b = Math.min(255, Math.max(0, Math.round((c & 255) * f)));
+  return (r << 16) | (g << 8) | b;
+}
+
+/** A person: a base sprite plus the clothes on top, tinted in the colour of the band. */
 export class PersonSprite {
   r: WorldRenderer;
   c = new Container();
   body: Sprite;
-  head: Sprite;
+  cloth: Sprite;
   id: number;
   from = { x: 0, y: 0 };
   to = { x: 0, y: 0 };
@@ -454,23 +640,48 @@ export class PersonSprite {
   dur = 1;
   seed: number;
   task = 0;
+  age = 20;
+  female = false;
+  pose = '';
+  facing = 1;
 
   constructor(r: WorldRenderer, row: PersonRow) {
     this.r = r;
     this.id = row[0];
     this.seed = hash(row[0], 7) * 1000;
-    this.body = new Sprite(r.tex.body);
-    this.head = new Sprite(r.tex.head);
-    this.body.anchor.set(0.5, 1);
-    this.head.anchor.set(0.5, 1);
-    this.head.y = -7.5;
-    this.c.addChild(this.body, this.head);
+    this.facing = hash(row[0], 13) < 0.5 ? -1 : 1;
+    this.body = new Sprite();
+    this.cloth = new Sprite();
+    this.c.addChild(this.body, this.cloth);
     this.c.eventMode = 'none';
     r.peopleLayer.addChild(this.c);
     const p = r.tileTop(row[1] / 10, row[2] / 10);
     this.from = p;
     this.to = p;
     this.c.position.set(p.x, p.y);
+    this.age = row[5];
+    this.female = row[6] === 1;
+    this.setPose(this.idlePose());
+  }
+
+  private setPose(name: string) {
+    if (name === this.pose) return;
+    this.pose = name;
+    this.r.atlas.set(this.body, name);
+    this.r.atlas.set(this.cloth, name + '_c');
+  }
+
+  private idlePose(): string {
+    if (this.age < 12) return this.female ? 'woman' : 'man';
+    if (this.age > 55) return 'elder';
+    switch (TASKS[this.task]) {
+      case 'gather': case 'farm': return 'gatherer';
+      case 'hunt': case 'fish': case 'herd': return 'hunter';
+      case 'craft': return this.female ? 'potter' : 'carrier';
+      case 'build': return 'carrier';
+      case 'elder': return 'elder';
+      default: return this.female ? 'woman' : hash(this.id, 21) < 0.15 ? 'wave' : 'man';
+    }
   }
 
   target(row: PersonRow, color: number, tickMs: number) {
@@ -479,12 +690,13 @@ export class PersonSprite {
     this.to = p;
     this.t0 = performance.now();
     this.dur = Math.max(400, Math.min(tickMs * 0.85, 12000));
-    this.body.tint = color;
-    const age = row[5];
-    const s = age < 12 ? 0.55 + age * 0.03 : age > 60 ? 0.92 : 1;
-    this.c.scale.set(s);
+    this.cloth.tint = color;
+    this.age = row[5];
+    this.female = row[6] === 1;
+    const s = this.age < 12 ? 0.5 + this.age * 0.035 : this.age > 60 ? 0.95 : 1;
+    this.c.scale.set(this.facing * s, s);
     this.task = row[3];
-    this.head.tint = age > 55 ? 0xdedede : 0xffffff;
+    if (Math.abs(this.to.x - this.from.x) > 1) this.facing = this.to.x < this.from.x ? -1 : 1;
   }
 
   frame(now: number) {
@@ -492,6 +704,15 @@ export class PersonSprite {
     const e = k * k * (3 - 2 * k);
     let x = this.from.x + (this.to.x - this.from.x) * e;
     let y = this.from.y + (this.to.y - this.from.y) * e;
+    const dist = Math.abs(this.to.x - this.from.x) + Math.abs(this.to.y - this.from.y);
+    const walking = k < 0.95 && dist > 3;
+    let bob = 0;
+    if (walking && !this.female && this.age >= 12 && this.age <= 55) {
+      this.setPose(`walk${Math.floor(now / 140 + this.seed) % 4}`);
+    } else {
+      this.setPose(this.idlePose());
+      if (walking) bob = -Math.abs(Math.sin(now / 110 + this.seed)) * 1.2;
+    }
     // small idle movement so the camp feels alive
     const task = TASKS[this.task];
     if (k >= 1 && task !== 'rest') {
@@ -500,7 +721,9 @@ export class PersonSprite {
       x += Math.sin(a) * amp;
       y += Math.cos(a * 1.3) * amp * 0.5;
     }
-    this.c.position.set(x, y);
+    const s = Math.abs(this.c.scale.y);
+    this.c.scale.x = this.facing * s;
+    this.c.position.set(x, y + bob);
     this.c.zIndex = y;
   }
 
@@ -509,29 +732,55 @@ export class PersonSprite {
   }
 }
 
+// Props a band shows in its camp once it knows the matching technology.
+const PROPS: [string, string, boolean | null][] = [
+  // [tech, sprite, settled only (true) / camps only (false) / both (null)]
+  ['fire', 'logpile', null],
+  ['clothing', 'hiderack', false],
+  ['cave_art', 'totem', null],
+  ['burial', 'cairn', false],
+  ['burial', 'shrine', true],
+  ['pottery', 'pots', null],
+  ['grinding', 'quern', null],
+  ['pottery', 'kiln', true],
+  ['herding', 'pen', null],
+  ['fishing', 'fishtrap', null],
+  ['boats', 'canoe', null],
+  ['agriculture', 'granary', true],
+  ['agriculture', 'haystack', true],
+  ['mudbrick', 'well', true],
+  ['weaving', 'basket', null],
+];
+
 export class CampSprite {
   r: WorldRenderer;
   c = new Container();
   label: Text;
   glow: Sprite;
-  fire: Sprite;
+  hearth: Sprite;
   homes: Container = new Container();
   fields: Container = new Container();
   ground: Sprite;
-  hearth: Sprite;
-  flag: Sprite;
+  banner = new Container();
+  bannerCloth: Sprite;
+  symbol: Sprite;
   tag = new Container();
   tagBg = new Graphics();
   tagText = '';
   id: number;
   key = '';
+  fieldKey = '';
   pos = { x: 0, y: 0 };
+  tx = 0;
+  ty = 0;
+  settled = false;
+  hasFire = false;
+  fireFrame = -1;
 
   constructor(r: WorldRenderer, b: BandView) {
     this.r = r;
     this.id = b.id;
-    this.fire = new Sprite(r.tex.fire);
-    this.fire.anchor.set(0.5, 1);
+    const A = r.atlas;
     this.glow = new Sprite(r.tex.glow);
     this.glow.anchor.set(0.5);
     this.label = new Text({
@@ -540,19 +789,27 @@ export class CampSprite {
       resolution: 2,
     });
     this.label.anchor.set(0.5, 1);
-    // worn ground, a stone hearth and a totem pole with the colour of the band: easy to spot even without fire
+    // worn ground, a stone hearth and a banner in the colour of the band: easy to spot even without fire
     this.ground = new Sprite(r.tex.ground);
     this.ground.anchor.set(0.5);
-    this.ground.y = 4;
-    this.hearth = new Sprite(r.tex.hearth);
-    this.hearth.anchor.set(0.5, 0.6);
-    const pole = new Sprite(r.tex.pole);
-    pole.anchor.set(0.5, 1);
-    pole.position.set(-12, -2);
-    this.flag = new Sprite(r.tex.flag);
-    this.flag.position.set(-11, -31);
-    this.flag.tint = b.color;
-    this.c.addChild(this.ground, this.fields, this.hearth, this.homes, pole, this.flag, this.fire);
+    this.ground.y = 3;
+    this.hearth = A.sprite('hearth0');
+    this.hearth.y = 2;
+    const pole = A.sprite('banner');
+    this.bannerCloth = A.sprite('banner_c');
+    this.symbol = A.sprite(`sym${bandSymbol(b.name, b.id)}`);
+    const bh = A.frames.banner.h * A.scale('banner');
+    this.symbol.scale.set(4.6 / A.frames.sym0.w);
+    this.symbol.position.set(0, -bh * 0.5);
+    this.symbol.tint = 0x1c140c;
+    this.symbol.alpha = 0.85;
+    this.banner.addChild(pole, this.bannerCloth, this.symbol);
+    this.banner.position.set(-13, 0);
+    this.homes.sortableChildren = true;
+    this.c.addChild(this.ground, this.fields, this.homes);
+    this.homes.addChild(this.hearth, this.banner);
+    this.hearth.zIndex = 2;
+    this.banner.zIndex = 0;
     r.campLayer.addChild(this.c);
     r.glowLayer.addChild(this.glow);
     this.tag.addChild(this.tagBg, this.label);
@@ -562,14 +819,17 @@ export class CampSprite {
   update(b: BandView, kids: boolean) {
     const p = this.r.tileTop(b.x, b.y);
     this.pos = p;
+    this.tx = b.x;
+    this.ty = b.y;
+    this.settled = b.settled;
+    this.hasFire = b.hasFire;
     this.c.position.set(p.x, p.y);
     this.glow.position.set(p.x, p.y - 4);
-    this.fire.visible = b.hasFire;
     this.glow.visible = b.hasFire || b.dwelling === 'house';
     this.label.text = b.settlementName ? `${b.settlementName} (${b.size})` : `${b.name.replace('Родът на ', '')} (${b.size})`;
     this.label.style.fontSize = kids ? 16 : 12;
-    this.flag.tint = b.color;
-    this.tag.position.set(p.x, p.y - 36);
+    this.bannerCloth.tint = b.color;
+    this.tag.position.set(p.x, p.y - 30);
     if (this.label.text !== this.tagText) {
       this.tagText = this.label.text;
       const w = this.label.width + 14, h = this.label.height + 4;
@@ -579,42 +839,86 @@ export class CampSprite {
         .poly([-4, 0, 4, 0, 0, 5]).fill(b.color);
       this.label.position.set(0, -2);
     }
+    this.updateFields(b);
     const n = Math.max(1, Math.min(10, Math.round(b.size / (b.dwelling === 'house' ? 6 : 5))));
-    const key = `${b.dwelling}:${n}:${b.settled}`;
+    const techs = new Set(b.techs);
+    const props = PROPS.filter(([tech, , settled]) => techs.has(tech) && (settled === null || settled === b.settled)).map(([, s]) => s);
+    const cold = this.r.tempAt(b.x, b.y) < 0.35;
+    const key = `${b.dwelling}:${n}:${b.settled}:${cold}:${props.join(',')}`;
     if (key === this.key) return;
     this.key = key;
-    this.homes.removeChildren().forEach((c) => c.destroy());
-    this.fields.removeChildren().forEach((c) => c.destroy());
-    const texName = b.dwelling === 'none' ? 'rug' : b.dwelling;
+    const A = this.r.atlas;
+    for (const ch of [...this.homes.children]) {
+      if (ch !== this.hearth && ch !== this.banner) ch.destroy();
+    }
     for (let k = 0; k < n; k++) {
-      const a = (k / n) * Math.PI * 2 + 0.3;
-      const rad = 14 + (k % 2) * 7;
-      const s = new Sprite(this.r.tex[texName]);
-      s.anchor.set(0.5, 1);
-      s.position.set(Math.cos(a) * rad, Math.sin(a) * rad * 0.5 + 4);
+      const h = hash(this.id, k + 40);
+      let name: string;
+      switch (b.dwelling) {
+        case 'none': name = 'furbed'; break;
+        case 'tent': name = cold && h < 0.5 ? 'bonehut' : h < 0.2 ? 'leanto' : `tent${k % 2}`; break;
+        case 'hut': name = 'roundhut'; break;
+        default: name = k % 3 === 2 ? 'longhouse' : 'house';
+      }
+      const a = (k / n) * Math.PI * 2 + 0.6;
+      const rad = (b.dwelling === 'house' ? 26 : 19) + (k % 2) * 7;
+      const s = A.sprite(name);
+      if (h < 0.5) s.scale.x *= -1;
+      s.position.set(Math.cos(a) * rad, Math.sin(a) * rad * 0.5 + 2);
       s.zIndex = s.y;
       this.homes.addChild(s);
     }
-    this.homes.sortableChildren = true;
-    if (b.settled) {
-      for (let k = 0; k < Math.min(6, 1 + Math.floor(b.size / 12)); k++) {
-        const f = new Sprite(this.r.tex.field);
-        f.anchor.set(0.5);
-        const a = (k / 6) * Math.PI * 2;
-        f.position.set(Math.cos(a) * 46, Math.sin(a) * 23);
-        f.alpha = 0.9;
-        this.fields.addChild(f);
-      }
+    // camp props in an outer ring
+    props.forEach((name, k) => {
+      const a = (k / Math.max(5, props.length)) * Math.PI * 2 + 2.1;
+      const rad = (b.dwelling === 'house' ? 40 : 32) + (k % 2) * 5;
+      const s = A.sprite(name);
+      s.position.set(Math.cos(a) * rad, Math.sin(a) * rad * 0.5 + 2);
+      s.zIndex = s.y;
+      this.homes.addChild(s);
+    });
+    this.banner.zIndex = this.banner.y;
+  }
+
+  /** farmed tiles around a village: soil in spring, wheat in summer, stubble after the harvest */
+  private updateFields(b: BandView) {
+    const m = this.r.month;
+    const count = b.settled && b.techs.includes('agriculture') ? Math.min(10, 2 + Math.floor(b.size / 10)) : 0;
+    const stage = m >= 5 && m <= 7 ? 'wheat' : m >= 2 && m <= 4 ? 'sprout' : 'soil';
+    const bx = Math.round(b.x), by = Math.round(b.y);
+    const fkey = `${bx}:${by}:${count}:${stage}`;
+    if (fkey === this.fieldKey) return;
+    this.fieldKey = fkey;
+    this.fields.removeChildren().forEach((c) => c.destroy());
+    if (!count) return;
+    const A = this.r.atlas;
+    const ring: [number, number][] = [[3, 0], [0, 3], [3, 1], [1, 3], [3, -1], [-1, 3], [4, 0], [0, 4], [4, 1], [1, 4], [-3, 0], [0, -3]];
+    let placed = 0;
+    for (const [dx, dy] of ring) {
+      if (placed >= count) break;
+      const x = bx + dx, y = by + dy;
+      if (!this.r.landAt(x, y)) continue;
+      const h = hash(x, y + 101);
+      const name = stage === 'wheat' ? `wheat${Math.floor(h * 4)}` : stage === 'sprout' ? `soil${2 + Math.floor(h * 2)}` : `soil${Math.floor(h * 2)}`;
+      const s = A.sprite(name + '_t');
+      const p = this.r.tileTop(x, y);
+      s.position.set(p.x - this.pos.x, p.y - this.pos.y);
+      this.fields.addChild(s);
+      placed++;
     }
+    // fields drawn back to front
+    this.fields.children.sort((a, c) => a.y - c.y);
   }
 
   frame(now: number, zoom: number) {
-    if (this.fire.visible) {
-      const f = 0.85 + Math.sin(now / 90 + this.id) * 0.1 + Math.sin(now / 37 + this.id * 3) * 0.06;
-      this.fire.scale.set(f, f * 1.05);
-      this.glow.scale.set(0.9 + f * 0.2);
+    const frameNo = this.hasFire ? 1 + (Math.floor(now / 130 + this.id * 7) % 3) : 0;
+    if (frameNo !== this.fireFrame) {
+      this.fireFrame = frameNo;
+      this.r.atlas.set(this.hearth, `hearth${frameNo}`);
     }
-    this.flag.skew.y = Math.sin(now / 400 + this.id) * 0.12;
+    if (this.hasFire) this.glow.scale.set(0.95 + Math.sin(now / 90 + this.id) * 0.06);
+    this.bannerCloth.skew.y = Math.sin(now / 500 + this.id) * 0.05;
+    this.symbol.skew.y = this.bannerCloth.skew.y;
     this.tag.scale.set(1 / Math.max(0.3, Math.min(2, zoom)));
   }
 

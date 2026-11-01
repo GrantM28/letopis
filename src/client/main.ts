@@ -1,5 +1,5 @@
 import { Application } from 'pixi.js';
-import { WorldRenderer, iso, TW, TH } from './render';
+import { Atlas, WorldRenderer, iso, TW, TH } from './render';
 import {
   BandView, ChronicleEntry, MONTHS, PersonDetail, PersonRow, SnapshotMessage, TASKS, TASK_NAMES, TickMessage, WorldInfo, b64decode, formatYear,
 } from '../shared/types';
@@ -55,7 +55,8 @@ await app.init({
   autoDensity: true,
 });
 $('#stage').appendChild(app.canvas);
-const r = new WorldRenderer(app);
+const atlas = await Atlas.load('sprites');
+const r = new WorldRenderer(app, atlas);
 r.peopleLayer.sortableChildren = true;
 
 // ---------- camera ----------
