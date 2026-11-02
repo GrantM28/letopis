@@ -814,6 +814,11 @@ export class WorldRenderer {
     return true;
   }
 
+  /** height level of a tile (0 outside the map) */
+  levelAt(x: number, y: number): number {
+    return this.lv(Math.round(x), Math.round(y));
+  }
+
   landAt(x: number, y: number): boolean {
     if (x < 0 || y < 0 || x >= this.info.w || y >= this.info.h) return false;
     return !isWater(this.biome[y * this.info.w + x]);
@@ -1395,6 +1400,9 @@ export class CampSprite {
   hearth: Sprite;
   homes: Container = new Container();
   fields: Container = new Container();
+  /** trampled earth, one tile at a time so it follows the ground (sheet AM) */
+  trodden: Container = new Container();
+  troddenKey = '';
   ground: Sprite;
   banner = new Container();
   bannerCloth: Sprite;
@@ -1443,7 +1451,8 @@ export class CampSprite {
     this.banner.addChild(pole, this.bannerCloth, this.symbol);
     this.banner.position.set(-13, 0);
     this.homes.sortableChildren = true;
-    this.c.addChild(this.ground, this.fields, this.homes);
+    this.ground.visible = false;
+    this.c.addChild(this.ground, this.trodden, this.fields, this.homes);
     this.homes.addChild(this.hearth, this.banner);
     this.hearth.zIndex = 2;
     this.banner.zIndex = 0;
@@ -1451,6 +1460,27 @@ export class CampSprite {
     r.glowLayer.addChild(this.glow);
     this.tag.addChild(this.tagBg, this.label);
     r.labelLayer.addChild(this.tag);
+  }
+
+  /** where something placed (ox, oy) pixels from the camp centre really stands: on the ground of its own tile.
+   * null where that tile is water, a river or a step of more than one level from the camp (it would hang in the air) */
+  private spot(ox: number, oy: number): { x: number; y: number } | null {
+    const a = ox / (TW / 2), c = oy / (TH / 2);
+    const fx = this.tx + (a + c) / 2, fy = this.ty + (c - a) / 2;
+    const xi = Math.round(fx), yi = Math.round(fy);
+    if (!this.r.walkable(xi, yi)) return null;
+    if (Math.abs(this.r.levelAt(xi, yi) - this.r.levelAt(this.tx, this.ty)) > 1) return null;
+    const p = this.r.tileTop(fx, fy);
+    return { x: p.x - this.pos.x, y: p.y - this.pos.y };
+  }
+
+  /** the first good spot on a ring: the wanted one, then closer in, then a little to the side */
+  private ringSpot(a: number, rad: number): { x: number; y: number } | null {
+    for (const [k, da] of [[1, 0], [0.7, 0], [1, 0.35], [1, -0.35], [0.45, 0], [0.7, 0.6], [0.7, -0.6]]) {
+      const q = this.spot(Math.cos(a + da) * rad * k, Math.sin(a + da) * rad * k * 0.5 + 2);
+      if (q) return q;
+    }
+    return null;
   }
 
   update(b: BandView, kids: boolean) {
@@ -1477,6 +1507,7 @@ export class CampSprite {
       this.label.position.set(0, -2);
     }
     this.updateFields(b);
+    this.updateTrodden(b);
     const n = Math.max(1, Math.min(10, Math.round(b.size / (b.dwelling === 'house' ? 6 : 5))));
     const techs = new Set(b.techIds ?? b.techs);
     let props = PROPS.filter(([tech, sp, settled]) => techs.has(tech) && (settled === null || settled === b.settled) && this.r.atlas.has(sp)).map(([, s]) => s);
@@ -1485,7 +1516,7 @@ export class CampSprite {
     // walls make a village a town: stone houses, and a temple once it keeps a calendar
     const town = b.dwelling === 'house' && techs.has('walls') && this.r.atlas.has('townb3');
     const cold = this.r.tempAt(b.x, b.y) < 0.35;
-    const key = `${b.dwelling}${town ? 'T' : ''}:${n}:${b.settled}:${cold}:${props.join(',')}`;
+    const key = `${b.dwelling}${town ? 'T' : ''}:${n}:${b.settled}:${cold}:${props.join(',')}:${Math.round(b.x)},${Math.round(b.y)}`;
     if (key === this.key) return;
     // homes added since last time are built in four steps; the first look at a camp shows it finished
     const sameKind = this.key.split(':')[0] === `${b.dwelling}${town ? 'T' : ''}` && this.key !== '';
@@ -1510,9 +1541,11 @@ export class CampSprite {
       }
       const a = (k / n) * Math.PI * 2 + 0.6;
       const rad = (b.dwelling === 'house' ? 26 : 19) + (k % 2) * 7;
+      const q = this.ringSpot(a, rad);
+      if (!q) continue;
       const s = A.sprite(name);
       if (h < 0.5) s.scale.x *= -1;
-      s.position.set(Math.cos(a) * rad, Math.sin(a) * rad * 0.5 + 2);
+      s.position.set(q.x, q.y);
       s.zIndex = s.y;
       this.homes.addChild(s);
       if (k >= builtBefore && /^(hut|house|town|temple)b3$/.test(name)) {
@@ -1525,12 +1558,47 @@ export class CampSprite {
     props.forEach((name, k) => {
       const a = (k / Math.max(5, props.length)) * Math.PI * 2 + 2.1;
       const rad = (b.dwelling === 'house' ? 40 : 32) + (k % 2) * 5;
+      const q = this.ringSpot(a, rad);
+      if (!q) return;
       const s = A.sprite(name);
-      s.position.set(Math.cos(a) * rad, Math.sin(a) * rad * 0.5 + 2);
+      s.position.set(q.x, q.y);
       s.zIndex = s.y;
       this.homes.addChild(s);
     });
     this.banner.zIndex = this.banner.y;
+  }
+
+  /** the trampled ground of the camp: the middle fully worn, the edge fading into the grass */
+  private updateTrodden(b: BandView) {
+    const A = this.r.atlas;
+    if (!A.has('trod0_t')) return;
+    const bx = Math.round(b.x), by = Math.round(b.y);
+    const R = b.settled ? 2 : 1;
+    const key = `${bx}:${by}:${R}`;
+    if (key === this.troddenKey) return;
+    this.troddenKey = key;
+    this.trodden.removeChildren().forEach((c) => c.destroy());
+    const L0 = this.r.levelAt(bx, by);
+    const tiles: [number, number, number][] = [];
+    for (let dy = -R; dy <= R; dy++) for (let dx = -R; dx <= R; dx++) {
+      const d = Math.abs(dx) + Math.abs(dy);
+      if (d > R + (R > 1 ? 1 : 0)) continue;
+      const x = bx + dx, y = by + dy;
+      if (!this.r.walkable(x, y)) continue;
+      const L = this.r.levelAt(x, y);
+      if (Math.abs(L - L0) > 1) continue;
+      // a tile hidden behind a higher one in front would show over its edge
+      if (this.r.levelAt(x + 1, y) > L || this.r.levelAt(x, y + 1) > L) continue;
+      tiles.push([x, y, d]);
+    }
+    tiles.sort((p, q) => p[0] + p[1] - (q[0] + q[1]));
+    for (const [x, y, d] of tiles) {
+      const s = A.sprite(`trod${Math.floor(hash(x + 7, y + 3) * 16)}_t`);
+      const p = this.r.tileTop(x, y);
+      s.position.set(p.x - this.pos.x, p.y - this.pos.y);
+      s.alpha = d === 0 ? 1 : d < R ? 0.9 : 0.6;
+      this.trodden.addChild(s);
+    }
   }
 
   /** farmed tiles around a village: soil in spring, wheat in summer, stubble after the harvest */
@@ -1551,7 +1619,9 @@ export class CampSprite {
     for (const [dx, dy] of ring) {
       if (placed >= count) break;
       const x = bx + dx, y = by + dy;
-      if (!this.r.landAt(x, y)) continue;
+      if (!this.r.walkable(x, y)) continue;
+      const L = this.r.levelAt(x, y);
+      if (Math.abs(L - this.r.levelAt(bx, by)) > 1 || this.r.levelAt(x + 1, y) > L || this.r.levelAt(x, y + 1) > L) continue;
       const h = hash(x, y + 101);
       const name = this.r.atlas.has(`field${stage}_t`) ? `field${stage}`
         : stage === 2 ? `wheat${Math.floor(h * 4)}` : stage === 1 ? `soil${2 + Math.floor(h * 2)}` : `soil${Math.floor(h * 2)}`;

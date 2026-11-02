@@ -249,6 +249,7 @@ for cid, name, w in (('AG11', 'ore', 0.045), ('AG12', 'mine', 0.07), ('AG13', 'f
     group(name, cid, 'thing', w, 0)
 group('townb', cells('AH', (1,)), 'thing', 0.08, 0)   # 0..3: foundation, walls, upper floor, done
 group('templeb', cells('AH', (3,)), 'thing', 0.09, 0)  # 0..3: platform, steps, columns, done
+group('trod', cells('AM', (1, 2, 3, 4)), 'tile', TW + 3, 128)  # trampled camp ground, 16 variants
 group('smith', cells('AI', (1,)), 'pose', PEOPLE_WPP, 0)
 group('plougher', cells('AI', (2,)), 'pose', PEOPLE_WPP, 0)
 group('wheelpot', cells('AI', (3,)), 'pose', PEOPLE_WPP, 0)
