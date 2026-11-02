@@ -100,3 +100,7 @@ The finished atlas is in git, so Python is not needed to build the game.
 ## Credits
 
 Everything taken from outside, with its author and license, is listed in [CREDITS.md](CREDITS.md).
+
+## License
+
+[MIT](LICENSE). The third-party libraries keep their own licenses, listed in [CREDITS.md](CREDITS.md).

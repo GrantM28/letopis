@@ -9,6 +9,7 @@
   <Support>https://github.com/leppermesiah/letopis/issues</Support>
   <Project>https://github.com/leppermesiah/letopis</Project>
   <Overview>Letopis is an idle civilization simulation that lives on its own. A few families start in the Stone Age and discover fire, tools, farming and everything after without anyone pressing a button. Open the web page whenever you like to see how far they got. English and Bulgarian.</Overview>
+  <License>MIT</License>
   <Category>GameServers:</Category>
   <ExtraSearchTerms>idle game simulation civilization stone age chronicle</ExtraSearchTerms>
   <TemplateURL>https://raw.githubusercontent.com/leppermesiah/letopis/main/templates/letopis.xml</TemplateURL>

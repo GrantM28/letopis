@@ -1,6 +1,7 @@
 {
   "name": "letopis",
   "version": "1.19.0",
+  "license": "MIT",
   "private": true,
   "description": "Летопис – idle симулация на цивилизация, която живее сама",
   "type": "module",
