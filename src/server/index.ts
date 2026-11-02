@@ -6,7 +6,8 @@ import { fileURLToPath } from 'node:url';
 import { WebSocketServer, WebSocket } from 'ws';
 import { Simulation, SimState } from './sim/sim';
 import { Store } from './db';
-import { SnapshotMessage, TickMessage, WorldInfo, b64encode } from '../shared/types';
+import { Discovery, SnapshotMessage, TickMessage, WorldInfo, b64encode } from '../shared/types';
+import { TECHS } from './sim/tech';
 
 const PORT = Number(process.env.LETOPIS_PORT ?? 2222);
 const DATA = path.resolve(process.env.LETOPIS_DATA ?? '/data');
@@ -56,6 +57,7 @@ function makeWorldInfo(): WorldInfo {
   return {
     worldId: sim.s.worldId, seed: sim.s.seed, w: t.w, h: t.h,
     height: b64encode(height), biome: b64encode(t.biome), river: b64encode(t.river), temp: b64encode(temp),
+    treeKinds: b64encode(sim.treeKind),
   };
 }
 
@@ -74,10 +76,13 @@ function flush() {
   store.addEvents(sim.s.worldId, sim.events);
   store.addDead(sim.s.worldId, sim.deadQueue);
   sim.deadQueue = [];
+  store.addGoneBands(sim.s.worldId, sim.goneQueue);
+  sim.goneQueue = [];
 }
 
 // ---------- the endless loop ----------
 
+const CHRONICLE_YEARS = 100;
 let lastSave = Date.now();
 let pendingEvents: TickMessage['events'] = [];
 
@@ -88,6 +93,8 @@ function tick() {
     pendingEvents = sim.events;
     flush();
     sim.events = [];
+    // a short chronicle: the last 100 years, plus the great discoveries and moments for ever
+    if (sim.s.tick % 12 === 6) store.prune(sim.s.worldId, Math.floor(sim.year) - CHRONICLE_YEARS);
     if (sim.s.tick % 12 === 0) {
       store.addStat(sim.s.worldId, {
         tick: sim.s.tick, year: Math.floor(sim.year), population: sim.s.people.length, bands: sim.s.bands.length,
@@ -146,9 +153,30 @@ function json(res: http.ServerResponse, data: unknown, status = 200) {
   res.end(body);
 }
 
+/** every first discovery: what, who and when; old worlds are read back from the chronicle text */
+function discoveries(): Discovery[] {
+  const out: Discovery[] = [];
+  const firsts = sim.s.firsts ?? [];
+  const rows = firsts.length < TECHS.length ? store.discoveryRows(sim.s.worldId) : [];
+  for (const tech of TECHS) {
+    const f = firsts.find((x) => x.tech === tech.id);
+    if (f) { out.push({ tech: tech.id, name: tech.name, pid: f.pid, who: f.name, band: f.band, year: f.year }); continue; }
+    const esc = (t: string) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const re = new RegExp('^' + esc(tech.text).replace(esc('{name}'), '(.+?)').replace(esc('{band}'), '(.+?)').replace(esc('{Band}'), '(.+?)') + '$');
+    for (const r of rows) {
+      const m = r.text.match(re);
+      if (!m) continue;
+      const nameFirst = tech.text.indexOf('{name}') < tech.text.search(/\{[Bb]and\}/) || !/\{[Bb]and\}/.test(tech.text);
+      out.push({ tech: tech.id, name: tech.name, pid: r.person, who: nameFirst ? m[1] : m[2] ?? m[1], band: nameFirst ? m[2] ?? '' : m[1], year: r.year });
+      break;
+    }
+  }
+  return out.sort((a, b) => a.year - b.year);
+}
+
 function snapshot(): SnapshotMessage {
   return {
-    t: 'snapshot', time: sim.timeInfo(SPEED), bands: sim.bandViews(), people: sim.personRows(), explored: sim.exploredB64(),
+    t: 'snapshot', time: sim.timeInfo(SPEED), bands: sim.bandViews(), people: sim.personRows(), explored: sim.exploredB64(), trees: sim.treesB64(),
     population: sim.s.people.length, totalBorn: sim.s.totalBorn, totalDied: sim.s.totalDied,
   };
 }
@@ -170,9 +198,22 @@ const server = http.createServer((req, res) => {
     if (p === '/api/heroes') return json(res, sim.heroes());
     if (p === '/api/stats') return json(res, store.stats(world));
     if (p === '/api/worlds') return json(res, store.worlds());
+    if (p === '/api/secrets') return json(res, { found: sim.secretFinds() });
+    if (p.startsWith('/api/secret/') && req.method === 'POST') {
+      const r = sim.findSecret(Number(p.split('/').pop()));
+      return r ? json(res, r) : json(res, { error: 'няма такава тайна' }, 404);
+    }
     if (p.startsWith('/api/tree/')) {
       const t = sim.familyTree(Number(p.split('/').pop()));
       return t ? json(res, t) : json(res, { error: 'няма такъв човек' }, 404);
+    }
+    if (p === '/api/discoveries') return json(res, discoveries());
+    if (p.startsWith('/api/band/')) {
+      const id = Number(p.split('/').pop());
+      const live = sim.bandViews().find((b) => b.id === id);
+      if (live) return json(res, { live });
+      const gone = store.getGoneBand(world, id);
+      return gone ? json(res, { gone }) : json(res, { error: 'няма такъв род' }, 404);
     }
     if (p.startsWith('/api/person/')) {
       const d = sim.personDetail(Number(p.split('/').pop()));
@@ -206,6 +247,7 @@ wss.on('connection', (ws) => {
 function broadcast() {
   if (!clients.size) {
     pendingEvents = [];
+    sim.treeChanges = [];
     return;
   }
   const msg: TickMessage = {
@@ -216,6 +258,8 @@ function broadcast() {
     msg.explored = sim.exploredB64();
     sim.exploredDirty = false;
   }
+  if (sim.treeChanges.length) msg.trees = sim.treeChanges;
+  sim.treeChanges = [];
   pendingEvents = [];
   const data = JSON.stringify(msg);
   for (const ws of clients) if (ws.readyState === WebSocket.OPEN) ws.send(data);

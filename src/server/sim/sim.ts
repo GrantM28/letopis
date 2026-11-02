@@ -1,13 +1,16 @@
 import { Rng } from '../../shared/rng';
 import {
-  BandView, ChronicleEntry, PersonDetail, PersonRow, TASKS, TASK_NAMES, Task, TimeInfo, TreeNode, FamilyTree, b64encode, formatYear, isWater, Biome, RIVER_WATER,
+  BandView, ChronicleEntry, ChronicleRef, GoneBand, PersonDetail, PersonRow, TASKS, TASK_NAMES, Task, CHIEF_TITLES, TimeInfo, TreeNode, FamilyTree, b64encode, formatYear, isWater, Biome, RIVER_WATER,
 } from '../../shared/types';
 import { Terrain, generateTerrain, findStart, idx, inBounds, W, H, setWorldSize, OLD_SIZE, NEW_SIZE } from './world';
+import { SECRET_COUNT, SECRET_HEROES, SECRET_KINDS, SecretFind } from '../../shared/secrets';
 import { FEMALE, MALE, bandColor, bandName, fixBandName, familyFrom, nickname, placeName } from './names';
 import { ERAS, TECHS, TECH_BY_ID, Tech, eraOf } from './tech';
+import { BIG, startStage, treeKinds } from '../../shared/trees';
 
 export const START_YEAR = -12000;
-const GLOBAL_DISCOVERY = 0.0006;
+/** chance per band and month for an idea whose time has come */
+const GLOBAL_DISCOVERY = 0.0003;
 const GENE_KEYS = ['str', 'int', 'cur', 'soc', 'hea', 'lon'] as const;
 type GeneKey = (typeof GENE_KEYS)[number];
 export const GENE_NAMES: Record<GeneKey, string> = {
@@ -50,6 +53,15 @@ export interface Band {
   lastNeed: number;
   fed?: number; // smoothed food cover, 1 = just enough
   met: number[]; // bands already met
+  /** the head of the band: always the oldest man */
+  chiefId?: number | null;
+  /** who founded the band and which band they left (none for the first bands) */
+  founder?: { id: number; name: string } | null;
+  from?: { id: number; name: string } | null;
+  /** wood the band still needs to cut (one unit = one young tree) */
+  wood?: number;
+  /** nomads: the chief went ahead to look at a new place; the band follows when he gets there */
+  scout?: { x: number; y: number; px?: number; py?: number } | null;
 }
 
 /** Everything in here is saved to disk. */
@@ -59,6 +71,8 @@ export interface SimState {
   seed: number;
   /** map side in tiles; missing in worlds saved before maps grew (192) */
   size?: number;
+  /** secrets (easter eggs) found by the people watching; numbers only in v1.04 saves */
+  secrets?: (number | SecretFind)[];
   tick: number;
   rng: [number, number, number, number];
   nextPersonId: number;
@@ -77,6 +91,10 @@ export interface SimState {
   plants: number[]; // terrain resource state (rounded)
   game: number[];
   explored: string; // base64
+  /** first discoveries ever: what, who, when (from v1.14) */
+  firsts?: { tech: string; pid: number; name: string; band: string; year: number }[];
+  /** size of every tree, one byte per tile (0 none .. 4 big); missing before v1.11 */
+  trees?: string;
 }
 
 export interface DeadRecord {
@@ -107,8 +125,15 @@ export class Simulation {
   private byId = new Map<number, Person>();
   private bandById = new Map<number, Band>();
   private techSets = new Map<number, Set<string>>();
+  private regions: Int32Array = new Int32Array(0);
+  /** which tree can grow on each tile (0 none), and how big it is now (0..4) */
+  treeKind: Uint8Array = new Uint8Array(0);
+  trees: Uint8Array = new Uint8Array(0);
+  /** trees that changed this month, as [tile, stage, tile, stage, ...] for the viewers */
+  treeChanges: number[] = [];
   events: ChronicleEntry[] = [];
   deadQueue: DeadRecord[] = [];
+  goneQueue: GoneBand[] = [];
   exploredDirty = true;
   /** set by the server so that dead people's names can be looked up */
   lookupDead: (id: number) => DeadRecord | null = () => null;
@@ -120,16 +145,20 @@ export class Simulation {
       for (const b of state.bands) b.name = fixBandName(b.name);
       state.usedBands = state.usedBands.map(fixBandName);
       this.t = generateTerrain(state.seed);
+      this.regions = this.landRegions();
       this.rng = new Rng(state.rng);
       for (let i = 0; i < state.plants.length; i++) this.t.plants[i] = state.plants[i] / 100;
       for (let i = 0; i < state.game.length; i++) this.t.game[i] = state.game[i] / 100;
       const ex = Buffer.from(state.explored, 'base64');
       for (let i = 0; i < this.t.explored.length; i++) this.t.explored[i] = (ex[i >> 3] >> (i & 7)) & 1;
+      this.initTrees(state.trees);
       this.dryCamps();
     } else {
       const sd = seed ?? Math.floor(Math.random() * 2 ** 31);
       setWorldSize(NEW_SIZE);
       this.t = generateTerrain(sd);
+      this.regions = this.landRegions();
+      this.initTrees();
       this.rng = new Rng(sd ^ 0x5bd1e995);
       this.s = {
         version: 1,
@@ -158,6 +187,146 @@ export class Simulation {
       this.genesis();
     }
     this.reindex();
+    this.treeChanges = [];
+  }
+
+  /** dry land you can walk on: no sea, lake or river wide enough to be drawn as water */
+  private walkable(i: number): boolean {
+    return !isWater(this.t.biome[i]) && this.t.river[i] < RIVER_WATER;
+  }
+
+  /** every piece of land cut off by water gets its own number: without boats nobody leaves it */
+  private landRegions(): Int32Array {
+    const n = W * H, reg = new Int32Array(n).fill(-1);
+    let id = 0;
+    const stack: number[] = [];
+    for (let s = 0; s < n; s++) {
+      if (reg[s] >= 0 || !this.walkable(s)) continue;
+      reg[s] = id;
+      stack.push(s);
+      while (stack.length) {
+        const i = stack.pop()!;
+        const x = i % W, y = (i - x) / W;
+        if (x > 0 && reg[i - 1] < 0 && this.walkable(i - 1)) { reg[i - 1] = id; stack.push(i - 1); }
+        if (x < W - 1 && reg[i + 1] < 0 && this.walkable(i + 1)) { reg[i + 1] = id; stack.push(i + 1); }
+        if (y > 0 && reg[i - W] < 0 && this.walkable(i - W)) { reg[i - W] = id; stack.push(i - W); }
+        if (y < H - 1 && reg[i + W] < 0 && this.walkable(i + W)) { reg[i + W] = id; stack.push(i + W); }
+      }
+      id++;
+    }
+    return reg;
+  }
+
+  /** can the band get to this tile? by land, or over water once it has boats */
+  private reachable(b: Band, x: number, y: number): boolean {
+    if (!inBounds(x, y)) return false;
+    const i = idx(x, y);
+    if (!this.walkable(i)) return false;
+    if (this.hasTech(b, 'boats')) return true;
+    const cx = Math.round(b.cx), cy = Math.round(b.cy);
+    return inBounds(cx, cy) && this.regions[i] === this.regions[idx(cx, cy)];
+  }
+
+  // ---------- trees ----------
+
+  private initTrees(saved?: string) {
+    this.treeKind = treeKinds(W, H, this.t.biome, this.t.river, this.t.temp);
+    this.trees = new Uint8Array(W * H);
+    if (saved) {
+      const b = Buffer.from(saved, 'base64');
+      for (let i = 0; i < this.trees.length; i++) this.trees[i] = this.treeKind[i] ? Math.min(BIG, b[i] ?? 0) : 0;
+      return;
+    }
+    for (let i = 0; i < this.trees.length; i++) if (this.treeKind[i]) this.trees[i] = startStage(i % W, Math.floor(i / W));
+    // worlds from before v1.11: the land around each camp is already cleared
+    for (const b of this.s?.bands ?? []) this.clearAround(b.cx, b.cy, b.settled ? 3 : 1);
+  }
+
+  private setTree(i: number, stage: number) {
+    if (this.trees[i] === stage) return;
+    this.trees[i] = stage;
+    this.treeChanges.push(i, stage);
+  }
+
+  /** a camp (or village) stands here: the trees under it are cut */
+  private clearAround(x: number, y: number, R: number) {
+    const cx = Math.round(x), cy = Math.round(y);
+    for (let yy = cy - R; yy <= cy + R; yy++) for (let xx = cx - R; xx <= cx + R; xx++) {
+      if (inBounds(xx, yy) && (xx - cx) ** 2 + (yy - cy) ** 2 <= R * R + 1) this.setTree(idx(xx, yy), 0);
+    }
+  }
+
+  /** trees of at least `min` size within R tiles */
+  treesNear(x: number, y: number, R: number, min: number): number {
+    const cx = Math.round(x), cy = Math.round(y);
+    let n = 0;
+    for (let yy = cy - R; yy <= cy + R; yy++) for (let xx = cx - R; xx <= cx + R; xx++) {
+      if (inBounds(xx, yy) && this.trees[idx(xx, yy)] >= min) n++;
+    }
+    return n;
+  }
+
+  /** every month the trees grow a little and new saplings come up where the forest can be */
+  private growTrees() {
+    // no new saplings inside the camps and the fields
+    const blocked = new Set<number>();
+    for (const b of this.s.bands) {
+      const R = b.settled ? 3 : 1, cx = Math.round(b.cx), cy = Math.round(b.cy);
+      for (let y = cy - R; y <= cy + R; y++) for (let x = cx - R; x <= cx + R; x++) if (inBounds(x, y)) blocked.add(idx(x, y));
+    }
+    const grow = 1 / (12 * 8); // about 8 years for each stage
+    const seed = 1 / (12 * 15); // a bare spot gets a sapling in about 15 years
+    const kinds = this.treeKind, trees = this.trees;
+    for (let i = 0; i < kinds.length; i++) {
+      if (!kinds[i]) continue;
+      const st = trees[i];
+      if (st === 0) {
+        if (this.rng.next() < seed && !blocked.has(i)) this.setTree(i, 1);
+      } else if (st < BIG && this.rng.next() < grow) this.setTree(i, st + 1);
+    }
+  }
+
+  /** the band cuts what it needs for fires, tools and shelters: the nearest trees go first */
+  private chop(b: Band, members: Person[]) {
+    const n = members.length;
+    const m = this.month;
+    const winter = m === 11 || m <= 1 ? 2 : m === 2 || m === 10 ? 1.4 : 1;
+    const fire = this.hasTech(b, 'fire') ? 1.4 : 1;
+    b.wood = (b.wood ?? 0) + (0.08 + n * 0.004) * winter * fire * (b.settled ? 1.3 : 1);
+    const R = b.settled ? 7 : 4;
+    const cx = Math.round(b.cx), cy = Math.round(b.cy);
+    for (let guard = 0; b.wood >= 1 && guard < 6; guard++) {
+      let best = -1, bestD = Infinity;
+      for (let y = cy - R; y <= cy + R; y++) for (let x = cx - R; x <= cx + R; x++) {
+        if (!inBounds(x, y)) continue;
+        const i = idx(x, y);
+        if (this.trees[i] < 2) continue; // saplings are left to grow
+        const d = (x - cx) ** 2 + (y - cy) ** 2 + this.rng.next() * 6;
+        if (d < bestD && d <= R * R + 6) { bestD = d; best = i; }
+      }
+      if (best < 0) { b.wood = Math.min(b.wood, 3); break; }
+      b.wood -= this.trees[best] - 1;
+      this.setTree(best, 0);
+    }
+    // a woodcutter is seen at work by the nearest tree (or carrying the log home)
+    let near = -1, nd = Infinity;
+    for (let y = cy - R; y <= cy + R; y++) for (let x = cx - R; x <= cx + R; x++) {
+      if (!inBounds(x, y) || this.trees[idx(x, y)] < 2) continue;
+      const d = (x - cx) ** 2 + (y - cy) ** 2;
+      if (d < nd) { nd = d; near = idx(x, y); }
+    }
+    if (near < 0) return;
+    const men = members.filter((p) => p.sex === 0 && (p.task === 'gather' || p.task === 'hunt') && p.id !== b.chiefId);
+    if (!men.length) return;
+    const p = men[b.id % men.length];
+    p.task = 'chop';
+    // stand at the side of the trunk, not inside it
+    p.x = (near % W) + 0.45;
+    p.y = Math.floor(near / W) + 0.2;
+  }
+
+  treesB64(): string {
+    return b64encode(this.trees);
   }
 
   private reindex() {
@@ -174,11 +343,20 @@ export class Simulation {
   // ---------- creation ----------
 
   private genesis() {
-    const start = findStart(this.t, this.rng);
+    // start on a big piece of land, not on a strip between two rivers
+    const size = new Map<number, number>();
+    for (const r of this.regions) if (r >= 0) size.set(r, (size.get(r) ?? 0) + 1);
+    let start = findStart(this.t, this.rng);
+    for (let k = 0; k < 20; k++) {
+      const s0 = this.nearestLand(start.x, start.y);
+      if ((size.get(this.regions[idx(s0.x, s0.y)]) ?? 0) >= 1500) { start = s0; break; }
+      start = findStart(this.t, this.rng);
+    }
+    const home = this.regions[idx(start.x, start.y)];
     const usedB = new Set<string>();
     const offsets = [[0, 0], [9, -5], [-7, 7]];
     for (const [ox, oy] of offsets) {
-      const c = this.nearestLand(start.x + ox, start.y + oy);
+      const c = this.nearestLand(start.x + ox, start.y + oy, home);
       const band = this.newBand(c.x, c.y, usedB);
       for (let k = 0; k < 12; k++) {
         const age = k < 8 ? this.rng.int(16, 35) : this.rng.int(1, 12);
@@ -193,6 +371,7 @@ export class Simulation {
       }
     }
     this.s.usedBands = [...usedB];
+    for (const b of this.s.bands) this.clearAround(b.cx, b.cy, 1);
     this.explore();
     this.emit('genesis', 3,
       `Летописът започва. ${this.s.people.length} души в три рода бродят из ${'земите край голямата река'}. Не знаят огъня, нямат имена на местата. Имат само един друг.`,
@@ -201,7 +380,7 @@ export class Simulation {
 
   /** dry land a camp can stand on: not sea, lake or a river big enough to be drawn as water */
   private campable(i: number): boolean {
-    return !isWater(this.t.biome[i]) && this.t.river[i] < RIVER_WATER;
+    return this.walkable(i);
   }
 
   /** camps saved on a river channel step onto the nearest bank */
@@ -219,11 +398,11 @@ export class Simulation {
     }
   }
 
-  private nearestLand(x: number, y: number): { x: number; y: number } {
+  private nearestLand(x: number, y: number, region = -1): { x: number; y: number } {
     for (let r = 0; r < 30; r++) {
       for (let k = 0; k < 20; k++) {
         const nx = Math.round(x + this.rng.range(-r, r)), ny = Math.round(y + this.rng.range(-r, r));
-        if (inBounds(nx, ny) && this.campable(idx(nx, ny)) && this.t.height[idx(nx, ny)] < 0.6) return { x: nx, y: ny };
+        if (inBounds(nx, ny) && this.campable(idx(nx, ny)) && this.t.height[idx(nx, ny)] < 0.6 && (region < 0 || this.regions[idx(nx, ny)] === region)) return { x: nx, y: ny };
       }
     }
     return { x, y };
@@ -335,13 +514,36 @@ export class Simulation {
     return ((this.s.tick % 12) + 12) % 12;
   }
 
-  private emit(kind: string, importance: number, text: string, kids?: string, personId?: number, bandId?: number) {
+  private emit(kind: string, importance: number, text: string, kids?: string, personId?: number, bandId?: number, extra: ChronicleRef[] = []) {
+    // every name in the text that has more to show becomes a link
+    const cand: ChronicleRef[] = [...extra];
+    const p = personId ? this.byId.get(personId) : undefined;
+    if (p) cand.push(this.pRef(p));
+    const b = bandId ? this.bandById.get(bandId) : undefined;
+    if (b) cand.push(...this.bRefs(b));
+    const refs: ChronicleRef[] = [];
+    for (const r of cand) {
+      if (!r.n || refs.some((x) => x.n === r.n)) continue;
+      if (text.includes(r.n) || kids?.includes(r.n)) refs.push(r);
+    }
     this.events.push({
       id: this.s.nextEventId++,
       tick: this.s.tick,
       year: this.year,
       kind, importance, text, kids, personId, bandId,
+      refs: refs.length ? refs : undefined,
     });
+  }
+
+  private pRef(p: Person): ChronicleRef {
+    return { n: this.nameOf(p), p: p.id };
+  }
+
+  /** all the ways a band is written in the chronicle */
+  private bRefs(b: Band): ChronicleRef[] {
+    const out: ChronicleRef[] = [{ n: b.name, b: b.id }, { n: b.name.replace(/^Родът/, 'рода'), b: b.id }];
+    if (b.settlementName) out.push({ n: b.settlementName, b: b.id });
+    return out;
   }
 
   /** chance multiplier from the invisible director that keeps the story close to the ~3 month schedule */
@@ -383,10 +585,12 @@ export class Simulation {
     for (const p of this.s.people) members.get(p.bandId)?.push(p);
 
     this.regrow();
+    this.growTrees();
     for (const b of this.s.bands) {
       const m = members.get(b.id)!;
       if (m.length === 0) continue;
       this.work(b, m);
+      this.chop(b, m);
       this.discover(b, m);
     }
     this.lifeAndDeath(members);
@@ -430,6 +634,7 @@ export class Simulation {
     const season = this.seasonFactor(b);
     const workers: Person[] = [];
     let need = 0;
+    const chief = this.ensureChief(b, m);
     for (const p of m) {
       const a = this.ageOf(p);
       need += a < 12 ? 0.6 : a > 60 ? 0.8 : 1;
@@ -437,6 +642,7 @@ export class Simulation {
       else if (a > 58) p.task = 'elder';
       else workers.push(p);
     }
+
     // choose jobs
     const canFish = this.hasTech(b, 'fishing') && this.areaHas(b, R, 'fish');
     const farms = this.hasTech(b, 'agriculture') && b.settled;
@@ -465,7 +671,7 @@ export class Simulation {
       let got = 0;
       const tx = Math.round(b.cx + this.rng.range(-R, R));
       const ty = Math.round(b.cy + this.rng.range(-R, R));
-      const tile = inBounds(tx, ty) && !isWater(t.biome[idx(tx, ty)]) ? idx(tx, ty) : idx(Math.round(b.cx), Math.round(b.cy));
+      const tile = this.reachable(b, tx, ty) ? idx(tx, ty) : idx(Math.round(b.cx), Math.round(b.cy));
       switch (p.task) {
         case 'gather': {
           gatherWant += 2.0 * skill * tool * season;
@@ -494,9 +700,16 @@ export class Simulation {
       this.placeWorker(p, b, tile);
     }
     for (const p of m) if (p.task === 'child' || p.task === 'elder' || p.task === 'craft' || p.task === 'build') {
-      p.x = b.cx + this.rng.range(-1.2, 1.2);
-      p.y = b.cy + this.rng.range(-1.2, 1.2);
+      // the old ones never go further than one tile from the hearth: they mind the children and tell stories
+      const r = p.task === 'elder' ? 1 : 1.2;
+      const x = b.cx + this.rng.range(-r, r), y = b.cy + this.rng.range(-r, r);
+      // stay on dry land by the hearth
+      const ok = this.reachable(b, Math.round(x), Math.round(y));
+      p.x = ok ? x : b.cx + this.rng.range(-0.3, 0.3);
+      p.y = ok ? y : b.cy + this.rng.range(-0.3, 0.3);
     }
+    // the chief still brings food like everyone else, but he is seen by the camp (or out scouting)
+    if (chief) this.lead(b, chief, m);
     prod += (this.harvest(t.plants, b, R, gatherWant, 0.07) + this.harvest(t.game, b, R + 2, huntWant, 0.045)) * craftBonus * fire;
     if (farmWant > 0) prod += Math.min(farmWant, this.arable(b) * 1.0 * this.farmSeason()) * craftBonus;
     const spoil = this.hasTech(b, 'pottery') ? 0.05 : this.hasTech(b, 'grinding') ? 0.08 : 0.12;
@@ -533,8 +746,8 @@ export class Simulation {
       const near = this.findNear(b, 8, (i) => this.t.fish[i] > 0);
       if (near >= 0) { x = near % W; y = Math.floor(near / W); }
     } else if (p.task === 'farm' || p.task === 'herd') {
-      x = Math.round(b.cx + this.rng.range(-3, 3));
-      y = Math.round(b.cy + this.rng.range(-3, 3));
+      const fx = Math.round(b.cx + this.rng.range(-3, 3)), fy = Math.round(b.cy + this.rng.range(-3, 3));
+      if (this.reachable(b, fx, fy)) { x = fx; y = fy; }
     }
     p.x = x + this.rng.range(-0.4, 0.4);
     p.y = y + this.rng.range(-0.4, 0.4);
@@ -545,7 +758,7 @@ export class Simulation {
       const x = Math.round(b.cx + this.rng.range(-R, R)), y = Math.round(b.cy + this.rng.range(-R, R));
       if (!inBounds(x, y)) continue;
       const i = idx(x, y);
-      if (pred(i) && !isWater(this.t.biome[i])) return i;
+      if (pred(i) && this.reachable(b, x, y)) return i;
     }
     return -1;
   }
@@ -589,7 +802,6 @@ export class Simulation {
 
   private discover(b: Band, m: Person[]) {
     const known = this.techSets.get(b.id)!;
-    const dir = this.directorFactor();
     const candidates: Tech[] = [];
     for (const tech of TECHS) {
       if (known.has(tech.id)) continue;
@@ -600,14 +812,17 @@ export class Simulation {
     if (!candidates.length) return;
     const adults = m.filter((p) => this.ageOf(p) >= 12);
     if (!adults.length) return;
-    const crowd = Math.sqrt(adults.length);
+    const crowd = Math.sqrt(adults.length / 8);
     for (const tech of candidates) {
       // the person who might have the idea this month
       const p = this.rng.pick(adults);
       const g = p.genes[tech.gene] * 0.5 + p.genes.int * 0.25 + p.genes.cur * 0.25;
       // already known somewhere else: rediscovery is easier
-      const again = this.s.discovered.includes(tech.id) ? 1.6 : 1;
-      const chance = tech.base * GLOBAL_DISCOVERY * dir * again * crowd * Math.pow(g * 2, 3);
+      const seen = this.s.discovered.includes(tech.id);
+      const again = seen ? 1.6 : 1;
+      // a first discovery happens somewhere in the world: many bands do not make it come sooner
+      const world = seen ? 1 : Math.min(1, 4 / this.s.bands.length);
+      const chance = world * GLOBAL_DISCOVERY * Math.sqrt(tech.base / 0.0025) * this.techPace(tech) * again * crowd * Math.pow(g * 2, 2);
       if (!this.rng.chance(chance)) continue;
       this.addTech(b, tech.id);
       const first = !this.s.discovered.includes(tech.id);
@@ -615,6 +830,9 @@ export class Simulation {
       const fill = (s: string) => s.replace('{name}', name).replace('{band}', this.bandLabel(b)).replace('{Band}', this.bandLabel(b, true));
       if (first) {
         this.s.discovered.push(tech.id);
+        if (!(this.s.firsts ??= []).some((f) => f.tech === tech.id)) {
+          this.s.firsts.push({ tech: tech.id, pid: p.id, name, band: this.bandLabel(b, true), year: Math.floor(this.year) });
+        }
         p.deeds.push(`Откри „${tech.name}“ (${formatYear(this.year)})`);
         this.emit('discovery', 3, fill(tech.text), fill(tech.kids), p.id, b.id);
       } else {
@@ -626,15 +844,25 @@ export class Simulation {
     }
   }
 
+  /** ideas come rarely before their time and more and more often after it: keeps the story near the real calendar */
+  private techPace(tech: Tech): number {
+    const d = (this.year - tech.target) / 250;
+    if (d < 0) return Math.exp(4 * d); // 250 years early: 2%, 500 years: 0.03%
+    return Math.min(8, 1 + d * 2);
+  }
+
   private settle(b: Band, m: Person[]) {
     if (b.settled) return;
     b.settled = true;
     const used = new Set(this.s.usedPlaces);
     b.settlementName = placeName(this.rng, used);
     this.s.usedPlaces = [...used];
-    const elder = m.reduce((a, p) => (this.ageOf(p) > this.ageOf(a) ? p : a), m[0]);
+    b.scout = null;
+    this.clearAround(b.cx, b.cy, 3);
+    const chief = b.chiefId ? this.byId.get(b.chiefId) : undefined;
+    const elder = chief ?? m.reduce((a, p) => (this.ageOf(p) > this.ageOf(a) ? p : a), m[0]);
     this.emit('settle', 3,
-      `${b.name} спря да скита и основа селото ${b.settlementName}. Най-възрастната в рода, ${this.nameOf(elder)}, избра мястото край водата.`,
+      `${b.name} спря да скита и основа селото ${b.settlementName}. ${chief ? `Старейшината ${this.nameOf(elder)}` : `Най-възрастният в рода, ${this.nameOf(elder)},`} избра мястото край водата.`,
       `${b.name} построи село и го нарече ${b.settlementName}!`, elder.id, b.id);
   }
 
@@ -662,7 +890,8 @@ export class Simulation {
         if (a < 1) q = 0.16;
         else if (a < 5) q = 0.05;
         else if (a < 15) q = 0.012;
-        else q = 0.005 + 0.00035 * Math.exp(0.085 * (a - 10 * (lon - 0.5) * 2));
+        // hard lives: most adults die before 60, only a few see 70
+        else q = 0.012 + 0.00055 * Math.exp(0.09 * (a - 10 * (lon - 0.5) * 2));
         q *= medicine * settledDisease * (1.3 - hea * 0.6) * guardian;
         let pm = q / 12 + guardian * coldRisk * (a < 5 || a > 55 ? 2 : 1) + hungry * 0.015 * (a < 5 || a > 55 ? 2 : 0.6);
         if (this.rng.chance(pm)) {
@@ -671,6 +900,12 @@ export class Simulation {
             : a > 55 ? 'почина от старост' : a < 5 ? 'почина като дете' : 'почина от болест';
           this.die(p, cause, m);
           continue;
+        }
+        // a rare long life: the band honours its old ones
+        if (Math.floor(a) === 70 && Math.floor(a - 1 / 12) === 69 && (p.deeds.length > 0 || b.chiefId === p.id || pop < 400)) {
+          p.deeds.push(`Доживя до 70 години (${formatYear(this.year)})`);
+          this.emit('elder', 1, `${this.nameOf(p)} от ${this.bandLabel(b)} навърши 70 години, рядкост в тези сурови времена. Сега гледа децата край огъня и им разказва истории.`,
+            `${this.nameOf(p)} стана на 70! Сега разказва приказки на децата край огъня.`, p.id, b.id);
         }
         // births
         if (p.sex === 1 && p.partnerId && a >= 16 && a <= 42) {
@@ -697,7 +932,7 @@ export class Simulation {
         father?.children.push(child.id);
         child.x = mother.x; child.y = mother.y;
         if (twins && k === 1) {
-          this.emit('twins', 1, `В ${this.bandLabel(b)} ${this.nameOf(mother)} роди близнаци.`, `В ${this.bandLabel(b)} се родиха близнаци!`, child.id, b.id);
+          this.emit('twins', 1, `В ${this.bandLabel(b)} ${this.nameOf(mother)} роди близнаци.`, `В ${this.bandLabel(b)} се родиха близнаци!`, child.id, b.id, [this.pRef(mother)]);
         }
       }
     }
@@ -724,13 +959,15 @@ export class Simulation {
       motherId: p.motherId, fatherId: p.fatherId, partnerId: p.partnerId, children: p.children,
       deeds: p.deeds, genes: p.genes, bandName: b ? this.bandLabel(b, true) : '', gen: p.gen,
     });
-    if (p.deeds.some((d) => d.startsWith('Откри'))) {
-      this.emit('death', 2, `${this.nameOf(p)} ${cause} на ${age} години. Родът ще помни, че тя/той ${p.deeds[0].toLowerCase()}.`.replace('тя/той', p.sex ? 'тя' : 'той'),
-        `${this.nameOf(p)} си отиде на ${age} години. Всички помнят какво е открил${p.sex ? 'а' : ''}.`, p.id, p.bandId);
+    const me = [this.pRef(p)];
+    const found = p.deeds.find((d) => d.startsWith('Откри'));
+    if (found) {
+      this.emit('death', 2, `${this.nameOf(p)} ${cause} на ${age} години. Родът ще помни, че тя/той ${found.toLowerCase()}.`.replace('тя/той', p.sex ? 'тя' : 'той'),
+        `${this.nameOf(p)} си отиде на ${age} години. Всички помнят какво е открил${p.sex ? 'а' : ''}.`, p.id, p.bandId, me);
     } else if (age >= 70) {
-      this.emit('death', 1, `${this.nameOf(p)} от ${b ? this.bandLabel(b) : 'рода'} ${cause} на почтените ${age} години.`, undefined, p.id, p.bandId);
+      this.emit('death', 1, `${this.nameOf(p)} от ${b ? this.bandLabel(b) : 'рода'} ${cause} на почтените ${age} години.`, undefined, p.id, p.bandId, me);
     } else if (cause === 'загина на лов') {
-      this.emit('death', 1, `${this.nameOf(p)} от ${b ? this.bandLabel(b) : 'рода'} не се върна от лова.`, `${this.nameOf(p)} не се върна от лова. Родът е тъжен.`, p.id, p.bandId);
+      this.emit('death', 1, `${this.nameOf(p)} от ${b ? this.bandLabel(b) : 'рода'} не се върна от лова.`, `${this.nameOf(p)} не се върна от лова. Родът е тъжен.`, p.id, p.bandId, me);
     }
   }
 
@@ -773,7 +1010,8 @@ export class Simulation {
           members.get(to.id)!.push(mover);
           mover.bandId = to.id;
           if (this.rng.chance(0.15)) {
-            this.emit('marriage', 1, `${this.nameOf(man)} и ${this.nameOf(woman)} събраха ${this.bandLabel(b)} и ${this.bandLabel(other)} в едно семейство.`, undefined, man.id, b.id);
+            this.emit('marriage', 1, `${this.nameOf(man)} и ${this.nameOf(woman)} събраха ${this.bandLabel(b)} и ${this.bandLabel(other)} в едно семейство.`, undefined, man.id, b.id,
+              [this.pRef(woman), ...this.bRefs(other)]);
           }
         }
       }
@@ -795,42 +1033,52 @@ export class Simulation {
         if (near) {
           for (const p of m) { p.bandId = near.id; members.get(near.id)!.push(p); }
           for (const tech of b.techs) this.addTech(near, tech);
-          this.emit('merge', 1, `Последните ${m.length} от ${this.bandLabel(b)} се присъединиха към ${this.bandLabel(near)}.`, undefined, undefined, near.id);
+          this.emit('merge', 1, `Последните ${m.length} от ${this.bandLabel(b)} се присъединиха към ${this.bandLabel(near)}.`, undefined, undefined, near.id, this.bRefs(b));
           members.set(b.id, []);
-          this.removeBand(b, true);
+          this.removeBand(b, near);
           continue;
         }
       }
       // nomads move with the seasons and the game
-      if (!b.settled) {
-        const poor = b.lastProd < b.lastNeed * 1.1;
-        if ((poor && this.rng.chance(0.35)) || this.rng.chance(0.04)) this.moveCamp(b, m, poor ? 22 : 11);
+      // nomads stay while there is wood around the camp; only a real famine drives them off earlier
+      if (!b.settled && !b.scout) {
+        const noWood = this.treesNear(b.cx, b.cy, 4, 2) === 0;
+        const starving = (b.fed ?? 1) < 0.7 && this.rng.chance(0.08);
+        if (noWood || starving) this.moveCamp(b, m, noWood ? 22 : 16);
       }
-      // split
-      const limit = b.settled ? 140 : 30 + Math.round(avg(m, (p) => p.genes.soc) * 16);
+      // split: rare, a band has to grow big first
+      const limit = b.settled ? 140 : 40 + Math.round(avg(m, (p) => p.genes.soc) * 20);
       // too many mouths for this land: some leave to find their own
-      const crowded = !b.settled && m.length >= 18 && (b.fed ?? 1) < 1.1 && this.rng.chance(0.04);
+      const crowded = !b.settled && m.length >= 24 && (b.fed ?? 1) < 1.05 && this.rng.chance(0.012);
       if (m.length > limit || crowded) this.split(b, m, members);
     }
     void t;
   }
 
-  private removeBand(b: Band, merged = false) {
+  private removeBand(b: Band, into: Band | null = null) {
+    const merged = !!into;
+    this.goneQueue.push({
+      id: b.id, name: b.name, settlementName: b.settlementName, color: b.color,
+      foundedYear: Math.floor(yearOf(b.founded)), endedYear: Math.floor(this.year),
+      end: into ? this.bandLabel(into, true) : 'extinct',
+      techs: b.techs.map((x) => TECH_BY_ID.get(x)?.name ?? x),
+      founder: b.founder ?? null, from: b.from ?? null,
+    });
+    const gone = this.bRefs(b);
     const i = this.s.bands.indexOf(b);
     if (i >= 0) this.s.bands.splice(i, 1);
     this.bandById.delete(b.id);
     this.techSets.delete(b.id);
-    // the name is free again for a future band
-    this.s.usedBands = this.s.usedBands.filter((n) => n !== b.name);
+    // a name is never given twice in one world, even after the band is gone
     if (!merged) {
-      this.emit('extinct', 2, `${this.bandLabel(b, true)} угасна. Няма кой да запали огъня на тяхното място.`, `${this.bandLabel(b, true)} изчезна. Няма останали хора от този род.`, undefined, b.id);
+      this.emit('extinct', 2, `${this.bandLabel(b, true)} угасна. Няма кой да запали огъня на тяхното място.`, `${this.bandLabel(b, true)} изчезна. Няма останали хора от този род.`, undefined, b.id, gone);
     }
     // knowledge lost forever?
     for (const tech of b.techs) {
       if (!this.s.bands.some((o) => this.techSets.get(o.id)?.has(tech))) {
         const name = TECH_BY_ID.get(tech)?.name ?? tech;
         this.s.discovered = this.s.discovered.filter((x) => x !== tech);
-        this.emit('lost', 2, `Заедно с ${this.bandLabel(b)} изчезна и знанието за „${name}“. Някой ще трябва да го открие наново.`, undefined, undefined, b.id);
+        this.emit('lost', 2, `Заедно с ${this.bandLabel(b)} изчезна и знанието за „${name}“. Някой ще трябва да го открие наново.`, undefined, undefined, b.id, gone);
       }
     }
   }
@@ -840,8 +1088,13 @@ export class Simulation {
     if (!inBounds(x, y)) return -1;
     const c = idx(x, y);
     if (!this.campable(c) || t.height[c] > 0.62) return -1;
+    // a new camp must be reachable: across water only with boats
+    if (!this.reachable(self, x, y)) return -1;
     for (const o of this.s.bands) if (o.id !== self.id && Math.hypot(o.cx - x, o.cy - y) < 7) return -1;
-    let s = 0;
+    // a new camp needs wood: at least five big trees close by
+    const big = this.treesNear(x, y, 4, BIG);
+    if (big < 5) return -1;
+    let s = Math.min(12, big) * 0.3;
     for (let oy = -R; oy <= R; oy += 2) for (let ox = -R; ox <= R; ox += 2) {
       if (!inBounds(x + ox, y + oy)) continue;
       const i = idx(x + ox, y + oy);
@@ -853,21 +1106,88 @@ export class Simulation {
     return s;
   }
 
+  /** the band's head: the oldest man; a new one when he dies or leaves */
+  private ensureChief(b: Band, m: Person[]): Person | null {
+    const cur = b.chiefId ? this.byId.get(b.chiefId) : undefined;
+    if (cur && cur.bandId === b.id && this.ageOf(cur) < 70) return cur;
+    // at 70 the old chief stays by the fire with the children and hands over to the oldest man after him
+    let best: Person | null = null;
+    for (const p of m) if (p.sex === 0 && this.ageOf(p) >= 16 && this.ageOf(p) < 70 && (!best || p.born < best.born)) best = p;
+    const had = !!b.chiefId;
+    b.chiefId = best?.id ?? null;
+    if (!best) { b.scout = null; return null; }
+    if (had && b.settled) { // nomad bands change elders too often to write each one down
+      this.emit('chief', 1, `${this.nameOf(best)} стана ${this.chiefTitle().toLowerCase()} на ${this.bandLabel(b)}.`,
+        `${this.nameOf(best)} е новият ${this.chiefTitle().toLowerCase()} на ${this.bandLabel(b)}.`, best.id, b.id);
+    }
+    return best;
+  }
+
+  chiefTitle(): string {
+    return CHIEF_TITLES[Math.min(this.s.era, CHIEF_TITLES.length - 1)];
+  }
+
+  /** the chief stays within two tiles of the camp, or walks ahead to a new place and calls the band after him */
+  private lead(b: Band, chief: Person, m: Person[]) {
+    if (b.scout) {
+      chief.task = 'scout';
+      // where he walked to so far (starts at the camp)
+      const sc = b.scout;
+      const px = sc.px ?? b.cx, py = sc.py ?? b.cy;
+      const dx = sc.x - px, dy = sc.y - py;
+      const d = Math.hypot(dx, dy);
+      if (d > 0.6) {
+        const v = Math.min(d, Math.max(6, d / 2)); // at most two months ahead of the band: he looks, then calls them
+        sc.px = px + (dx / d) * v;
+        sc.py = py + (dy / d) * v;
+        chief.x = sc.px;
+        chief.y = sc.py;
+        return;
+      }
+      // he is there and likes it: the camp, the banner and everyone follow
+      chief.x = sc.x;
+      chief.y = sc.y;
+      b.cx = sc.x;
+      b.cy = sc.y;
+      b.scout = null;
+      this.clearAround(b.cx, b.cy, 1);
+      for (const p of m) if (p !== chief) p.task = 'travel';
+      return;
+    }
+    chief.task = 'lead';
+    for (let k = 0; k < 6; k++) {
+      const x = b.cx + this.rng.range(-2, 2), y = b.cy + this.rng.range(-2, 2);
+      if (this.reachable(b, Math.round(x), Math.round(y))) { chief.x = x; chief.y = y; return; }
+    }
+    chief.x = b.cx + this.rng.range(-0.3, 0.3);
+    chief.y = b.cy + this.rng.range(-0.3, 0.3);
+  }
+
   private moveCamp(b: Band, m: Person[], range: number) {
+    if (b.scout) return; // the chief is still looking
     let best = { x: b.cx, y: b.cy }, bestS = this.campScore(Math.round(b.cx), Math.round(b.cy), 4, b) * 1.05;
     for (let k = 0; k < 24; k++) {
       const x = Math.round(b.cx + this.rng.range(-range, range)), y = Math.round(b.cy + this.rng.range(-range, range));
       const s = this.campScore(x, y, 4, b);
-      if (s > bestS) { bestS = s; best = { x, y }; }
+      // -1 means "no camp possible here" (off the map, water, too close to others): never pick it,
+      // even when the current camp scores -1 itself
+      if (s > 0 && s > bestS) { bestS = s; best = { x, y }; }
     }
     if (best.x === b.cx && best.y === b.cy) return;
+    // the chief goes first to look at the place; without one the whole band just goes
+    if (b.chiefId && this.byId.get(b.chiefId)?.bandId === b.id) {
+      b.scout = best;
+      return;
+    }
     b.cx = best.x; b.cy = best.y;
+    this.clearAround(b.cx, b.cy, 1);
     for (const p of m) p.task = 'travel';
   }
 
   private split(b: Band, m: Person[], members: Map<number, Person[]>) {
     // a founding couple leaves with their children and some friends
-    const adults = m.filter((p) => this.ageOf(p) >= 20 && this.ageOf(p) <= 45 && p.partnerId);
+    // the founder is a man in his prime: he becomes the elder of the new band
+    const adults = m.filter((p) => p.sex === 0 && p.id !== b.chiefId && this.ageOf(p) >= 20 && this.ageOf(p) <= 45 && p.partnerId);
     if (!adults.length) return;
     const leader = adults.reduce((a, p) => (p.genes.cur + p.genes.str > a.genes.cur + a.genes.str ? p : a), adults[0]);
     const leaving = new Set<Person>([leader]);
@@ -895,6 +1215,10 @@ export class Simulation {
     }
     if (!best) return;
     const nb = this.newBand(best.x, best.y, undefined, b.techs);
+    nb.chiefId = leader.id;
+    nb.founder = { id: leader.id, name: this.nameOf(leader) };
+    nb.from = { id: b.id, name: this.bandLabel(b, true) };
+    this.clearAround(nb.cx, nb.cy, 1);
     nb.food = b.food * 0.35;
     b.food *= 0.65;
     const list = members.get(b.id)!;
@@ -906,19 +1230,14 @@ export class Simulation {
       newList.push(p);
     }
     members.set(nb.id, newList);
-    leader.deeds.push(`Поведе ${nb.name} към нови земи (${formatYear(this.year)})`);
-    if (b.settled && this.hasTech(b, 'agriculture')) {
-      this.settleNew(nb);
-      this.emit('colony', 2, `${this.nameOf(leader)} поведе ${newList.length} души от ${b.settlementName} и основа ново село: ${nb.settlementName}.`,
-        `${this.nameOf(leader)} и още ${newList.length - 1} души основаха новото село ${nb.settlementName}.`, leader.id, nb.id);
-    } else {
-      this.emit('split', 2, `${b.name} стана твърде голям. ${this.nameOf(leader)} поведе ${newList.length} души на път и така се роди ${nb.name}.`,
-        `${this.nameOf(leader)} тръгна с ${newList.length - 1} души да търси нов дом. Така се появи ${nb.name}.`, leader.id, nb.id);
-    }
+    leader.deeds.push(`Основа ${nb.name} и стана негов ${this.chiefTitle().toLowerCase()} (${formatYear(this.year)})`);
+    // no chronicle line: the band's card tells who founded it and where they came from
+    if (b.settled && this.hasTech(b, 'agriculture')) this.settleNew(nb);
   }
 
   private settleNew(b: Band) {
     b.settled = true;
+    this.clearAround(b.cx, b.cy, 3);
     const used = new Set(this.s.usedPlaces);
     b.settlementName = placeName(this.rng, used);
     this.s.usedPlaces = [...used];
@@ -935,7 +1254,7 @@ export class Simulation {
           a.met.push(b.id);
           b.met.push(a.id);
           if (this.rng.chance(0.4)) {
-            this.emit('meet', 1, `${this.bandLabel(a, true)} и ${this.bandLabel(b)} се срещнаха край ${this.featureNear(a)}. Размениха си кремък и истории.`, undefined, undefined, a.id);
+            this.emit('meet', 1, `${this.bandLabel(a, true)} и ${this.bandLabel(b)} се срещнаха край ${this.featureNear(a)}. Размениха си кремък и истории.`, undefined, undefined, a.id, this.bRefs(b));
           }
         }
         // knowledge travels between neighbours
@@ -943,12 +1262,12 @@ export class Simulation {
         const share = 0.012 * (this.hasTech(a, 'cave_art') || this.hasTech(b, 'cave_art') ? 1.6 : 1);
         for (const tech of a.techs) if (!sb.has(tech) && this.canUse(b, tech) && this.rng.chance(share)) {
           this.addTech(b, tech);
-          this.emit('learn', 1, `${this.bandLabel(b, true)} научи „${TECH_BY_ID.get(tech)!.name}“ от ${this.bandLabel(a)}.`, undefined, undefined, b.id);
+          this.emit('learn', 1, `${this.bandLabel(b, true)} научи „${TECH_BY_ID.get(tech)!.name}“ от ${this.bandLabel(a)}.`, undefined, undefined, b.id, this.bRefs(a));
           if (tech === 'agriculture') this.settle(b, this.s.people.filter((p) => p.bandId === b.id));
         }
         for (const tech of b.techs) if (!sa.has(tech) && this.canUse(a, tech) && this.rng.chance(share)) {
           this.addTech(a, tech);
-          this.emit('learn', 1, `${this.bandLabel(a, true)} научи „${TECH_BY_ID.get(tech)!.name}“ от ${this.bandLabel(b)}.`, undefined, undefined, a.id);
+          this.emit('learn', 1, `${this.bandLabel(a, true)} научи „${TECH_BY_ID.get(tech)!.name}“ от ${this.bandLabel(b)}.`, undefined, undefined, a.id, this.bRefs(b));
           if (tech === 'agriculture') this.settle(a, this.s.people.filter((p) => p.bandId === a.id));
         }
       }
@@ -1047,6 +1366,10 @@ export class Simulation {
     return this.s.bands.map((b) => ({
       id: b.id, name: b.name, color: b.color, x: b.cx, y: b.cy, settled: b.settled, settlementName: b.settlementName,
       techs: b.techs.map((x) => TECH_BY_ID.get(x)?.name ?? x),
+      techIds: b.techs,
+      chief: this.chiefView(b),
+      founder: b.founder ?? null,
+      from: b.from ?? null,
       size: counts.get(b.id) ?? 0,
       food: Math.round(b.food),
       founded: Math.floor(yearOf(b.founded)),
@@ -1055,9 +1378,15 @@ export class Simulation {
     }));
   }
 
+  private chiefView(b: Band): BandView['chief'] {
+    const c = b.chiefId ? this.byId.get(b.chiefId) : undefined;
+    return c ? { id: c.id, name: this.nameOf(c), title: this.chiefTitle() } : null;
+  }
+
   personRows(): PersonRow[] {
+    const chiefs = new Set(this.s.bands.map((b) => b.chiefId));
     return this.s.people.map((p) => [
-      p.id, Math.round(p.x * 10), Math.round(p.y * 10), TASKS.indexOf(p.task), p.bandId, Math.floor(this.ageOf(p)), p.sex,
+      p.id, Math.round(p.x * 10), Math.round(p.y * 10), TASKS.indexOf(p.task), p.bandId, Math.floor(this.ageOf(p)), p.sex, chiefs.has(p.id) ? 1 : 0,
     ]);
   }
 
@@ -1087,6 +1416,7 @@ export class Simulation {
         mother: this.ref(p.motherId), father: this.ref(p.fatherId), partner: this.ref(p.partnerId),
         children: p.children.map((c) => ({ ...(this.ref(c) ?? { id: c, name: '?' }), alive: this.byId.has(c) })),
         deeds: p.deeds, generation: p.gen,
+        title: b && b.chiefId === p.id ? `${this.chiefTitle()} на ${b.settlementName ? `${b.settlementName}` : b.name.replace(/^Родът на /, 'рода на ')}` : null,
       };
     }
     const d = this.lookupDead(id);
@@ -1097,7 +1427,7 @@ export class Simulation {
       genes: geneView(d.genes as Record<GeneKey, number>),
       mother: this.ref(d.motherId), father: this.ref(d.fatherId), partner: this.ref(d.partnerId),
       children: d.children.map((c) => ({ ...(this.ref(c) ?? { id: c, name: '?' }), alive: this.byId.has(c) })),
-      deeds: d.deeds, generation: d.gen,
+      deeds: d.deeds, generation: d.gen, title: null,
     };
   }
 
@@ -1136,6 +1466,27 @@ export class Simulation {
     return { root, motherLine: line('motherId'), fatherLine: line('fatherId') };
   }
 
+  /** finds so far, oldest first */
+  secretFinds(): SecretFind[] {
+    return (this.s.secrets ?? []).map((f) => (typeof f === 'number' ? { k: f, at: 0 } : f));
+  }
+
+  /** someone watching found secret k: the first find goes into the chronicle */
+  findSecret(k: number): { first: boolean; found: number; at: number } | null {
+    if (!Number.isInteger(k) || k < 0 || k >= SECRET_COUNT) return null;
+    const list = this.secretFinds();
+    const had = list.find((f) => f.k === k);
+    if (had) return { first: false, found: list.length, at: had.at };
+    const at = Date.now();
+    list.push({ k, at });
+    this.s.secrets = list;
+    const kind = SECRET_KINDS[k % SECRET_KINDS.length];
+    const hero = SECRET_HEROES[k];
+    this.emit('secret', 2, `Тайна №${k + 1}, ${hero}: някой, който гледа отгоре, забеляза ${kind.name}. Намерени тайни: ${list.length} от ${SECRET_COUNT}.`,
+      `Ура! Намерена е тайна №${k + 1}, ${hero}: ${kind.name}! Тайни: ${list.length} от ${SECRET_COUNT}.`);
+    return { first: true, found: list.length, at };
+  }
+
   /** notable living people: discoverers, leaders, the oldest */
   heroes(): { id: number; name: string; age: number; band: string; deeds: string[] }[] {
     return this.s.people
@@ -1151,6 +1502,7 @@ export class Simulation {
     this.s.plants = Array.from(this.t.plants, (v) => Math.round(v * 100));
     this.s.game = Array.from(this.t.game, (v) => Math.round(v * 100));
     this.s.explored = this.exploredB64();
+    this.s.trees = Buffer.from(this.trees).toString('base64');
     return this.s;
   }
 

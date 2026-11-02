@@ -1,8 +1,9 @@
 import { Application } from 'pixi.js';
 import { Atlas, WorldRenderer, iso, TW, TH } from './render';
 import {
-  BandView, ChronicleEntry, FamilyTree, MONTHS, TreeNode, PersonDetail, PersonRow, SnapshotMessage, TASKS, TASK_NAMES, TickMessage, WorldInfo, b64decode, formatYear,
+  BandView, ChronicleEntry, Discovery, FamilyTree, GoneBand, MONTHS, TreeNode, PersonDetail, PersonRow, SnapshotMessage, TASKS, TASK_NAMES, TickMessage, WorldInfo, b64decode, formatYear,
 } from '../shared/types';
+import { SECRET_COUNT, SECRET_HEROES, SECRET_KINDS, SecretFind, SecretSpot } from '../shared/secrets';
 
 // ---------- small helpers ----------
 
@@ -79,8 +80,12 @@ function lookAt(x: number, y: number, zoom?: number, instant = false) {
 }
 
 let dragging = false, moved = 0, last = { x: 0, y: 0 };
+/** four more 1.4x steps in than before (4): close enough to see faces */
+const MAX_ZOOM = 4 * 1.4 ** 4;
 const pointers = new Map<number, { x: number; y: number }>();
 let pinchDist = 0;
+/** after a pinch the map stays put until every finger is up: the last finger must not drag it */
+let pinched = false;
 const canvas = app.canvas;
 canvas.addEventListener('pointerdown', (e) => {
   pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -89,6 +94,7 @@ canvas.addEventListener('pointerdown', (e) => {
   if (pointers.size === 2) {
     const [a, b] = [...pointers.values()];
     pinchDist = Math.hypot(a.x - b.x, a.y - b.y);
+    pinched = true;
   }
 });
 canvas.addEventListener('pointermove', (e) => {
@@ -103,7 +109,7 @@ canvas.addEventListener('pointermove', (e) => {
     moved += 10;
     return;
   }
-  if (!dragging) return;
+  if (!dragging || pinched) return;
   const dx = e.clientX - last.x, dy = e.clientY - last.y;
   moved += Math.abs(dx) + Math.abs(dy);
   cam.x -= dx / cam.zoom; cam.y -= dy / cam.zoom;
@@ -114,8 +120,8 @@ canvas.addEventListener('pointermove', (e) => {
 const endPointer = (e: PointerEvent) => {
   pointers.delete(e.pointerId);
   if (pointers.size < 2) pinchDist = 0;
-  if (dragging && moved < 6 && pointers.size === 0) pick(e.clientX, e.clientY);
-  if (pointers.size === 0) dragging = false;
+  if (dragging && moved < 6 && pointers.size === 0 && !pinched) pick(e.clientX, e.clientY);
+  if (pointers.size === 0) { dragging = false; pinched = false; }
 };
 canvas.addEventListener('pointerup', endPointer);
 canvas.addEventListener('pointercancel', endPointer);
@@ -127,7 +133,7 @@ canvas.addEventListener('wheel', (e) => {
 /** zoom keeping the point under the cursor (or between the fingers) in place */
 function zoomBy(f: number, sx = app.screen.width / 2, sy = app.screen.height / 2) {
   const z0 = cam.zoom;
-  const z1 = Math.max(0.18, Math.min(4, z0 * f));
+  const z1 = Math.max(0.18, Math.min(MAX_ZOOM, z0 * f));
   const W = app.screen.width, H = app.screen.height;
   if (follow === null) {
     const wx = cam.x + (sx - W / 2) / z0, wy = cam.y + (sy - H / 2) / z0;
@@ -136,7 +142,7 @@ function zoomBy(f: number, sx = app.screen.width / 2, sy = app.screen.height / 2
   }
   cam.zoom = cam.tz = z1;
 }
-$('#zoomIn').onclick = () => { cam.tz = Math.min(4, cam.tz * 1.4); };
+$('#zoomIn').onclick = () => { cam.tz = Math.min(MAX_ZOOM, cam.tz * 1.4); };
 $('#zoomOut').onclick = () => { cam.tz = Math.max(0.18, cam.tz / 1.4); };
 
 function pick(sx: number, sy: number) {
@@ -150,6 +156,8 @@ function pick(sx: number, sy: number) {
     }
   }
   if (best !== null) return showPerson(best);
+  const secret = r.pickSecret(wx, wy);
+  if (secret) return showSecret(secret);
   // a click on the map next to nobody closes the person card
   if (r.selectedId !== null) return closeCard();
   let bestBand: BandView | null = null, bb = 40;
@@ -185,6 +193,7 @@ function applyTime(t: TickMessage['time'], population: number) {
 function onSnapshot(m: SnapshotMessage) {
   bands = m.bands;
   people = m.people;
+  if (m.trees) r.setTrees(m.trees);
   r.setExplored(b64decode(m.explored));
   r.updateBands(bands, kids);
   r.updatePeople(people, bandColors(), 400);
@@ -198,6 +207,7 @@ function onTick(m: TickMessage) {
   bands = m.bands;
   people = m.people;
   if (m.explored) r.setExplored(b64decode(m.explored));
+  if (m.trees) r.updateTrees(m.trees);
   r.updateBands(bands, kids);
   r.updatePeople(people, bandColors(), m.time.tickMs);
   applyTime(m.time, m.population);
@@ -247,14 +257,41 @@ function evText(e: ChronicleEntry): string {
   return kids && e.kids ? e.kids : e.text;
 }
 
+/** the text with the names of people and bands as blue links */
+function linkedText(e: ChronicleEntry): string {
+  const text = evText(e);
+  const refs = [...(e.refs ?? [])].sort((a, b) => b.n.length - a.n.length);
+  // longest names first, never two links over the same letters
+  const taken: { a: number; z: number; r: (typeof refs)[number] }[] = [];
+  for (const r of refs) {
+    let from = 0;
+    for (;;) {
+      const a = text.indexOf(r.n, from);
+      if (a < 0) break;
+      const z = a + r.n.length;
+      if (!taken.some((t) => a < t.z && z > t.a)) taken.push({ a, z, r });
+      from = z;
+    }
+  }
+  taken.sort((x, y) => x.a - y.a);
+  let out = '', at = 0;
+  for (const t of taken) {
+    out += esc(text.slice(at, t.a));
+    const attr = t.r.p ? `data-person="${t.r.p}"` : `data-band="${t.r.b}"`;
+    out += `<a href="#" class="ref" ${attr}>${esc(text.slice(t.a, t.z))}</a>`;
+    at = t.z;
+  }
+  return out + esc(text.slice(at));
+}
+
 function eventHtml(e: ChronicleEntry): string {
   const icon: Record<string, string> = {
     discovery: '💡', rediscovery: '🔁', settle: '🏘️', colony: '🏘️', split: '🚶', death: '🕯️', twins: '👶', hunt: '🦣',
-    winter: '❄️', drought: '☀️', extinct: '🌑', lost: '📜', meet: '🤝', learn: '📚', era: '⭐', milestone: '👥', genesis: '🌅', merge: '🔗', marriage: '💞', end: '🌑',
+    winter: '❄️', secret: '✨', drought: '☀️', extinct: '🌑', lost: '📜', meet: '🤝', learn: '📚', era: '⭐', milestone: '👥', genesis: '🌅', merge: '🔗', marriage: '💞', end: '🌑',
   };
-  return `<li class="ev imp${e.importance}" data-person="${e.personId ?? ''}" data-band="${e.bandId ?? ''}">
+  return `<li class="ev imp${e.importance}">
     <span class="ev-icon">${icon[e.kind] ?? '•'}</span>
-    <div><div class="ev-year">${formatYear(e.year)}</div><div class="ev-text">${esc(evText(e))}</div></div></li>`;
+    <div><div class="ev-year">${formatYear(e.year)}</div><div class="ev-text">${linkedText(e)}</div></div></li>`;
 }
 
 function addEvent(e: ChronicleEntry, live: boolean) {
@@ -281,7 +318,11 @@ const feedFilter = (e: ChronicleEntry) => !onlyBig || e.importance >= 2;
 function toast(e: ChronicleEntry) {
   const t = document.createElement('div');
   t.className = `toast imp${e.importance}`;
-  t.innerHTML = `<div class="ev-year">${formatYear(e.year)}</div>${esc(evText(e))}`;
+  t.innerHTML = `<div class="ev-year">${formatYear(e.year)}</div>${linkedText(e)}`;
+  t.onclick = (ev) => {
+    const el = (ev.target as HTMLElement).closest<HTMLElement>('[data-person],[data-band]');
+    if (el) { ev.preventDefault(); openRef(el); }
+  };
   $('#toasts').prepend(t);
   setTimeout(() => t.classList.add('out'), 9000);
   setTimeout(() => t.remove(), 10000);
@@ -291,6 +332,8 @@ function toast(e: ChronicleEntry) {
 // ---------- side panel ----------
 
 let activeTab = store('letopis.tab', 'chronicle');
+/** how many discoveries the game knows so far (stone age and the first farmers) */
+const ALL_TECHS = 18;
 
 function renderSide() {
   document.querySelectorAll<HTMLButtonElement>('.tab').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === activeTab)));
@@ -301,6 +344,15 @@ function renderSide() {
       <button id="more" class="btn ghost">По-стари записи</button>`;
     $('#onlyBig').onchange = (e) => { onlyBig = (e.target as HTMLInputElement).checked; save('letopis.onlyBig', onlyBig); renderSide(); };
     $('#more').onclick = loadOlder;
+  } else if (activeTab === 'discoveries') {
+    body.innerHTML = '<p class="muted">Зареждам...</p>';
+    api<Discovery[]>('/api/discoveries').then((ds) => {
+      if (activeTab !== 'discoveries') return;
+      const known = new Set(ds.map((d) => d.tech));
+      body.innerHTML = `<p class="muted">Всяко знание, открито за първи път в този свят: от кого и кога.</p>
+        <ul class="discoveries">${ds.map((d) => `<li><b>${esc(d.name)}</b> - открито от ${d.pid ? `<a href="#" class="ref" data-person="${d.pid}">${esc(d.who)}</a>` : esc(d.who)}${d.band ? ` <span class="muted">(${esc(d.band)})</span>` : ''} през <span class="yr">${formatYear(d.year)}</span></li>`).join('')}
+        ${ALL_TECHS > known.size ? `<li class="todo">Още ${ALL_TECHS - known.size} знания чакат да бъдат открити в тази епоха.</li>` : ''}</ul>`;
+    });
   } else if (activeTab === 'bands') {
     const sorted = [...bands].sort((a, b) => b.size - a.size);
     body.innerHTML = `<ul class="bands">${sorted.map((b) => `
@@ -317,6 +369,20 @@ function renderSide() {
     });
   } else if (activeTab === 'stats') {
     renderStats(body);
+  } else if (activeTab === 'secrets') {
+    api<{ found: SecretFind[] }>('/api/secrets').then(({ found }) => {
+      if (activeTab !== 'secrets') return;
+      const at = new Map(found.map((f) => [f.k, f.at]));
+      const when = (ms: number) => {
+        if (!ms) return '';
+        const d = new Date(ms), two = (n: number) => String(n).padStart(2, '0');
+        return ` - Открит на ${two(d.getDate())}.${two(d.getMonth() + 1)}.${d.getFullYear()} в ${two(d.getHours())}:${two(d.getMinutes())}ч.`;
+      };
+      body.innerHTML = `<p class="muted">Намерени ${found.length} от ${SECRET_COUNT}. Тайните са мънички и се крият из проучената земя. Зимата ги затрупва със сняг.</p>
+        <ol class="secrets">${SECRET_HEROES.map((h, k) => at.has(k)
+          ? `<li class="found"><b>${esc(h)}</b>${when(at.get(k)!)}</li>`
+          : '<li>Намери ме</li>').join('')}</ol>`;
+    });
   }
 }
 
@@ -372,13 +438,41 @@ document.querySelectorAll<HTMLButtonElement>('.tab').forEach((b) => {
 $('#sideBody').addEventListener('click', (e) => {
   const el = (e.target as HTMLElement).closest<HTMLElement>('[data-person],[data-band]');
   if (!el) return;
+  e.preventDefault();
+  openRef(el);
+});
+
+/** a name was clicked: go there if it still lives, otherwise just tell about it */
+function openRef(el: HTMLElement) {
   const pid = Number(el.dataset.person), bid = Number(el.dataset.band);
   if (pid) showPerson(pid);
   else if (bid) {
     const b = bands.find((x) => x.id === bid);
     if (b) { stopTour(); lookAt(b.x, b.y, 1.6); showBand(b); }
+    else showGoneBand(bid);
   }
-});
+}
+
+/** "Основан от X, дошъл от Y" for a band card; the first bands came with the world */
+function originHtml(founder?: { id: number; name: string } | null, from?: { id: number; name: string } | null): string {
+  if (!founder && !from) return '<div class="muted">Един от първите родове на света.</div>';
+  const who = founder ? `<a href="#" data-person="${founder.id}">${esc(founder.name)}</a>` : 'неизвестен';
+  const src = from ? ` · дошли от <a href="#" data-band="${from.id}">${esc(from.name)}</a>` : '';
+  return `<div>Основан от ${who}${src}</div>`;
+}
+
+async function showGoneBand(id: number) {
+  const r2 = await api<{ live?: BandView; gone?: GoneBand }>(`/api/band/${id}`).catch(() => null);
+  if (r2?.live) { const b = r2.live; stopTour(); lookAt(b.x, b.y, 1.6); showBand(b); return; }
+  const g = r2?.gone;
+  if (!g) { openCard('<h2>Изгубен в мъглата на времето</h2><p class="muted">Летописът не помни повече за този род.</p>'); return; }
+  openCard(`
+    <h2><span class="dot" style="background:#${g.color.toString(16).padStart(6, '0')}"></span> ${esc(g.settlementName ?? g.name)}</h2>
+    <div class="muted">${g.settlementName ? `${esc(g.name)} · ` : ''}${formatYear(g.foundedYear)} – ${formatYear(g.endedYear)}</div>
+    ${originHtml(g.founder, g.from)}
+    <p>${g.end === 'extinct' ? 'Този род угасна. Няма останали хора от него.' : `Последните от този род се присъединиха към ${esc(g.end.replace(/^Родът/, 'рода').replace(/^Селото/, 'селото'))}.`}</p>
+    <h3>Какво знаеха</h3><div class="techs">${g.techs.map((t) => `<span class="pill">${esc(t)}</span>`).join('') || '<span class="muted">Нищо</span>'}</div>`);
+}
 
 // ---------- cards ----------
 
@@ -397,11 +491,11 @@ function closeCard() {
 $('#cardClose').onclick = closeCard;
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeCard(); });
 $('#card').addEventListener('click', (e) => {
-  const el = (e.target as HTMLElement).closest<HTMLElement>('[data-person],[data-tree]');
+  const el = (e.target as HTMLElement).closest<HTMLElement>('[data-person],[data-tree],[data-band]');
   if (!el) return;
   e.preventDefault();
   if (el.dataset.tree) showTree(Number(el.dataset.tree));
-  else if (el.dataset.person) showPerson(Number(el.dataset.person));
+  else openRef(el);
 });
 
 async function showPerson(id: number) {
@@ -418,6 +512,7 @@ async function showPerson(id: number) {
     <div class="person-head"><div class="avatar ${d.sex ? 'f' : 'm'}">${d.sex ? '👩' : '👨'}</div>
       <div><h2>${esc(d.name)}</h2>
       <div class="muted">${alive ? `<span id="pAge">${d.age}</span> години · ${esc(d.bandName)}` : `${formatYear(d.bornYear)} – ${formatYear(d.diedYear!)}, ${esc(d.cause ?? '')} на ${d.age}`}</div>
+      ${d.title ? `<div class="title">${esc(d.title)}</div>` : ''}
       ${alive && d.task ? `<div>Сега ${esc(d.task)}</div>` : ''}<div class="muted">${d.generation}-о поколение</div></div></div>
     <div class="genes">${genes}</div>
     <dl class="family">
@@ -457,6 +552,18 @@ function followStep() {
   cardPos.x += (left - cardPos.x) * 0.25;
   cardPos.y += (top - cardPos.y) * 0.25;
   card.style.transform = `translate3d(${cardPos.x.toFixed(1)}px, ${cardPos.y.toFixed(1)}px, 0)`;
+}
+
+async function showSecret(spot: SecretSpot) {
+  const kind = SECRET_KINDS[spot.kind];
+  const res = await fetch(`/api/secret/${spot.k}`, { method: 'POST' }).then((x) => x.json()).catch(() => null) as { first: boolean; found: number } | null;
+  r.markSecret(spot.k);
+  if (activeTab === 'secrets') renderSide();
+  openCard(`
+    <h2>✨ №${spot.k + 1} ${esc(SECRET_HEROES[spot.k])}</h2>
+    <div class="muted">${esc(kind.name[0].toUpperCase() + kind.name.slice(1))}</div>
+    <p>${esc(kind.text)}</p>
+    <div class="muted">${res ? `${res.first ? 'Ти си първият, който я откри!' : 'Някой вече я е открил преди теб.'} Намерени тайни: ${res.found} от ${SECRET_COUNT}.` : ''}</div>`);
 }
 
 /** family tree: three generations of ancestors, and the straight lines back to the first people */
@@ -501,6 +608,8 @@ function showBand(b: BandView) {
   openCard(`
     <h2><span class="dot" style="background:#${b.color.toString(16).padStart(6, '0')}"></span> ${esc(b.settlementName ?? b.name)}</h2>
     <div class="muted">${b.settlementName ? `${esc(b.name)} · ` : ''}от ${formatYear(b.founded)} · ${b.settled ? 'уседнали' : 'скитат по земята'}</div>
+    ${b.chief ? `<div>${esc(b.chief.title)}: <a href="#" data-person="${b.chief.id}">${esc(b.chief.name)}</a></div>` : ''}
+    ${originHtml(b.founder, b.from)}
     <div class="kpis"><div><span>Хора</span><b>${b.size}</b></div><div><span>Деца</span><b>${kidsN}</b></div><div><span>Запаси</span><b>${b.food}</b></div></div>
     <h3>Какво правят сега</h3><ul class="deeds">${[...tasks].sort((a, c) => c[1] - a[1]).map(([t, n]) => `<li>${n} ${esc(t)}</li>`).join('')}</ul>
     <h3>Какво знаят</h3><div class="techs">${b.techs.map((t) => `<span class="pill">${esc(t)}</span>`).join('') || '<span class="muted">Още нищо</span>'}</div>
@@ -572,7 +681,11 @@ $('#nightBtn').onclick = () => {
   save('letopis.night', night);
   $('#nightBtn').setAttribute('aria-pressed', String(night));
 };
-$('#sideToggle').onclick = () => document.body.classList.toggle('side-hidden');
+// the panel can hide; a small tab at the edge brings it back, and the choice is remembered
+const toggleSide = () => save('letopis.sideHidden', document.body.classList.toggle('side-hidden'));
+if (store('letopis.sideHidden', false)) document.body.classList.add('side-hidden');
+$('#sideToggle').onclick = toggleSide;
+$('#sideHandle').onclick = toggleSide;
 
 // ---------- frame loop ----------
 
@@ -586,6 +699,10 @@ app.ticker.add((t) => {
   cam.zoom += (cam.tz - cam.zoom) * k;
   applyCam();
   r.frame(t.deltaTime, Date.now());
+  // nothing moves when zoomed far out: while the camera rests too, draw a few times a second only
+  const resting = Math.abs(cam.tx - cam.x) + Math.abs(cam.ty - cam.y) < 0.5 && Math.abs(cam.tz - cam.zoom) < 0.002;
+  const fps = r.still && resting && !tour && !dragging && pointers.size === 0 ? 12 : 0;
+  if (app.ticker.maxFPS !== fps) app.ticker.maxFPS = fps;
   const left = Math.max(0, tickMs - (now - lastTickAt));
   ($('#tickBar') as HTMLElement).style.width = `${100 - (left / tickMs) * 100}%`;
 });
@@ -596,6 +713,7 @@ const info = await api<WorldInfo>('/api/world');
 worldId = info.worldId;
 const seenBefore = store<number>(`letopis.seen.${worldId}`, 0);
 r.setWorld(info);
+api<{ found: SecretFind[] }>('/api/secrets').then((s) => r.setSecrets(s.found.map((f) => f.k))).catch(() => r.setSecrets([]));
 const snap = await api<SnapshotMessage>('/api/snapshot');
 onSnapshot(snap);
 const recent = await api<ChronicleEntry[]>('/api/chronicle?limit=120');

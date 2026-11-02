@@ -180,6 +180,65 @@ group('ostrich', 'Q31 Q32', 'animal', 9, 56)
 group('croc', 'Q33 Q34', 'animal', 14, 80)
 group('monkey', 'Q41 Q42', 'animal', 6, 40)
 group('cat', 'Q43 Q44', 'animal', 5, 32)
+# secrets (easter eggs): drawn tiny on purpose (10% bigger since ver. 1.06), frame 0 and 1 alternate
+group('sec_ufo', 'R11 R12', 'prop', 6.6, 48)
+group('sec_meteor', 'R13 R14', 'prop', 6.6, 48)
+group('sec_eggs', 'R21 R22', 'prop', 5.5, 40)
+group('sec_goldegg', 'R23 R24', 'prop', 5.5, 40)
+group('sec_robot', 'R31 R32', 'prop', 5.5, 40)
+group('sec_stag', 'R33 R34', 'prop', 6.6, 48)
+group('sec_dragon', 'R41 R42', 'prop', 6.6, 48)
+group('sec_portal', 'R43 R44', 'prop', 6.6, 48)
+# chiefs (sheets S-V, 8 frames each): A young/old, B young/old; their cream fur is kept as drawn (no band tint)
+for look, young, old in (('chiefA', 'S', 'T'), ('chiefB', 'U', 'V')):
+    for age, sheet in (('y', young), ('o', old)):
+        group(f'{look}_{age}_idle', ' '.join(f'{sheet}{r}{c}' for r in (1, 2) for c in (1, 2, 3, 4)), 'person', 11.5, 64)
+        group(f'{look}_{age}_walk', ' '.join(f'{sheet}{r}{c}' for r in (3, 4) for c in (1, 2, 3, 4)), 'person', 11.5, 64)
+# growing trees (sheets W-Z): columns are kinds, rows are stages 1-4 (sapling, young, grown, big).
+# Kind 'grow' keeps the sizes of the sheet: world units per source pixel instead of a fixed width.
+GROW_WPP = 0.1   # world units per sheet pixel: the big oak is about 27 wide, like the old trees
+GROW_TEX = 4.6   # texture pixels per world unit (same sharpness as the other trees)
+GROW_BOOST = {'Y4': 1.22}  # the conifer sheet drew its last row no bigger than the third
+for sheet, kinds in (('W', 'spruceS bareS autumn bare'), ('X', 'birch birchY fruit apple'),
+                     ('Y', 'spruceL spruceD pine pineU'), ('Z', 'oak oakL blossom oakOld')):
+    for c, kind in enumerate(kinds.split(), start=1):
+        group(f'g_{kind}', ' '.join(f'{sheet}{r}{c}' for r in (1, 2, 3, 4)), 'grow', GROW_WPP, 0)
+# sheets AA-AF (world units per sheet pixel; 'pose' = people, 'thing' = objects)
+def cells(sheet, rows):
+    return ' '.join(f'{sheet}{r}{c}' for r in rows for c in (1, 2, 3, 4))
+PEOPLE_WPP = 0.0525  # a standing adult in these sheets is about 220 px = 11.5 world units
+for k, kind in enumerate(('oak', 'birch', 'pine', 'old'), start=1):
+    group(f'stump_{kind}', f'AA1{k} AA2{k}', 'thing', 0.037, 0)  # 0 old, 1 fresh
+group('felled', 'AA31', 'thing', 0.045, 0)
+group('birchlog', 'AA32', 'thing', 0.04, 0)
+group('logs3', 'AA33', 'thing', 0.04, 0)
+group('woodstack', 'AA34', 'thing', 0.045, 0)
+group('branches', 'AA41', 'thing', 0.035, 0)
+group('chopblock', 'AA42', 'thing', 0.035, 0)
+group('brushwood', 'AA43', 'thing', 0.035, 0)
+group('staked', 'AA44', 'thing', 0.035, 0)
+group('chop', cells('AB', (1, 2)), 'pose', PEOPLE_WPP, 0)
+group('carry', cells('AB', (3, 4)), 'pose', PEOPLE_WPP, 0)
+group('sleepM', 'AC11 AC12', 'pose', PEOPLE_WPP, 0)
+group('sleepF', 'AC13 AC14', 'pose', PEOPLE_WPP, 0)
+group('sleepK', 'AC21 AC22', 'pose', PEOPLE_WPP, 0)
+group('sleepKK', 'AC23 AC24', 'pose', PEOPLE_WPP, 0)
+group('sitM', 'AC31 AC32', 'pose', PEOPLE_WPP, 0)
+group('sitF', 'AC33 AC34', 'pose', PEOPLE_WPP, 0)
+group('guard', 'AC41 AC42 AC43 AC44', 'pose', PEOPLE_WPP, 0)
+group('tell', cells('AD', (1, 2)), 'pose', PEOPLE_WPP, 0)
+group('listen', cells('AD', (3, 4)), 'pose', PEOPLE_WPP, 0)
+group('throw', cells('AE', (1,)), 'pose', PEOPLE_WPP, 0)
+group('pick', cells('AE', (2,)), 'pose', PEOPLE_WPP, 0)
+group('spearfish', cells('AE', (3,)), 'pose', PEOPLE_WPP, 0)
+group('knap', cells('AE', (4,)), 'pose', PEOPLE_WPP, 0)
+group('hutb', cells('AF', (1,)), 'thing', 0.07, 0)    # 0..3: stakes, wattle, roof frame, done
+group('houseb', cells('AF', (2,)), 'thing', 0.075, 0)  # 0..3: first bricks, walls, beams, done
+group('field', cells('AF', (3,)), 'tile', TW + 3, 128)  # 0..3: ploughed, sprouts, wheat, stubble
+group('goatpen', 'AF41', 'thing', 0.08, 0)
+group('quern2', 'AF42', 'thing', 0.05, 0)
+group('oven', 'AF43', 'thing', 0.055, 0)
+group('bricks', 'AF44', 'thing', 0.06, 0)
 # band symbols (white, tinted in game), same order as SYMBOLS in render.ts
 group('sym', 'J11 J12 J13 J14 J21 J22 J23 J24 J31 J32 J33 J34 J41 J42 J43 J44', 'symbol', 6, 64)
 
@@ -253,6 +312,8 @@ def split_cloth(img: Image.Image, head: float) -> tuple[Image.Image, Image.Image
 def main() -> int:
     items = []  # (name, image, ax, ay, s)
     for prefix, ids, kind, world, tex in GROUPS:
+        if not all(os.path.exists(os.path.join(CUT, f'{c}.png')) for c in ids):
+            continue  # sheet not made yet
         for k, cid in enumerate(ids):
             name = prefix if len(ids) == 1 else f'{prefix}{k}'
             src = Image.open(os.path.join(CUT, f'{cid}.png')).convert('RGBA')
@@ -262,6 +323,17 @@ def main() -> int:
                 h = tex
                 w = max(1, round(w0 * h / h0))
                 s = world / h
+            elif kind in ('pose', 'thing'):
+                # world units per sheet pixel: the sheet keeps its own sizes between cells
+                ww = w0 * world
+                w = max(1, round(ww * (5.6 if kind == 'pose' else 4.6)))
+                h = max(1, round(h0 * w / w0))
+                s = ww / w
+            elif kind == 'grow':
+                ww = w0 * world * GROW_BOOST.get(cid[:2], 1)
+                w = max(1, round(ww * GROW_TEX))
+                h = max(1, round(h0 * w / w0))
+                s = ww / w
             else:
                 w = tex
                 h = max(1, round(h0 * w / w0))
@@ -274,6 +346,8 @@ def main() -> int:
                 ay = 0.5
             elif kind == 'animal':
                 ay = 0.96
+            elif kind == 'pose':
+                ay = 0.95
             else:
                 # foot of a prop: the middle of its grass patch, about 8% of the width above the bottom
                 ay = max(0.5, 1 - 0.08 * w0 / h0)
@@ -286,41 +360,53 @@ def main() -> int:
                 items.append((name + '_t', top_only(img, ay * h), 0.5, ay, s))
                 continue
             if kind in ('person', 'cloth'):
-                base, cloth = split_cloth(img, head=0.48 if cid == 'I13' else 0.3 if kind == 'person' else 0)
+                base, cloth = split_cloth(img, head=0.48 if cid == 'I13' else 1.0 if (cid[0] in 'STUV' and cid[1].isdigit()) else 0.3 if kind == 'person' else 0)
                 items.append((name, base, 0.5, ay, s))
                 items.append((name + '_c', cloth, 0.5, ay, s))
             else:
                 items.append((name, img, 0.5, ay, s))
 
-    # shelf packing, tallest first
-    items.sort(key=lambda it: -it[1].size[1])
-    atlas = Image.new('RGBA', (ATLAS, ATLAS), (0, 0, 0, 0))
+    # shelf packing, tallest first; a new page (atlas1.png, ...) when one is full.
+    # The first page keeps the sheets it always had, so the order of GROUPS decides what goes where.
     frames = {}
-    x = y = PAD
-    shelf = 0
-    for name, img, ax, ay, s in items:
-        w, h = img.size
-        if x + w + PAD > ATLAS:
-            x = PAD
-            y += shelf + PAD
-            shelf = 0
-        if y + h + PAD > ATLAS:
-            print('atlas full', file=sys.stderr)
-            return 1
-        atlas.paste(img, (x, y))
-        frames[name] = {'x': x, 'y': y, 'w': w, 'h': h, 'ax': ax, 'ay': round(ay, 4), 's': round(s, 5)}
-        x += w + PAD
-        shelf = max(shelf, h)
-    used = y + shelf + PAD
+    pages = []
     os.makedirs(OUT, exist_ok=True)
-    # keep the height a power of two so mipmaps work everywhere
-    height = 1
-    while height < used:
-        height *= 2
-    atlas.crop((0, 0, ATLAS, height)).save(os.path.join(OUT, 'atlas.png'), optimize=True)
+    rest = items
+    while rest:
+        rest.sort(key=lambda it: -it[1].size[1])
+        atlas = Image.new('RGBA', (ATLAS, ATLAS), (0, 0, 0, 0))
+        x = y = PAD
+        shelf = 0
+        left = []
+        for name, img, ax, ay, s in rest:
+            w, h = img.size
+            if x + w + PAD > ATLAS:
+                x = PAD
+                y += shelf + PAD
+                shelf = 0
+            if y + h + PAD > ATLAS:
+                left.append((name, img, ax, ay, s))
+                continue
+            atlas.paste(img, (x, y))
+            frames[name] = {'x': x, 'y': y, 'w': w, 'h': h, 'ax': ax, 'ay': round(ay, 4), 's': round(s, 5), 'p': len(pages)}
+            x += w + PAD
+            shelf = max(shelf, h)
+        used = y + shelf + PAD
+        # keep the height a power of two so mipmaps work everywhere
+        height = 1
+        while height < used:
+            height *= 2
+        fname = 'atlas.png' if not pages else f'atlas{len(pages)}.png'
+        atlas.crop((0, 0, ATLAS, height)).save(os.path.join(OUT, fname), optimize=True)
+        pages.append({'file': fname, 'size': [ATLAS, height]})
+        print(f'page {fname}: {len(rest) - len(left)} frames, used {used} rows')
+        if len(left) == len(rest):
+            print('a sprite does not fit on an empty page', file=sys.stderr)
+            return 1
+        rest = left
     with open(os.path.join(OUT, 'atlas.json'), 'w', encoding='utf-8') as f:
-        json.dump({'size': [ATLAS, height], 'frames': dict(sorted(frames.items()))}, f, separators=(',', ':'))
-    print(f'{len(frames)} frames, atlas {ATLAS}x{height}, used {used} rows')
+        json.dump({'size': pages[0]['size'], 'pages': pages, 'frames': dict(sorted(frames.items()))}, f, separators=(',', ':'))
+    print(f'{len(frames)} frames on {len(pages)} pages')
     return 0
 
 

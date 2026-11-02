@@ -113,7 +113,7 @@ def main() -> int:
     for name in sorted(os.listdir(SHEETS)):
         if not name.endswith('.png'):
             continue
-        letter = name[0]
+        letter = name.split('-')[0]  # 'A-grass.png' -> A, 'AB-stumps.png' -> AB
         img = np.array(Image.open(os.path.join(SHEETS, name)).convert('RGBA'))
         if img[..., 3].min() == 255:
             img = key_magenta(img)

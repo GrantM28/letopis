@@ -45,10 +45,18 @@ body.kids { --fs: 18px; --side-w: 420px; }
 .stats b, .kpis b { font-size: 1.25em; font-variant-numeric: tabular-nums; }
 
 .side { position: fixed; top: 12px; right: 12px; bottom: 12px; width: var(--side-w); background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); backdrop-filter: blur(10px); display: flex; flex-direction: column; z-index: 5; transition: transform 0.25s; }
-body.side-hidden .side { transform: translateX(calc(100% + 24px)); }
+body.side-hidden .side { transform: translateX(calc(100% + 12px)); }
+/* the little tab on the panel's left edge: hides it, and stays at the screen edge to bring it back */
+.side-handle { position: absolute; left: -26px; top: 50%; transform: translateY(-50%); width: 26px; height: 64px; padding: 0; font: inherit; font-size: 20px; line-height: 1; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-right: 0; border-radius: 10px 0 0 10px; backdrop-filter: blur(10px); cursor: pointer; }
+.side-handle:hover { color: var(--accent); }
+body.side-hidden .side-handle span { display: inline-block; transform: scaleX(-1); }
 body.side-hidden .top { right: 12px; }
-.tabs { display: flex; border-bottom: 1px solid var(--line); }
-.tab { flex: 1; font: inherit; background: none; border: 0; color: var(--muted); padding: 12px 4px; cursor: pointer; border-bottom: 2px solid transparent; }
+.tabs { display: flex; flex-wrap: wrap; border-bottom: 1px solid var(--line); }
+.tab { flex: 1 0 auto; font: inherit; background: none; border: 0; color: var(--muted); padding: 10px 6px; font-size: 13px; white-space: nowrap; cursor: pointer; border-bottom: 2px solid transparent; }
+.discoveries { list-style: none; margin: 0; padding: 0; }
+.discoveries li { padding: 8px 2px; border-bottom: 1px solid var(--line); }
+.discoveries li.todo { color: var(--muted); }
+.discoveries .yr { color: var(--accent); }
 .tab[aria-selected='true'] { color: var(--text); border-bottom-color: var(--accent); }
 .side-body { overflow-y: auto; padding: 10px 14px; flex: 1; }
 .chk { display: flex; gap: 8px; align-items: center; color: var(--muted); margin: 4px 0 10px; }
@@ -78,6 +86,10 @@ h3 { font-family: var(--serif); font-weight: normal; color: var(--accent); margi
 #toasts { position: fixed; left: 50%; transform: translateX(-50%); bottom: 64px; width: min(560px, calc(100vw - var(--side-w) - 48px)); display: flex; flex-direction: column; gap: 8px; z-index: 6; pointer-events: none; margin-left: calc(var(--side-w) / -2); }
 .toast { background: var(--panel-solid); border: 1px solid var(--line); border-left: 3px solid var(--accent-2); border-radius: 10px; padding: 10px 14px; box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35); transition: opacity 0.8s, transform 0.8s; }
 .toast.imp3 { border-left-color: var(--imp3); font-family: var(--serif); }
+/* names in the chronicle that lead to a person or a band */
+a.ref { color: var(--accent-2); text-decoration: none; border-bottom: 1px dotted currentColor; cursor: pointer; }
+a.ref:hover { border-bottom-style: solid; }
+.toast a.ref { pointer-events: auto; }
 .toast.out { opacity: 0; transform: translateY(10px); }
 
 .card { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(520px, calc(100vw - 32px)); max-height: calc(100vh - 64px); overflow-y: auto; background: var(--panel-solid); border: 1px solid var(--line); border-radius: 16px; padding: 22px; z-index: 20; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5); }
@@ -107,6 +119,7 @@ h3 { font-family: var(--serif); font-weight: normal; color: var(--accent); margi
   .side { top: auto; height: 42vh; left: 0; right: 0; bottom: 0; width: auto; border-radius: 16px 16px 0 0; }
   .controls { bottom: calc(42vh + 12px); }
   body.side-hidden .side { transform: translateY(100%); }
+  .side-handle { display: none; } /* on a phone the Панел button does it */
   body.side-hidden .controls { bottom: 12px; }
   #toasts { margin-left: 0; width: calc(100vw - 32px); bottom: calc(42vh + 64px); }
   .brand { display: none; }
@@ -130,3 +143,12 @@ h3 { font-family: var(--serif); font-weight: normal; color: var(--accent); margi
 .tline { margin-top: 8px; }
 .tline summary { cursor: pointer; color: var(--accent-2); }
 .tline ol { max-height: 260px; overflow-y: auto; margin: 8px 0 0; padding-left: 28px; font-size: 14px; }
+
+/* secrets tab */
+.secrets { margin: 8px 0 0; padding-left: 34px; color: #6d7480; font-size: 14px; line-height: 1.75; }
+.secrets li::marker { color: #565d68; }
+.secrets li.found { color: var(--text); }
+.secrets li.found::marker { color: var(--accent); }
+.secrets li.found b { color: var(--accent-2); font-weight: 600; }
+
+.person-head .title { color: var(--accent); font-weight: 600; }

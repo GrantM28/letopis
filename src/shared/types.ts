@@ -41,7 +41,7 @@ export function isWater(b: number): boolean {
   return b === Biome.DeepWater || b === Biome.Water || b === Biome.Lake;
 }
 
-export type Task = 'rest' | 'gather' | 'hunt' | 'fish' | 'craft' | 'farm' | 'herd' | 'build' | 'child' | 'elder' | 'travel';
+export type Task = 'rest' | 'gather' | 'hunt' | 'fish' | 'craft' | 'farm' | 'herd' | 'build' | 'child' | 'elder' | 'travel' | 'lead' | 'scout' | 'chop';
 
 export const TASK_NAMES: Record<Task, string> = {
   rest: 'почива',
@@ -55,7 +55,13 @@ export const TASK_NAMES: Record<Task, string> = {
   child: 'играе',
   elder: 'разказва истории',
   travel: 'пътува',
+  lead: 'води рода',
+  scout: 'търси ново място за лагера',
+  chop: 'сече дърва',
 };
+
+/** the head of a band or a village, by era: always the oldest man */
+export const CHIEF_TITLES = ['Старейшина', 'Старейшина', 'Вожд', 'Княз', 'Кмет', 'Кмет', 'Кмет', 'Кмет', 'Кмет'];
 
 export interface WorldInfo {
   worldId: string;
@@ -67,6 +73,8 @@ export interface WorldInfo {
   biome: string;
   river: string;
   temp: string;
+  /** which tree can grow on each tile (index into TREE_KINDS, 0 none) */
+  treeKinds: string;
 }
 
 export interface TimeInfo {
@@ -90,6 +98,13 @@ export interface BandView {
   settled: boolean;
   settlementName: string | null;
   techs: string[];
+  /** tech ids, for the page to decide what it draws */
+  techIds: string[];
+  /** the head of the band: name and title */
+  chief: { id: number; name: string; title: string } | null;
+  /** who founded the band and which band they came from (null for the first bands) */
+  founder?: { id: number; name: string } | null;
+  from?: { id: number; name: string } | null;
   size: number;
   food: number;
   founded: number; // year
@@ -97,10 +112,10 @@ export interface BandView {
   dwelling: 'none' | 'tent' | 'hut' | 'house';
 }
 
-/** compact person: [id, x*10, y*10, taskIndex, bandId, ageYears, sex(0 m,1 f)] */
-export type PersonRow = [number, number, number, number, number, number, number];
+/** compact person: [id, x*10, y*10, taskIndex, bandId, ageYears, sex(0 m,1 f), chief(1) or not(0)] */
+export type PersonRow = [number, number, number, number, number, number, number, number];
 
-export const TASKS: Task[] = ['rest', 'gather', 'hunt', 'fish', 'craft', 'farm', 'herd', 'build', 'child', 'elder', 'travel'];
+export const TASKS: Task[] = ['rest', 'gather', 'hunt', 'fish', 'craft', 'farm', 'herd', 'build', 'child', 'elder', 'travel', 'lead', 'scout', 'chop'];
 
 export interface ChronicleEntry {
   id: number;
@@ -113,6 +128,25 @@ export interface ChronicleEntry {
   kids?: string;
   personId?: number;
   bandId?: number;
+  /** names in the text that lead somewhere: a person (p) or a band (b) */
+  refs?: ChronicleRef[];
+}
+
+export interface ChronicleRef { n: string; p?: number; b?: number }
+
+/** a band that is no more: what the chronicle still knows about it */
+export interface GoneBand {
+  id: number;
+  name: string;
+  settlementName: string | null;
+  color: number;
+  foundedYear: number;
+  endedYear: number;
+  /** 'extinct' or the name of the band it joined */
+  end: string;
+  techs: string[];
+  founder?: { id: number; name: string } | null;
+  from?: { id: number; name: string } | null;
 }
 
 export interface TickMessage {
@@ -122,6 +156,8 @@ export interface TickMessage {
   people: PersonRow[];
   events: ChronicleEntry[];
   explored?: string; // base64 bitset, only when changed
+  /** trees that grew or were cut: [tile, stage, tile, stage, ...] */
+  trees?: number[];
   population: number;
 }
 
@@ -131,6 +167,8 @@ export interface SnapshotMessage {
   bands: BandView[];
   people: PersonRow[];
   explored: string;
+  /** size of every tree, one byte per tile (0 none .. 4 big), base64 */
+  trees: string;
   population: number;
   totalBorn: number;
   totalDied: number;
@@ -153,6 +191,8 @@ export interface PersonDetail {
   children: { id: number; name: string; alive: boolean }[];
   deeds: string[];
   generation: number;
+  /** "Старейшина на Родът на ..." when the person leads a band */
+  title: string | null;
 }
 
 /** one person in the family tree */
@@ -195,3 +235,6 @@ export function b64decode(s: string): Uint8Array {
   for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
   return out;
 }
+
+/** a first discovery ever */
+export interface Discovery { tech: string; name: string; pid: number | null; who: string; band: string; year: number }
