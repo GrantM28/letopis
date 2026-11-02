@@ -10,7 +10,7 @@ Every new borrowed resource gets a row here in the same commit.
 
 | What | Source | Author | Rights |
 |---|---|---|---|
-| 38 sheets of 4×4 sprites in `art/sheets/` (A–L terrain, nature, settlements, people; M–Q animals; R secrets; S–V elders; W–Z growing trees; AA–AF stumps, work, night, storytellers, growing villages; AG–AL Bronze Age crafts, towns, artisans, travellers and roads), cut into `art/cut/` and packed into `public/sprites/atlas*.png` | Generated with ChatGPT image generation (OpenAI), November 2026, from the prompts in `art/PROMPTS.md` | leppermesiah, with ChatGPT | Under OpenAI's terms of use, the rights to generated output belong to the user who generated it. Used by the project with his permission. |
+| 38 sheets of 4×4 sprites in `art/sheets/` (A–L terrain, nature, settlements, people; M–Q animals; R secrets; S–V elders; W–Z growing trees; AA–AF stumps, work, night, storytellers, growing villages; AG–AL Bronze Age crafts, towns, artisans, travellers and roads), cut into `art/cut/` and packed into `public/sprites/atlas*.png` | Generated with ChatGPT image generation (OpenAI), November 2026 | leppermesiah, with ChatGPT | Under OpenAI's terms of use, the rights to generated output belong to the user who generated it. Used by the project with his permission. |
 | App icon: `public/icon-*.png`, `public/favicon-32.png`, `art/social-preview.png` | Generated with ChatGPT image generation (OpenAI), November 2026 | leppermesiah, with ChatGPT | As above |
 
 Notes:
