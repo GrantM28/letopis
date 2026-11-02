@@ -11,7 +11,9 @@ import { BandView, Biome, PersonRow, TASKS, WorldInfo, b64decode, isWater, RIVER
 
 export const TW = 32; // tile width
 export const TH = 16; // tile height
-export const ELEV = 5; // pixels per height level
+export const ELEV = 5;
+/** most people of one band drawn on the map */
+const PER_BAND = 36; // pixels per height level
 const CHUNK = 16;
 
 export function iso(x: number, y: number): { x: number; y: number } {
@@ -190,6 +192,7 @@ export class WorldRenderer {
   snowCool!: Container;
   people = new Map<number, PersonSprite>();
   selectedId: number | null = null;
+  lastPeople: { rows: PersonRow[]; bandColors: Map<number, number>; tickMs: number } | null = null;
   camps = new Map<number, CampSprite>();
   fauna = new Fauna(this);
   /** the 100 hidden secrets: tiny, half see-through, buried by snow in winter */
@@ -848,6 +851,11 @@ export class WorldRenderer {
   select(id: number | null) {
     if (this.selectedId !== null) this.people.get(this.selectedId)?.setSelected(false);
     this.selectedId = id;
+    // someone who was at home (not drawn) steps out
+    if (id !== null && !this.people.has(id) && this.lastPeople) {
+      const { rows, bandColors, tickMs } = this.lastPeople;
+      this.updatePeople(rows, bandColors, tickMs);
+    }
     if (id !== null) this.people.get(id)?.setSelected(true);
   }
 
@@ -875,9 +883,25 @@ export class WorldRenderer {
   }
 
   updatePeople(rows: PersonRow[], bandColors: Map<number, number>, tickMs: number) {
+    this.lastPeople = { rows, bandColors, tickMs };
     const seen = new Set<number>();
     const night = this.isNight();
-    for (const r0 of rows) {
+    // a big village shows at most PER_BAND people on the map (the chief, the chosen one and a steady sample):
+    // the rest are at home. Thousands of sprites less, and no crowd piled on the camp
+    const byBand = new Map<number, PersonRow[]>();
+    for (const r of rows) {
+      let l = byBand.get(r[4]);
+      if (!l) byBand.set(r[4], (l = []));
+      l.push(r);
+    }
+    const shown: PersonRow[] = [];
+    for (const l of byBand.values()) {
+      if (l.length <= PER_BAND) { shown.push(...l); continue; }
+      const rank = (r: PersonRow) => (r[7] === 1 || r[0] === this.selectedId ? -1 : hash(r[0], 99));
+      l.sort((a, b) => rank(a) - rank(b));
+      shown.push(...l.slice(0, PER_BAND));
+    }
+    for (const r0 of shown) {
       const r = night ? this.nightRow(r0) : r0;
       seen.add(r[0]);
       let p = this.people.get(r[0]);
@@ -1061,8 +1085,17 @@ export class WorldRenderer {
       this.secretFrame(nowMs, zoom, winter);
       return;
     }
-    for (const p of this.people.values()) p.frame(nowMs);
-    for (const c of this.camps.values()) c.frame(nowMs, zoom);
+    const mx = 80, x0 = vx - mx, x1 = vx + vw + mx, y0 = vy - mx, y1 = vy + vh + mx * 2;
+    for (const p of this.people.values()) {
+      const on = (p.to.x > x0 && p.to.x < x1 && p.to.y > y0 && p.to.y < y1) || (p.from.x > x0 && p.from.x < x1 && p.from.y > y0 && p.from.y < y1);
+      p.c.visible = on;
+      if (on) p.frame(nowMs);
+    }
+    for (const c of this.camps.values()) {
+      const on = c.pos.x > x0 - 60 && c.pos.x < x1 + 60 && c.pos.y > y0 - 60 && c.pos.y < y1 + 60;
+      c.c.visible = on;
+      if (on) c.frame(nowMs, zoom);
+    }
     this.fauna.frame(performance.now(), Math.min(0.1, dt / 60));
     this.secretFrame(nowMs, zoom, winter);
   }
