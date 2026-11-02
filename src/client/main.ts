@@ -82,6 +82,8 @@ function lookAt(x: number, y: number, zoom?: number, instant = false) {
 let dragging = false, moved = 0, last = { x: 0, y: 0 };
 const pointers = new Map<number, { x: number; y: number }>();
 let pinchDist = 0;
+/** after a pinch the map stays put until every finger is up: the last finger must not drag it */
+let pinched = false;
 const canvas = app.canvas;
 canvas.addEventListener('pointerdown', (e) => {
   pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -90,6 +92,7 @@ canvas.addEventListener('pointerdown', (e) => {
   if (pointers.size === 2) {
     const [a, b] = [...pointers.values()];
     pinchDist = Math.hypot(a.x - b.x, a.y - b.y);
+    pinched = true;
   }
 });
 canvas.addEventListener('pointermove', (e) => {
@@ -104,7 +107,7 @@ canvas.addEventListener('pointermove', (e) => {
     moved += 10;
     return;
   }
-  if (!dragging) return;
+  if (!dragging || pinched) return;
   const dx = e.clientX - last.x, dy = e.clientY - last.y;
   moved += Math.abs(dx) + Math.abs(dy);
   cam.x -= dx / cam.zoom; cam.y -= dy / cam.zoom;
@@ -115,8 +118,8 @@ canvas.addEventListener('pointermove', (e) => {
 const endPointer = (e: PointerEvent) => {
   pointers.delete(e.pointerId);
   if (pointers.size < 2) pinchDist = 0;
-  if (dragging && moved < 6 && pointers.size === 0) pick(e.clientX, e.clientY);
-  if (pointers.size === 0) dragging = false;
+  if (dragging && moved < 6 && pointers.size === 0 && !pinched) pick(e.clientX, e.clientY);
+  if (pointers.size === 0) { dragging = false; pinched = false; }
 };
 canvas.addEventListener('pointerup', endPointer);
 canvas.addEventListener('pointercancel', endPointer);
