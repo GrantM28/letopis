@@ -74,7 +74,7 @@ npm run build   # production build into dist/
 
 ### Graphics
 
-The sprites are generated from the prompts in [art/PROMPTS.md](art/PROMPTS.md); the sheets live in `art/sheets/`.
+The sprite sheets live in `art/sheets/`.
 After changing or adding a sheet (needs Python, Pillow and NumPy):
 
 ```sh
