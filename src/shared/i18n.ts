@@ -130,6 +130,15 @@ const TECH_BG: Record<string, string> = {
   'Опитомено куче': 'dog', 'Мелене на зърно': 'grinding', Земеделие: 'agriculture', Керамика: 'pottery', Скотовъдство: 'herding',
   Тъкане: 'weaving', 'Глинени къщи': 'mudbrick', 'Лодка от дънер': 'boats',
 };
+/** every discovery the game knows, in the order history found them: [id, Bulgarian name, era] */
+export const TECH_LIST: [string, string, number][] = [
+  ['fire', 'Огън', 0], ['stone_tools', 'Каменни сечива', 0], ['burial', 'Погребални обреди', 0], ['spear', 'Копие', 0],
+  ['herb_lore', 'Познание за билките', 0], ['clothing', 'Облекло от кожи', 0], ['cave_art', 'Скални рисунки', 0], ['shelter', 'Шатри', 0],
+  ['fishing', 'Риболов', 0], ['dog', 'Опитомено куче', 0], ['bow', 'Лък и стрели', 0], ['boats', 'Лодка от дънер', 1],
+  ['grinding', 'Мелене на зърно', 1], ['pottery', 'Керамика', 1], ['herding', 'Скотовъдство', 1], ['agriculture', 'Земеделие', 1],
+  ['weaving', 'Тъкане', 1], ['mudbrick', 'Глинени къщи', 1],
+];
+
 /** a tech by its Bulgarian name (what the server sends) */
 export function techEn(bg: string): string {
   const id = TECH_BG[bg];
@@ -137,9 +146,9 @@ export function techEn(bg: string): string {
 }
 
 export const ERAS_EN = ['Stone Age', 'New Stone Age', 'Bronze Age', 'Iron Age', 'Middle Ages', 'Early Modern Age', 'Industrial Age', 'Information Age', 'Space Age'];
-const ERA_BG = ['Каменна епоха', 'Новокаменна епоха', 'Бронзова епоха', 'Желязна епоха', 'Средновековие', 'Нова епоха', 'Индустриална епоха', 'Информационна епоха', 'Космическа епоха'];
+export const ERAS_BG = ['Каменна епоха', 'Новокаменна епоха', 'Бронзова епоха', 'Желязна епоха', 'Средновековие', 'Нова епоха', 'Индустриална епоха', 'Информационна епоха', 'Космическа епоха'];
 export function eraEn(bg: string): string {
-  const i = ERA_BG.indexOf(bg);
+  const i = ERAS_BG.indexOf(bg);
   return i < 0 ? bg : ERAS_EN[i];
 }
 

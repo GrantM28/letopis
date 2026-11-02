@@ -4,6 +4,7 @@ import {
   BandView, ChronicleEntry, Discovery, FamilyTree, GoneBand, TreeNode, PersonDetail, PersonRow, SnapshotMessage, TASKS, TASK_NAMES, TickMessage, WorldInfo, b64decode,
 } from '../shared/types';
 import { SECRET_COUNT, SecretFind, SecretSpot } from '../shared/secrets';
+import { ERAS_BG, ERAS_EN, TECH_LIST } from '../shared/i18n';
 import {
   B, BL, CAUSE, CHIEF, DEED, EN, ERA, GENE, HERO, P, SECRET_KIND, T, TASK, TECH, TECH_ID, TITLE, VILLAGE, fmtYear, monthName, num, refName, setLang, translatePage,
 } from './lang';
@@ -340,8 +341,6 @@ function toast(e: ChronicleEntry) {
 // ---------- side panel ----------
 
 let activeTab = store('letopis.tab', 'chronicle');
-/** how many discoveries the game knows so far (stone age and the first farmers) */
-const ALL_TECHS = 18;
 
 function renderSide() {
   document.querySelectorAll<HTMLButtonElement>('.tab').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === activeTab)));
@@ -357,9 +356,14 @@ function renderSide() {
     api<Discovery[]>('/api/discoveries').then((ds) => {
       if (activeTab !== 'discoveries') return;
       const known = new Set(ds.map((d) => d.tech));
-      body.innerHTML = `<p class="muted">${T('Всяко знание, открито за първи път в този свят: от кого и кога.', 'Every piece of knowledge found for the first time in this world: by whom and when.')}</p>
-        <ul class="discoveries">${ds.map((d) => `<li><b>${esc(TECH_ID(d.tech, d.name))}</b> - ${T('открито от', 'discovered by')} ${d.pid ? `<a href="#" class="ref" data-person="${d.pid}">${esc(P(d.who))}</a>` : esc(P(d.who))}${d.band ? ` <span class="muted">(${esc(BL(d.band))})</span>` : ''} ${T('през', 'in')} <span class="yr">${fmtYear(d.year)}</span></li>`).join('')}
-        ${ALL_TECHS > known.size ? `<li class="todo">${T(`Още ${ALL_TECHS - known.size} знания чакат да бъдат открити в тази епоха.`, `${ALL_TECHS - known.size} more discoveries are waiting to be made in this age.`)}</li>` : ''}</ul>`;
+      const done = (d: Discovery) => `<li><b>${esc(TECH_ID(d.tech, d.name))}</b> - ${T('открито от', 'discovered by')} ${d.pid ? `<a href="#" class="ref" data-person="${d.pid}">${esc(P(d.who))}</a>` : esc(P(d.who))}${d.band ? ` <span class="muted">(${esc(BL(d.band.replace(/^рода/, 'Родът').replace(/^селото/, 'Селото')))})</span>` : ''} ${T('през', 'in')} <span class="yr">${fmtYear(d.year)}</span></li>`;
+      // still to come: greyed out, in the order history found them, each age under its name
+      const todo = TECH_LIST.filter(([id]) => !known.has(id));
+      const eras = [...new Set(todo.map(([, , e]) => e))];
+      body.innerHTML = `<p class="muted">${T(`Открити ${known.size} от ${TECH_LIST.length} знания. Всяко е открито за първи път от някого в този свят.`, `${known.size} of ${TECH_LIST.length} discoveries made. Each one was first found by someone in this world.`)}</p>
+        <ul class="discoveries">${ds.map(done).join('')}</ul>
+        ${eras.map((e) => `<h3 class="todo-era">${esc(EN ? ERAS_EN[e] : ERAS_BG[e])}</h3><ul class="discoveries">${todo.filter(([, , x]) => x === e)
+          .map(([id, bg]) => `<li class="todo"><b>${esc(TECH_ID(id, bg))}</b> - ${T('още не е открито', 'not discovered yet')}</li>`).join('')}</ul>`).join('')}`;
     });
   } else if (activeTab === 'bands') {
     const sorted = [...bands].sort((a, b) => b.size - a.size);
