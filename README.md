@@ -4,6 +4,8 @@
 
 <p align="center"><i>An idle civilization that lives on its own server. You just watch it grow.</i></p>
 
+<p align="center"><img src="art/screenshot.png" alt="A Stone Age world in Letopis" width="800"></p>
+
 Letopis (Bulgarian for *chronicle*) is a self-hosted idle simulation. A few families start in the Stone Age
 and, with nobody pressing a button, discover fire, tools, farming and everything after. Open the page whenever
 you like and see how far they got. The whole game runs in the browser; the world keeps living on the server
@@ -40,7 +42,7 @@ Then open `http://<host>:2222/`.
 
 ### Unraid
 
-Docker → Add Container → Template, and use [`unraid/letopis.xml`](unraid/letopis.xml), or fill in by hand:
+Docker → Add Container → Template, and use [`templates/letopis.xml`](templates/letopis.xml), or fill in by hand:
 
 - Repository: `ghcr.io/leppermesiah/letopis:latest`
 - Port: `2222` → `2222`
@@ -98,3 +100,7 @@ The finished atlas is in git, so Python is not needed to build the game.
 ## Credits
 
 Everything taken from outside, with its author and license, is listed in [CREDITS.md](CREDITS.md).
+
+## License
+
+[MIT](LICENSE). The third-party libraries keep their own licenses, listed in [CREDITS.md](CREDITS.md).
