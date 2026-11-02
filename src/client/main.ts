@@ -65,6 +65,7 @@ const cam = { x: 0, y: 0, zoom: 1, tx: 0, ty: 0, tz: 1 };
 /** person the camera follows; the card stays beside the selected person */
 let follow: number | null = null;
 let cardPos: { x: number; y: number } | null = null;
+let cardSide: 'left' | 'right' = 'left';
 function applyCam() {
   r.world.scale.set(cam.zoom);
   r.world.position.set(app.screen.width / 2 - cam.x * cam.zoom, app.screen.height / 2 - cam.y * cam.zoom);
@@ -149,6 +150,8 @@ function pick(sx: number, sy: number) {
     }
   }
   if (best !== null) return showPerson(best);
+  // a click on the map next to nobody closes the person card
+  if (r.selectedId !== null) return closeCard();
   let bestBand: BandView | null = null, bb = 40;
   for (const b of bands) {
     const p = r.tileTop(b.x, b.y);
@@ -156,6 +159,7 @@ function pick(sx: number, sy: number) {
     if (d < bb) { bb = d; bestBand = b; }
   }
   if (bestBand) showBand(bestBand);
+  else closeCard();
 }
 
 // ---------- network ----------
@@ -197,6 +201,12 @@ function onTick(m: TickMessage) {
   r.updatePeople(people, bandColors(), m.time.tickMs);
   applyTime(m.time, m.population);
   for (const e of m.events) addEvent(e, true);
+  // the open card keeps the age current while the years pass
+  const ageEl = document.getElementById('pAge');
+  if (ageEl && r.selectedId !== null) {
+    const row = people.find((p) => p[0] === r.selectedId);
+    if (row) ageEl.textContent = String(row[5]);
+  }
   if (activeTab === 'bands' || activeTab === 'stats') renderSide();
 }
 
@@ -208,12 +218,11 @@ async function checkVersion() {
   } catch { /* offline: try again later */ }
 }
 setInterval(() => void checkVersion(), 60_000);
-// when this version was built, so it is easy to see that an update arrived
+// the version, so it is easy to see that an update arrived; the tooltip says when it was built
 {
+  $('#build').textContent = `ver. ${__VERSION__}`;
   const t = new Date(parseInt(__BUILD__, 36));
-  if (!Number.isNaN(t.getTime())) {
-    $('#build').textContent = `версия от ${t.toLocaleString('bg-BG', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}`;
-  }
+  if (!Number.isNaN(t.getTime())) $('#build').title = `от ${t.toLocaleString('bg-BG')}`;
 }
 
 function connect() {
@@ -402,7 +411,7 @@ async function showPerson(id: number) {
   openCard(`
     <div class="person-head"><div class="avatar ${d.sex ? 'f' : 'm'}">${d.sex ? '👩' : '👨'}</div>
       <div><h2>${esc(d.name)}</h2>
-      <div class="muted">${alive ? `${d.age} години · ${esc(d.bandName)}` : `${formatYear(d.bornYear)} – ${formatYear(d.diedYear!)}, ${esc(d.cause ?? '')} на ${d.age}`}</div>
+      <div class="muted">${alive ? `<span id="pAge">${d.age}</span> години · ${esc(d.bandName)}` : `${formatYear(d.bornYear)} – ${formatYear(d.diedYear!)}, ${esc(d.cause ?? '')} на ${d.age}`}</div>
       ${alive && d.task ? `<div>Сега ${esc(d.task)}</div>` : ''}<div class="muted">${d.generation}-о поколение</div></div></div>
     <div class="genes">${genes}</div>
     <dl class="family">
@@ -420,27 +429,27 @@ function followStep() {
   if (id === null) return;
   const p = r.people.get(id);
   if (!p) { r.select(null); follow = null; $('#card').classList.remove('beside'); ($('#card') as HTMLElement).style.cssText = ''; return; }
-  // follow where the person is heading, not every little step or hop, so nothing shakes
-  if (follow === id) { cam.tx = p.to.x; cam.ty = p.to.y - 6; }
+  // follow the smooth walking line, never the hops and the idle wiggle, so nothing shakes
+  if (follow === id) { cam.tx = p.pos.x; cam.ty = p.pos.y - 6; }
   const card = $('#card') as HTMLElement;
   if (card.hidden || !card.classList.contains('beside')) { cardPos = null; return; }
-  const ax = follow === id ? cam.x : p.to.x, ay = follow === id ? cam.y : p.to.y - 6;
+  // while the camera follows, the person stays in the middle, so the card holds still beside them
+  const ax = follow === id ? cam.x : p.pos.x, ay = follow === id ? cam.y : p.pos.y - 6;
   const sx = r.world.x + ax * cam.zoom, sy = r.world.y + ay * cam.zoom;
   const w = card.offsetWidth, h = card.offsetHeight;
   const W = app.screen.width, H = app.screen.height;
   const gap = 28 + 8 * cam.zoom;
   const side = document.body.classList.contains('side-hidden') ? 0 : ($('.side') as HTMLElement).offsetWidth + 16;
-  let left = sx - gap - w;
-  if (left < 12) left = Math.min(sx + gap, W - side - w - 12);
+  // stay on the same side while it fits, so the card does not swap back and forth
+  const leftFits = sx - gap - w >= 12, rightFits = sx + gap + w <= W - side - 12;
+  if (cardSide === 'left' ? !leftFits && rightFits : !rightFits && leftFits) cardSide = cardSide === 'left' ? 'right' : 'left';
+  const left = cardSide === 'left' ? Math.max(12, sx - gap - w) : Math.min(sx + gap, W - side - w - 12);
   const top = Math.max(12, Math.min(H - h - 12, sy - h / 2));
-  // glide to the new place and ignore small changes
+  // move with the person; a soft catch-up only smooths a switch of side
   if (!cardPos) cardPos = { x: left, y: top };
-  else if (Math.abs(left - cardPos.x) > 24 || Math.abs(top - cardPos.y) > 24) {
-    cardPos.x += (left - cardPos.x) * 0.12;
-    cardPos.y += (top - cardPos.y) * 0.12;
-  }
-  card.style.left = `${Math.round(cardPos.x)}px`;
-  card.style.top = `${Math.round(cardPos.y)}px`;
+  cardPos.x += (left - cardPos.x) * 0.25;
+  cardPos.y += (top - cardPos.y) * 0.25;
+  card.style.transform = `translate3d(${cardPos.x.toFixed(1)}px, ${cardPos.y.toFixed(1)}px, 0)`;
 }
 
 function showBand(b: BandView) {

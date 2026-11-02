@@ -3,7 +3,7 @@ import {
 } from 'pixi.js';
 import { Simplex } from '../shared/noise';
 import { Rng } from '../shared/rng';
-import { BandView, Biome, PersonRow, TASKS, WorldInfo, b64decode, isWater } from '../shared/types';
+import { BandView, Biome, PersonRow, TASKS, WorldInfo, b64decode, isWater, RIVER_WATER } from '../shared/types';
 
 export const TW = 32; // tile width
 export const TH = 16; // tile height
@@ -236,7 +236,7 @@ export class WorldRenderer {
 
   /** small streams stay hidden; from a real river on, the tile is water */
   private isRiver(i: number): boolean {
-    return this.river[i] >= 40 && !isWater(this.biome[i]);
+    return this.river[i] >= RIVER_WATER && !isWater(this.biome[i]);
   }
 
   private buildTerrain() {
@@ -658,6 +658,8 @@ export class PersonSprite {
   id: number;
   from = { x: 0, y: 0 };
   to = { x: 0, y: 0 };
+  /** smooth walking position without bobbing or idle wiggle: the card and camera follow this */
+  pos = { x: 0, y: 0 };
   t0 = 0;
   dur = 1;
   seed: number;
@@ -681,6 +683,7 @@ export class PersonSprite {
     const p = r.tileTop(row[1] / 10, row[2] / 10);
     this.from = p;
     this.to = p;
+    this.pos = { x: p.x, y: p.y };
     this.c.position.set(p.x, p.y);
     this.age = row[5];
     this.female = row[6] === 1;
@@ -778,6 +781,8 @@ export class PersonSprite {
     let y = this.from.y + (this.to.y - this.from.y) * e;
     const dist = Math.abs(this.to.x - this.from.x) + Math.abs(this.to.y - this.from.y);
     const walking = k < 0.95 && dist > 3;
+    this.pos.x = x;
+    this.pos.y = y;
     let bob = 0;
     const walk = walking ? this.walkPose(now) : null;
     if (walk) {

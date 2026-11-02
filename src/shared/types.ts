@@ -34,6 +34,9 @@ export const BIOME_NAMES: Record<number, string> = {
   13: 'Езеро',
 };
 
+/** river flow from which a river is wide enough to be drawn as water (and no camp stands on it) */
+export const RIVER_WATER = 40;
+
 export function isWater(b: number): boolean {
   return b === Biome.DeepWater || b === Biome.Water || b === Biome.Lake;
 }

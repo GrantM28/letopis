@@ -81,9 +81,10 @@ h3 { font-family: var(--serif); font-weight: normal; color: var(--accent); margi
 .toast.out { opacity: 0; transform: translateY(10px); }
 
 .card { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(520px, calc(100vw - 32px)); max-height: calc(100vh - 64px); overflow-y: auto; background: var(--panel-solid); border: 1px solid var(--line); border-radius: 16px; padding: 22px; z-index: 20; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5); }
-.card.beside { transform: none; width: min(380px, calc(100vw - 32px)); max-height: min(560px, calc(100vh - 24px)); border-color: rgba(255, 42, 42, 0.55); }
+.card.beside { left: 0; top: 0; transform: none; will-change: transform; width: min(380px, calc(100vw - 32px)); max-height: min(560px, calc(100vh - 24px)); border-color: rgba(255, 42, 42, 0.55); }
 .card h2 { font-family: var(--serif); font-weight: normal; margin: 0 0 4px; display: flex; gap: 10px; align-items: center; }
 .card .close { position: absolute; top: 12px; right: 12px; }
+.card.beside .close { display: none; } /* a click on the map closes it */
 .card a { color: var(--accent-2); text-decoration: none; }
 .card a.dead { color: var(--muted); text-decoration: line-through; text-decoration-color: rgba(255,255,255,0.25); }
 .person-head { display: flex; gap: 14px; align-items: center; }
