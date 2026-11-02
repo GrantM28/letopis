@@ -4,6 +4,7 @@ import {
 import { Simplex } from '../shared/noise';
 import { Fauna } from './animals';
 import { SECRET_KINDS, SecretSpot, secretSpots } from '../shared/secrets';
+import { B, VILLAGE } from './lang';
 import { Rng } from '../shared/rng';
 import { CONIFERS, TREE_KINDS } from '../shared/trees';
 import { BandView, Biome, PersonRow, TASKS, WorldInfo, b64decode, isWater, RIVER_WATER } from '../shared/types';
@@ -1352,7 +1353,7 @@ export class CampSprite {
     this.c.position.set(p.x, p.y);
     this.glow.position.set(p.x, p.y - 4);
     this.glow.visible = b.hasFire || b.dwelling === 'house';
-    this.label.text = b.settlementName ? `${b.settlementName} (${b.size})` : `${b.name.replace('Родът на ', '')} (${b.size})`;
+    this.label.text = b.settlementName ? `${VILLAGE(b.settlementName)} (${b.size})` : `${B(b.name).replace(/^(Родът на|Clan of the) /, '')} (${b.size})`;
     this.label.style.fontSize = kids ? 16 : 12;
     this.bannerCloth.tint = b.color;
     this.tag.position.set(p.x, p.y - 30);

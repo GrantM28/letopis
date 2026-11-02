@@ -121,6 +121,8 @@ function restartWorld() {
     id: sim.s.nextEventId++, tick: sim.s.tick, year: sim.year, kind: 'end', importance: 3,
     text: 'Последният човек на този свят си отиде. Летописът се затваря. Скоро ще започне нов свят.',
     kids: 'Хората на този свят изчезнаха. Но скоро ще започне нов свят!',
+    en: { text: 'The last person of this world has passed away. The chronicle closes. A new world will begin soon.',
+      kids: 'The people of this world are gone. But a new world will begin soon!' },
   }]);
   store.endWorld(old, summary);
   save();

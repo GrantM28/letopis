@@ -6,6 +6,11 @@ COPY . .
 RUN npm run typecheck && npm run build && npm prune --omit=dev
 
 FROM node:22.20.0-alpine3.22
+LABEL org.opencontainers.image.title="Letopis" \
+      org.opencontainers.image.description="Idle civilization simulation that lives on its own" \
+      org.opencontainers.image.source="https://github.com/leppermesiah/letopis" \
+      net.unraid.docker.icon="https://raw.githubusercontent.com/leppermesiah/letopis/main/public/icon-512.png" \
+      net.unraid.docker.webui="http://[IP]:[PORT:2222]/"
 WORKDIR /app
 ENV NODE_ENV=production \
     LETOPIS_PORT=2222 \

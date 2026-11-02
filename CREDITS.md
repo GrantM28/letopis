@@ -1,72 +1,73 @@
-# Източници и лицензи
+# Credits and licenses
 
-Всичко, което Летопис взима отвън, е записано тук: какво е, откъде е, кой е авторът и под какъв лиценз е.
-Правило: ползваме само CC0, CC-BY и MIT/BSD/ISC/Apache-подобни лицензи. Без CC-NC и без ресурси с неясен лиценз.
-При всяко ново заемане се добавя ред в таблицата **в същия commit**.
+Everything Letopis takes from outside is listed here: what it is, where it comes from, who made it and under which license.
+Only CC0, CC-BY and MIT/BSD/ISC/Apache-style licenses are used. No CC-NC and nothing with an unclear license.
+Every new borrowed resource gets a row here in the same commit.
 
-## Графика, текстури, шейдъри, звуци, шрифтове
+## Graphics
 
-### Спрайтове (терен, дървета, природа, лагери, села, хора, символи на родове)
+### Sprites (terrain, trees, nature, camps, villages, people, clan symbols, animals)
 
-| Какво | Откъде | Автор | Права |
+| What | Source | Author | Rights |
 |---|---|---|---|
-| 32 листа по 4×4 спрайта в `art/sheets/` (A–L: терен, природа, селища, хора; M–Q: животни; R: тайни; S–V: старейшини; W–Z: растящи дървета; AA–AF: пънове, работа, нощ, разказвачи, растящи села), нарязани в `art/cut/` и събрани в `public/sprites/atlas.png` | Генерирани с ChatGPT (OpenAI, генериране на изображения), ноември 2026, по промптовете в `art/PROMPTS.md` | Иво (leppermesiah), чрез ChatGPT | По условията за ползване на OpenAI правата върху генерираното съдържание принадлежат на потребителя, който го е генерирал (Иво). Проектът ги ползва с негово съгласие. |
+| 32 sheets of 4×4 sprites in `art/sheets/` (A–L terrain, nature, settlements, people; M–Q animals; R secrets; S–V elders; W–Z growing trees; AA–AF stumps, work, night, storytellers, growing villages), cut into `art/cut/` and packed into `public/sprites/atlas*.png` | Generated with ChatGPT image generation (OpenAI), November 2026, from the prompts in `art/PROMPTS.md` | leppermesiah, with ChatGPT | Under OpenAI's terms of use, the rights to generated output belong to the user who generated it. Used by the project with his permission. |
+| App icon: `public/icon-*.png`, `public/favicon-32.png`, `art/social-preview.png` | Generated with ChatGPT image generation (OpenAI), November 2026 | leppermesiah, with ChatGPT | As above |
 
-Бележки:
-- Промптовете не назовават конкретни игри, художници или защитени герои, а описват само стил („cozy painterly isometric pixel art“).
-- Генерираното с изкуствен интелект съдържание в някои държави може да не получава авторскоправна закрила. Затова не твърдим повече от горното.
-- Рязането, почистването на ореолите и сглобяването на атласа се правят от собствените скриптове `tools/slice_sprites.py` и `tools/build_atlas.py`.
+Notes:
+- The prompts do not name specific games, artists or protected characters; they only describe a style ("cozy painterly isometric pixel art").
+- AI-generated content may not be protected by copyright in some countries, so nothing more than the above is claimed.
+- Cutting, halo cleanup and atlas packing are done by the project's own scripts `tools/slice_sprites.py` and `tools/build_atlas.py`.
 
-### Останалото
+### Everything else
 
-| Какво | Как е направено | Автор | Лиценз |
+| What | How | Author | License |
 |---|---|---|---|
-| Сняг по сезони, мъгла над неоткритото, нощ, отблясък на огъня, утъпкана земя в лагера | Рисува се от кода в `src/client/render.ts` | проектът | собствен код |
-| Шейдър за водата | Собствен GLSL в `src/client/render.ts` (`WATER_FRAG`) | проектът | собствен код |
-| Simplex шум | Собствена реализация на публично описания алгоритъм на Ken Perlin (`src/shared/noise.ts`) | проектът | собствен код |
-| Генератор на случайни числа sfc32 | Собствена реализация на публичния алгоритъм на Chris Doty-Humphrey (PractRand), `src/shared/rng.ts` | проектът | собствен код |
-| Икона | `public/favicon.svg`, нарисувана на ръка | проектът | собствен код |
-| Шрифтове | Системни шрифтове на устройството, нищо не се сваля | – | – |
+| Seasonal snow, fog over unexplored land, night, firelight, trodden ground in camps | Drawn by code in `src/client/render.ts` | the project | own code |
+| Water shader | Own GLSL in `src/client/render.ts` (`WATER_FRAG`) | the project | own code |
+| Simplex noise | Own implementation of Ken Perlin's published algorithm (`src/shared/noise.ts`) | the project | own code |
+| sfc32 random number generator | Own implementation of Chris Doty-Humphrey's public algorithm (PractRand), `src/shared/rng.ts` | the project | own code |
+| Fonts | System fonts of the device, nothing is downloaded | – | – |
 
-## Имена
+## Names and translations
 
-Българските лични имена, прякорите, корените на селищата и тотемите на родовете са общоупотребими думи и имена,
-събрани ръчно в `src/server/sim/names.ts`. Не са копирани от защитена база данни.
+Bulgarian personal names, nicknames, settlement roots and clan totems are common words and names, collected by hand in
+`src/server/sim/names.ts`. The English translations and the transliteration (Bulgarian streamlined system) are in
+`src/shared/i18n.ts`. Fairy tale heroes named by the secrets are public domain folk and literary characters.
 
-## Софтуерни библиотеки
+## Software libraries
 
-Влизат в готовия образ или в браузъра:
+In the image or in the browser:
 
-| Пакет | Версия | Лиценз | Източник | Къде се ползва |
+| Package | Version | License | Source | Used for |
 |---|---|---|---|---|
-| pixi.js | 8.13.2 | MIT | https://github.com/pixijs/pixijs | рисуване в браузъра (WebGL) |
-| @pixi/colord | 2.9.6 | MIT | https://github.com/pixijs/colord | зависимост на pixi.js |
-| @xmldom/xmldom | 0.8.15 | MIT | https://github.com/xmldom/xmldom | зависимост на pixi.js |
-| earcut | 3.2.4 | ISC | https://github.com/mapbox/earcut | зависимост на pixi.js |
-| eventemitter3 | 5.0.4 | MIT | https://github.com/primus/eventemitter3 | зависимост на pixi.js |
-| gifuct-js | 2.1.2 | MIT | https://github.com/matt-way/gifuct-js | зависимост на pixi.js |
-| ismobilejs | 1.1.1 | MIT | https://github.com/kaimallea/isMobile | зависимост на pixi.js |
-| parse-svg-path | 0.1.2 | MIT | https://github.com/jkroso/parse-svg-path | зависимост на pixi.js |
-| tiny-lru | 11.4.7 | BSD-3-Clause | https://github.com/avoidwork/tiny-lru | зависимост на pixi.js |
-| ws | 8.18.3 | MIT | https://github.com/websockets/ws | WebSocket сървър |
-| Node.js | 22.20.0 | MIT (+ лицензите на вградените части) | https://nodejs.org | среда на сървъра, вграденият `node:sqlite` |
+| pixi.js | 8.13.2 | MIT | https://github.com/pixijs/pixijs | rendering in the browser (WebGL) |
+| @pixi/colord | 2.9.6 | MIT | https://github.com/pixijs/colord | dependency of pixi.js |
+| @xmldom/xmldom | 0.8.15 | MIT | https://github.com/xmldom/xmldom | dependency of pixi.js |
+| earcut | 3.2.4 | ISC | https://github.com/mapbox/earcut | dependency of pixi.js |
+| eventemitter3 | 5.0.4 | MIT | https://github.com/primus/eventemitter3 | dependency of pixi.js |
+| gifuct-js | 2.1.2 | MIT | https://github.com/matt-way/gifuct-js | dependency of pixi.js |
+| ismobilejs | 1.1.1 | MIT | https://github.com/kaimallea/isMobile | dependency of pixi.js |
+| parse-svg-path | 0.1.2 | MIT | https://github.com/jkroso/parse-svg-path | dependency of pixi.js |
+| tiny-lru | 11.4.7 | BSD-3-Clause | https://github.com/avoidwork/tiny-lru | dependency of pixi.js |
+| ws | 8.18.3 | MIT | https://github.com/websockets/ws | WebSocket server |
+| Node.js | 22.20.0 | MIT (+ licenses of bundled parts) | https://nodejs.org | server runtime, built-in `node:sqlite` |
 
-Само за компилиране (не влизат в образа):
+Build only (not in the image):
 
-| Пакет | Версия | Лиценз | Източник |
+| Package | Version | License | Source |
 |---|---|---|---|
 | typescript | 5.9.3 | Apache-2.0 | https://github.com/microsoft/TypeScript |
 | esbuild | 0.25.10 | MIT | https://github.com/evanw/esbuild |
 | @types/node, @types/ws | 22.18.8, 8.18.1 | MIT | https://github.com/DefinitelyTyped/DefinitelyTyped |
 
-Само за подготовка на спрайтовете (Python скриптовете в `tools/`, не влизат в образа):
+Sprite preparation only (the Python scripts in `tools/`, not in the image):
 
-| Пакет | Версия | Лиценз | Източник |
+| Package | Version | License | Source |
 |---|---|---|---|
 | Pillow | 12.3.0 | MIT-CMU | https://github.com/python-pillow/Pillow |
-| NumPy | 2.5.3 | BSD-3-Clause (+ 0BSD, MIT, Zlib, CC0-1.0 за вградени части) | https://github.com/numpy/numpy |
+| NumPy | 2.5.3 | BSD-3-Clause (+ 0BSD, MIT, Zlib, CC0-1.0 for bundled parts) | https://github.com/numpy/numpy |
 
-## Вдъхновение
+## Inspiration
 
-Идеите за бъдещето (кораби за поколения, тераформиране, колонии) идват от общите теми в класическата научна фантастика.
-Не се копират сюжети, герои, имена или текстове от конкретни книги.
+Ideas for the future (generation ships, terraforming, colonies) come from common themes of classic science fiction.
+No plots, characters, names or texts are copied from specific books.

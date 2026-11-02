@@ -8,13 +8,13 @@
   <Privileged>false</Privileged>
   <Support>https://github.com/leppermesiah/letopis</Support>
   <Project>https://github.com/leppermesiah/letopis</Project>
-  <Overview>Летопис: idle симулация на цивилизация, която живее сама. Хора с български имена тръгват от каменната епоха и се развиват без намеса. Гледа се в браузъра.</Overview>
+  <Overview>Letopis is an idle civilization simulation that lives on its own. A few families start in the Stone Age and discover fire, tools, farming and everything after without anyone pressing a button. Open the web page whenever you like to see how far they got. English and Bulgarian.</Overview>
   <Category>GameServers:</Category>
   <WebUI>http://[IP]:[PORT:2222]/</WebUI>
-  <Icon>https://raw.githubusercontent.com/leppermesiah/letopis/main/public/favicon.svg</Icon>
+  <Icon>https://raw.githubusercontent.com/leppermesiah/letopis/main/public/icon-512.png</Icon>
   <ExtraParams>--restart=unless-stopped --cpus=2 --memory=2g</ExtraParams>
-  <Config Name="Уеб порт" Target="2222" Default="2222" Mode="tcp" Description="Порт за браузъра" Type="Port" Display="always" Required="true" Mask="false">2222</Config>
-  <Config Name="Данни" Target="/data" Default="/mnt/user/appdata/letopis" Mode="rw" Description="Тук живее светът: world.json.gz, летописът (SQLite) и архивът на старите светове" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/letopis</Config>
-  <Config Name="Часова зона" Target="TZ" Default="Europe/Sofia" Mode="" Description="" Type="Variable" Display="advanced" Required="false" Mask="false">Europe/Sofia</Config>
-  <Config Name="Скорост (само за тест)" Target="LETOPIS_SPEED" Default="1" Mode="" Description="1 = нормално (~3 месеца до днешния ден). По-голямо число ускорява, само за тестове." Type="Variable" Display="advanced" Required="false" Mask="false">1</Config>
+  <Config Name="Web port" Target="2222" Default="2222" Mode="tcp" Description="Port for the browser" Type="Port" Display="always" Required="true" Mask="false">2222</Config>
+  <Config Name="Data" Target="/data" Default="/mnt/user/appdata/letopis" Mode="rw" Description="The world lives here: world.json.gz, the chronicle (SQLite) and the archive of old worlds" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/letopis</Config>
+  <Config Name="Time zone" Target="TZ" Default="Europe/Sofia" Mode="" Description="" Type="Variable" Display="advanced" Required="false" Mask="false">Europe/Sofia</Config>
+  <Config Name="Speed (testing only)" Target="LETOPIS_SPEED" Default="1" Mode="" Description="1 = normal (about 3 months to the present day). A bigger number speeds the world up, for testing only." Type="Variable" Display="advanced" Required="false" Mask="false">1</Config>
 </Container>
