@@ -870,9 +870,7 @@ export class WorldRenderer {
   private nightRow(r: PersonRow): PersonRow {
     const c = this.camps.get(r[4]);
     if (!c || TASKS[r[3]] === 'scout') return r;
-    const x = r[1] / 10, y = r[2] / 10;
-    const dx = x - c.tx, dy = y - c.ty, d = Math.hypot(dx, dy);
-    if (d <= 2) return r;
+    // everyone has the same sleeping spot all night: nobody gets up to walk to where the day's work would be
     // spread around the fire, the same spot every night for the same person
     const a = hash(r[0], 5) * Math.PI * 2, rr = 0.6 + hash(r[0], 9) * 1.3;
     let nx = c.tx + Math.cos(a) * rr, ny = c.ty + Math.sin(a) * rr;
@@ -1092,7 +1090,12 @@ export class WorldRenderer {
     const day = (nowMs / (8 * 60 * 1000)) % 1;
     const sun = Math.cos(day * Math.PI * 2); // 1 noon, -1 midnight
     const dark = this.night ? Math.max(0, Math.min(0.82, -sun * 1.0 + 0.05)) : 0;
-    this.nightNow = sun < -0.25;
+    const nightNow = sun < -0.25;
+    // dusk and dawn: everyone goes to (or gets up from) their sleeping spot at once, not at the next tick
+    if (nightNow !== this.nightNow) {
+      this.nightNow = nightNow;
+      if (this.lastPeople) this.updatePeople(this.lastPeople.rows, this.lastPeople.bandColors, 6000);
+    }
     this.drawNight(dark, nowMs);
     this.glowLayer.alpha = Math.min(0.45, dark * 0.55);
     const zoom = this.world.scale.x;
