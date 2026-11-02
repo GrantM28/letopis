@@ -309,6 +309,29 @@ def split_cloth(img: Image.Image, head: float) -> tuple[Image.Image, Image.Image
     return Image.fromarray(base.astype(np.uint8)), Image.fromarray(c.astype(np.uint8))
 
 
+def split_fur(img: Image.Image, head: float) -> tuple[Image.Image, Image.Image]:
+    """Sheets AB-AE draw the clothes as cream fur: that fur -> a separate grey layer for the band colour."""
+    a = np.array(img).astype(np.float32)
+    rgb = a[..., :3] / 255
+    mx, mn = rgb.max(-1), rgb.min(-1)
+    sat = np.where(mx > 0, (mx - mn) / np.maximum(mx, 1e-6), 0)
+    r, g, b = rgb[..., 0], rgb[..., 1], rgb[..., 2]
+    d = np.maximum(mx - mn, 1e-6)
+    hue = np.where(mx == r, ((g - b) / d) % 6, np.where(mx == g, (b - r) / d + 2, (r - g) / d + 4)) * 60
+    # warm, pale, a little saturated: fur; white hair and beards (sat < 0.12) and skin (sat > 0.45) stay
+    fur = (sat > 0.12) & (sat < 0.45) & (mx > 0.45) & (hue > 20) & (hue < 60) & (a[..., 3] > 0)
+    fur[: int(a.shape[0] * head)] = False
+    base = a.copy()
+    base[fur, 3] = 0
+    c = np.zeros_like(a)
+    lum = rgb.mean(-1)
+    top = np.percentile(lum[fur], 95) if fur.any() else 1
+    gr = np.clip(lum / max(top, 1e-3), 0, 1) * 255
+    c[..., 0] = c[..., 1] = c[..., 2] = gr
+    c[..., 3] = np.where(fur, a[..., 3], 0)
+    return Image.fromarray(base.astype(np.uint8)), Image.fromarray(c.astype(np.uint8))
+
+
 def main() -> int:
     items = []  # (name, image, ax, ay, s)
     for prefix, ids, kind, world, tex in GROUPS:
@@ -359,6 +382,13 @@ def main() -> int:
                 items.append((name, img, 0.5, ay, s))
                 items.append((name + '_t', top_only(img, ay * h), 0.5, ay, s))
                 continue
+            if kind == 'pose' and cid[:2] in ('AB', 'AC', 'AD', 'AE'):
+                # sleeping people lie down (no head on top); the storyteller's long beard reaches half way down
+                head = 0 if cid[:3] in ('AC1', 'AC2') else 0.55 if cid[:2] == 'AD' else 0.3
+                base, cloth = split_fur(img, head)
+                items.append((name, base, 0.5, ay, s))
+                items.append((name + '_c', cloth, 0.5, ay, s))
+                continue
             if kind in ('person', 'cloth'):
                 base, cloth = split_cloth(img, head=0.48 if cid == 'I13' else 1.0 if (cid[0] in 'STUV' and cid[1].isdigit()) else 0.3 if kind == 'person' else 0)
                 items.append((name, base, 0.5, ay, s))
@@ -377,6 +407,7 @@ def main() -> int:
         atlas = Image.new('RGBA', (ATLAS, ATLAS), (0, 0, 0, 0))
         x = y = PAD
         shelf = 0
+        bottom = 0
         left = []
         for name, img, ax, ay, s in rest:
             w, h = img.size
@@ -391,7 +422,8 @@ def main() -> int:
             frames[name] = {'x': x, 'y': y, 'w': w, 'h': h, 'ax': ax, 'ay': round(ay, 4), 's': round(s, 5), 'p': len(pages)}
             x += w + PAD
             shelf = max(shelf, h)
-        used = y + shelf + PAD
+            bottom = max(bottom, y + h)
+        used = bottom + PAD
         # keep the height a power of two so mipmaps work everywhere
         height = 1
         while height < used:
