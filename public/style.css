@@ -45,7 +45,11 @@ body.kids { --fs: 18px; --side-w: 420px; }
 .stats b, .kpis b { font-size: 1.25em; font-variant-numeric: tabular-nums; }
 
 .side { position: fixed; top: 12px; right: 12px; bottom: 12px; width: var(--side-w); background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); backdrop-filter: blur(10px); display: flex; flex-direction: column; z-index: 5; transition: transform 0.25s; }
-body.side-hidden .side { transform: translateX(calc(100% + 24px)); }
+body.side-hidden .side { transform: translateX(calc(100% + 12px)); }
+/* the little tab on the panel's left edge: hides it, and stays at the screen edge to bring it back */
+.side-handle { position: absolute; left: -26px; top: 50%; transform: translateY(-50%); width: 26px; height: 64px; padding: 0; font: inherit; font-size: 20px; line-height: 1; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-right: 0; border-radius: 10px 0 0 10px; backdrop-filter: blur(10px); cursor: pointer; }
+.side-handle:hover { color: var(--accent); }
+body.side-hidden .side-handle span { display: inline-block; transform: scaleX(-1); }
 body.side-hidden .top { right: 12px; }
 .tabs { display: flex; border-bottom: 1px solid var(--line); }
 .tab { flex: 1; font: inherit; background: none; border: 0; color: var(--muted); padding: 12px 2px; font-size: 14px; white-space: nowrap; cursor: pointer; border-bottom: 2px solid transparent; }
@@ -107,6 +111,7 @@ h3 { font-family: var(--serif); font-weight: normal; color: var(--accent); margi
   .side { top: auto; height: 42vh; left: 0; right: 0; bottom: 0; width: auto; border-radius: 16px 16px 0 0; }
   .controls { bottom: calc(42vh + 12px); }
   body.side-hidden .side { transform: translateY(100%); }
+  .side-handle { display: none; } /* on a phone the Панел button does it */
   body.side-hidden .controls { bottom: 12px; }
   #toasts { margin-left: 0; width: calc(100vw - 32px); bottom: calc(42vh + 64px); }
   .brand { display: none; }

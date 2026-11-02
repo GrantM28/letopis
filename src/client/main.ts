@@ -601,7 +601,11 @@ $('#nightBtn').onclick = () => {
   save('letopis.night', night);
   $('#nightBtn').setAttribute('aria-pressed', String(night));
 };
-$('#sideToggle').onclick = () => document.body.classList.toggle('side-hidden');
+// the panel can hide; a small tab at the edge brings it back, and the choice is remembered
+const toggleSide = () => save('letopis.sideHidden', document.body.classList.toggle('side-hidden'));
+if (store('letopis.sideHidden', false)) document.body.classList.add('side-hidden');
+$('#sideToggle').onclick = toggleSide;
+$('#sideHandle').onclick = toggleSide;
 
 // ---------- frame loop ----------
 

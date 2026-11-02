@@ -585,7 +585,7 @@ export class WorldRenderer {
   pickSecret(wx: number, wy: number): SecretSpot | null {
     for (const x of this.secrets) {
       if (!x.s.visible || x.s.alpha < 0.25) continue;
-      if (Math.hypot(x.s.x - wx, x.s.y - 2.5 - wy) < 4.5) return x.spot;
+      if (Math.hypot(x.s.x - wx, x.s.y - 2.75 - wy) < 5) return x.spot;
     }
     return null;
   }
