@@ -558,6 +558,64 @@ export class WorldRenderer {
     return this.temp[yi * this.info.w + xi] / 255;
   }
 
+  /** dry land people can walk on (water and wide rivers block them) */
+  walkable(x: number, y: number): boolean {
+    if (x < 0 || y < 0 || x >= this.info.w || y >= this.info.h) return false;
+    const i = y * this.info.w + x;
+    return !isWater(this.biome[i]) && this.river[i] < RIVER_WATER;
+  }
+
+  /** a walk around the water from one tile to another, as tile points; null if there is none nearby */
+  landPath(ax: number, ay: number, bx: number, by: number): { x: number; y: number }[] | null {
+    const sx = Math.round(ax), sy = Math.round(ay), tx = Math.round(bx), ty = Math.round(by);
+    if (!this.walkable(sx, sy) || !this.walkable(tx, ty)) return null;
+    const pad = 14;
+    const x0 = Math.min(sx, tx) - pad, y0 = Math.min(sy, ty) - pad;
+    const bw = Math.abs(sx - tx) + pad * 2 + 1, bh = Math.abs(sy - ty) + pad * 2 + 1;
+    const prev = new Int32Array(bw * bh).fill(-2);
+    const key = (x: number, y: number) => (y - y0) * bw + (x - x0);
+    const start = key(sx, sy), goal = key(tx, ty);
+    prev[start] = -1;
+    const queue = [start];
+    for (let q = 0; q < queue.length && prev[goal] === -2; q++) {
+      const k = queue[q];
+      const x = (k % bw) + x0, y = Math.floor(k / bw) + y0;
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const nx = x + dx, ny = y + dy;
+        if (nx < x0 || ny < y0 || nx >= x0 + bw || ny >= y0 + bh) continue;
+        const nk = key(nx, ny);
+        if (prev[nk] !== -2 || !this.walkable(nx, ny)) continue;
+        prev[nk] = k;
+        queue.push(nk);
+      }
+    }
+    if (prev[goal] === -2) return null;
+    const tiles: { x: number; y: number }[] = [];
+    for (let k = goal; k !== -1; k = prev[k]) tiles.push({ x: (k % bw) + x0, y: Math.floor(k / bw) + y0 });
+    tiles.reverse();
+    // straighten: keep only the corners needed to stay on land
+    const out = [{ x: ax, y: ay }];
+    let from = out[0];
+    for (let i = 1; i < tiles.length; i++) {
+      if (!this.dryLine(from.x, from.y, tiles[i].x, tiles[i].y)) {
+        from = tiles[i - 1];
+        out.push(from);
+      }
+    }
+    out.push({ x: bx, y: by });
+    return out;
+  }
+
+  /** does a straight walk stay on dry land? */
+  dryLine(ax: number, ay: number, bx: number, by: number): boolean {
+    const n = Math.ceil(Math.hypot(bx - ax, by - ay) * 4) + 1;
+    for (let i = 0; i <= n; i++) {
+      const t = i / n;
+      if (!this.walkable(Math.round(ax + (bx - ax) * t), Math.round(ay + (by - ay) * t))) return false;
+    }
+    return true;
+  }
+
   landAt(x: number, y: number): boolean {
     if (x < 0 || y < 0 || x >= this.info.w || y >= this.info.h) return false;
     return !isWater(this.biome[y * this.info.w + x]);
@@ -664,6 +722,10 @@ export class PersonSprite {
   to = { x: 0, y: 0 };
   /** smooth walking position without bobbing or idle wiggle: the card and camera follow this */
   pos = { x: 0, y: 0 };
+  /** where the person was heading, in tiles, and the way there around any water (screen points) */
+  tile = { x: 0, y: 0 };
+  path: { x: number; y: number }[] = [];
+  lens: number[] = [];
   t0 = 0;
   dur = 1;
   seed: number;
@@ -688,6 +750,7 @@ export class PersonSprite {
     this.from = p;
     this.to = p;
     this.pos = { x: p.x, y: p.y };
+    this.tile = { x: row[1] / 10, y: row[2] / 10 };
     this.c.position.set(p.x, p.y);
     this.age = row[5];
     this.female = row[6] === 1;
@@ -764,9 +827,16 @@ export class PersonSprite {
   }
 
   target(row: PersonRow, color: number, tickMs: number) {
-    const p = this.r.tileTop(row[1] / 10, row[2] / 10);
-    this.from = { x: this.c.x, y: this.c.y };
+    const tx = row[1] / 10, ty = row[2] / 10;
+    const p = this.r.tileTop(tx, ty);
+    this.from = { x: this.pos.x, y: this.pos.y };
     this.to = p;
+    // go around water; with no way by land (a boat) they still go straight
+    const way = this.r.dryLine(this.tile.x, this.tile.y, tx, ty) ? null : this.r.landPath(this.tile.x, this.tile.y, tx, ty);
+    this.path = way ? [this.from, ...way.slice(1, -1).map((q) => this.r.tileTop(q.x, q.y)), p] : [this.from, p];
+    this.lens = [0];
+    for (let i = 1; i < this.path.length; i++) this.lens.push(this.lens[i - 1] + Math.hypot(this.path[i].x - this.path[i - 1].x, this.path[i].y - this.path[i - 1].y));
+    this.tile = { x: tx, y: ty };
     this.t0 = performance.now();
     this.dur = Math.max(400, Math.min(tickMs * 0.85, 12000));
     this.cloth.tint = color;
@@ -781,9 +851,19 @@ export class PersonSprite {
   frame(now: number) {
     const k = Math.min(1, (performance.now() - this.t0) / this.dur);
     const e = k * k * (3 - 2 * k);
-    let x = this.from.x + (this.to.x - this.from.x) * e;
-    let y = this.from.y + (this.to.y - this.from.y) * e;
-    const dist = Math.abs(this.to.x - this.from.x) + Math.abs(this.to.y - this.from.y);
+    let x = this.to.x, y = this.to.y;
+    const total = this.lens[this.lens.length - 1] ?? 0;
+    if (total > 0 && e < 1) {
+      const d = e * total;
+      let i = 1;
+      while (i < this.lens.length - 1 && this.lens[i] < d) i++;
+      const a = this.path[i - 1], b = this.path[i];
+      const f = (d - this.lens[i - 1]) / Math.max(1e-6, this.lens[i] - this.lens[i - 1]);
+      x = a.x + (b.x - a.x) * f;
+      y = a.y + (b.y - a.y) * f;
+      if (Math.abs(b.x - a.x) > 1) this.facing = b.x < a.x ? -1 : 1;
+    }
+    const dist = total;
     const walking = k < 0.95 && dist > 3;
     this.pos.x = x;
     this.pos.y = y;

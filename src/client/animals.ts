@@ -164,7 +164,9 @@ class Animal {
     const r = this.range;
     for (let k = 0; k < 8; k++) {
       const x = this.hx + (Math.random() * 2 - 1) * r, y = this.hy + (Math.random() * 2 - 1) * r;
-      if (this.f.fits(this.sp, Math.round(x), Math.round(y))) {
+      // land animals do not wade through rivers and lakes
+      const dry = this.sp.how !== 'walk' || this.f.r.dryLine(this.x, this.y, x, y);
+      if (dry && this.f.fits(this.sp, Math.round(x), Math.round(y))) {
         this.tx = x;
         this.ty = y;
         break;
@@ -271,7 +273,11 @@ export class Fauna {
       }
       // the herd follows the camp when it moves
       for (const a of list) {
-        if (Math.hypot(a.hx - b.x, a.hy - b.y) > 0.5) { a.hx = b.x; a.hy = b.y; a.wait = Math.min(a.wait, 300); }
+        if (Math.hypot(a.hx - b.x, a.hy - b.y) > 0.5) {
+          a.hx = b.x; a.hy = b.y; a.wait = Math.min(a.wait, 300);
+          // no dry way to the new camp: they simply turn up there with the band
+          if (!this.r.dryLine(a.x, a.y, b.x, b.y)) { a.x = a.tx = b.x; a.y = a.ty = b.y; }
+        }
       }
     }
     for (const [id, list] of this.tame) if (!seen.has(id)) { list.forEach((a) => a.destroy()); this.tame.delete(id); this.bandKey.delete(id); }

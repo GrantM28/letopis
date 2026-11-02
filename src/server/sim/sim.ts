@@ -107,6 +107,7 @@ export class Simulation {
   private byId = new Map<number, Person>();
   private bandById = new Map<number, Band>();
   private techSets = new Map<number, Set<string>>();
+  private regions: Int32Array = new Int32Array(0);
   events: ChronicleEntry[] = [];
   deadQueue: DeadRecord[] = [];
   exploredDirty = true;
@@ -120,6 +121,7 @@ export class Simulation {
       for (const b of state.bands) b.name = fixBandName(b.name);
       state.usedBands = state.usedBands.map(fixBandName);
       this.t = generateTerrain(state.seed);
+      this.regions = this.landRegions();
       this.rng = new Rng(state.rng);
       for (let i = 0; i < state.plants.length; i++) this.t.plants[i] = state.plants[i] / 100;
       for (let i = 0; i < state.game.length; i++) this.t.game[i] = state.game[i] / 100;
@@ -130,6 +132,7 @@ export class Simulation {
       const sd = seed ?? Math.floor(Math.random() * 2 ** 31);
       setWorldSize(NEW_SIZE);
       this.t = generateTerrain(sd);
+      this.regions = this.landRegions();
       this.rng = new Rng(sd ^ 0x5bd1e995);
       this.s = {
         version: 1,
@@ -160,6 +163,43 @@ export class Simulation {
     this.reindex();
   }
 
+  /** dry land you can walk on: no sea, lake or river wide enough to be drawn as water */
+  private walkable(i: number): boolean {
+    return !isWater(this.t.biome[i]) && this.t.river[i] < RIVER_WATER;
+  }
+
+  /** every piece of land cut off by water gets its own number: without boats nobody leaves it */
+  private landRegions(): Int32Array {
+    const n = W * H, reg = new Int32Array(n).fill(-1);
+    let id = 0;
+    const stack: number[] = [];
+    for (let s = 0; s < n; s++) {
+      if (reg[s] >= 0 || !this.walkable(s)) continue;
+      reg[s] = id;
+      stack.push(s);
+      while (stack.length) {
+        const i = stack.pop()!;
+        const x = i % W, y = (i - x) / W;
+        if (x > 0 && reg[i - 1] < 0 && this.walkable(i - 1)) { reg[i - 1] = id; stack.push(i - 1); }
+        if (x < W - 1 && reg[i + 1] < 0 && this.walkable(i + 1)) { reg[i + 1] = id; stack.push(i + 1); }
+        if (y > 0 && reg[i - W] < 0 && this.walkable(i - W)) { reg[i - W] = id; stack.push(i - W); }
+        if (y < H - 1 && reg[i + W] < 0 && this.walkable(i + W)) { reg[i + W] = id; stack.push(i + W); }
+      }
+      id++;
+    }
+    return reg;
+  }
+
+  /** can the band get to this tile? by land, or over water once it has boats */
+  private reachable(b: Band, x: number, y: number): boolean {
+    if (!inBounds(x, y)) return false;
+    const i = idx(x, y);
+    if (!this.walkable(i)) return false;
+    if (this.hasTech(b, 'boats')) return true;
+    const cx = Math.round(b.cx), cy = Math.round(b.cy);
+    return inBounds(cx, cy) && this.regions[i] === this.regions[idx(cx, cy)];
+  }
+
   private reindex() {
     this.byId.clear();
     this.bandById.clear();
@@ -174,11 +214,20 @@ export class Simulation {
   // ---------- creation ----------
 
   private genesis() {
-    const start = findStart(this.t, this.rng);
+    // start on a big piece of land, not on a strip between two rivers
+    const size = new Map<number, number>();
+    for (const r of this.regions) if (r >= 0) size.set(r, (size.get(r) ?? 0) + 1);
+    let start = findStart(this.t, this.rng);
+    for (let k = 0; k < 20; k++) {
+      const s0 = this.nearestLand(start.x, start.y);
+      if ((size.get(this.regions[idx(s0.x, s0.y)]) ?? 0) >= 1500) { start = s0; break; }
+      start = findStart(this.t, this.rng);
+    }
+    const home = this.regions[idx(start.x, start.y)];
     const usedB = new Set<string>();
     const offsets = [[0, 0], [9, -5], [-7, 7]];
     for (const [ox, oy] of offsets) {
-      const c = this.nearestLand(start.x + ox, start.y + oy);
+      const c = this.nearestLand(start.x + ox, start.y + oy, home);
       const band = this.newBand(c.x, c.y, usedB);
       for (let k = 0; k < 12; k++) {
         const age = k < 8 ? this.rng.int(16, 35) : this.rng.int(1, 12);
@@ -201,7 +250,7 @@ export class Simulation {
 
   /** dry land a camp can stand on: not sea, lake or a river big enough to be drawn as water */
   private campable(i: number): boolean {
-    return !isWater(this.t.biome[i]) && this.t.river[i] < RIVER_WATER;
+    return this.walkable(i);
   }
 
   /** camps saved on a river channel step onto the nearest bank */
@@ -219,11 +268,11 @@ export class Simulation {
     }
   }
 
-  private nearestLand(x: number, y: number): { x: number; y: number } {
+  private nearestLand(x: number, y: number, region = -1): { x: number; y: number } {
     for (let r = 0; r < 30; r++) {
       for (let k = 0; k < 20; k++) {
         const nx = Math.round(x + this.rng.range(-r, r)), ny = Math.round(y + this.rng.range(-r, r));
-        if (inBounds(nx, ny) && this.campable(idx(nx, ny)) && this.t.height[idx(nx, ny)] < 0.6) return { x: nx, y: ny };
+        if (inBounds(nx, ny) && this.campable(idx(nx, ny)) && this.t.height[idx(nx, ny)] < 0.6 && (region < 0 || this.regions[idx(nx, ny)] === region)) return { x: nx, y: ny };
       }
     }
     return { x, y };
@@ -465,7 +514,7 @@ export class Simulation {
       let got = 0;
       const tx = Math.round(b.cx + this.rng.range(-R, R));
       const ty = Math.round(b.cy + this.rng.range(-R, R));
-      const tile = inBounds(tx, ty) && !isWater(t.biome[idx(tx, ty)]) ? idx(tx, ty) : idx(Math.round(b.cx), Math.round(b.cy));
+      const tile = this.reachable(b, tx, ty) ? idx(tx, ty) : idx(Math.round(b.cx), Math.round(b.cy));
       switch (p.task) {
         case 'gather': {
           gatherWant += 2.0 * skill * tool * season;
@@ -494,8 +543,11 @@ export class Simulation {
       this.placeWorker(p, b, tile);
     }
     for (const p of m) if (p.task === 'child' || p.task === 'elder' || p.task === 'craft' || p.task === 'build') {
-      p.x = b.cx + this.rng.range(-1.2, 1.2);
-      p.y = b.cy + this.rng.range(-1.2, 1.2);
+      const x = b.cx + this.rng.range(-1.2, 1.2), y = b.cy + this.rng.range(-1.2, 1.2);
+      // stay on dry land by the hearth
+      const ok = this.reachable(b, Math.round(x), Math.round(y));
+      p.x = ok ? x : b.cx + this.rng.range(-0.3, 0.3);
+      p.y = ok ? y : b.cy + this.rng.range(-0.3, 0.3);
     }
     prod += (this.harvest(t.plants, b, R, gatherWant, 0.07) + this.harvest(t.game, b, R + 2, huntWant, 0.045)) * craftBonus * fire;
     if (farmWant > 0) prod += Math.min(farmWant, this.arable(b) * 1.0 * this.farmSeason()) * craftBonus;
@@ -533,8 +585,8 @@ export class Simulation {
       const near = this.findNear(b, 8, (i) => this.t.fish[i] > 0);
       if (near >= 0) { x = near % W; y = Math.floor(near / W); }
     } else if (p.task === 'farm' || p.task === 'herd') {
-      x = Math.round(b.cx + this.rng.range(-3, 3));
-      y = Math.round(b.cy + this.rng.range(-3, 3));
+      const fx = Math.round(b.cx + this.rng.range(-3, 3)), fy = Math.round(b.cy + this.rng.range(-3, 3));
+      if (this.reachable(b, fx, fy)) { x = fx; y = fy; }
     }
     p.x = x + this.rng.range(-0.4, 0.4);
     p.y = y + this.rng.range(-0.4, 0.4);
@@ -545,7 +597,7 @@ export class Simulation {
       const x = Math.round(b.cx + this.rng.range(-R, R)), y = Math.round(b.cy + this.rng.range(-R, R));
       if (!inBounds(x, y)) continue;
       const i = idx(x, y);
-      if (pred(i) && !isWater(this.t.biome[i])) return i;
+      if (pred(i) && this.reachable(b, x, y)) return i;
     }
     return -1;
   }
@@ -840,6 +892,8 @@ export class Simulation {
     if (!inBounds(x, y)) return -1;
     const c = idx(x, y);
     if (!this.campable(c) || t.height[c] > 0.62) return -1;
+    // a new camp must be reachable: across water only with boats
+    if (!this.reachable(self, x, y)) return -1;
     for (const o of this.s.bands) if (o.id !== self.id && Math.hypot(o.cx - x, o.cy - y) < 7) return -1;
     let s = 0;
     for (let oy = -R; oy <= R; oy += 2) for (let ox = -R; ox <= R; ox += 2) {
