@@ -1,4 +1,4 @@
-<p align="center"><img src="public/icon-192.png" width="160" alt="Letopis"></p>
+<p align="center"><img src="art/social-preview.png" alt="Letopis"></p>
 
 <h1 align="center">Letopis</h1>
 
