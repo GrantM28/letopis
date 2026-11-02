@@ -1,7 +1,7 @@
 import { Application } from 'pixi.js';
 import { Atlas, WorldRenderer, iso, TW, TH } from './render';
 import {
-  BandView, ChronicleEntry, MONTHS, PersonDetail, PersonRow, SnapshotMessage, TASKS, TASK_NAMES, TickMessage, WorldInfo, b64decode, formatYear,
+  BandView, ChronicleEntry, FamilyTree, MONTHS, TreeNode, PersonDetail, PersonRow, SnapshotMessage, TASKS, TASK_NAMES, TickMessage, WorldInfo, b64decode, formatYear,
 } from '../shared/types';
 
 // ---------- small helpers ----------
@@ -55,7 +55,7 @@ await app.init({
   autoDensity: true,
 });
 $('#stage').appendChild(app.canvas);
-const atlas = await Atlas.load('sprites');
+const atlas = await Atlas.load('sprites', __BUILD__);
 const r = new WorldRenderer(app, atlas);
 r.peopleLayer.sortableChildren = true;
 
@@ -65,6 +65,7 @@ const cam = { x: 0, y: 0, zoom: 1, tx: 0, ty: 0, tz: 1 };
 /** person the camera follows; the card stays beside the selected person */
 let follow: number | null = null;
 let cardPos: { x: number; y: number } | null = null;
+let cardSide: 'left' | 'right' = 'left';
 function applyCam() {
   r.world.scale.set(cam.zoom);
   r.world.position.set(app.screen.width / 2 - cam.x * cam.zoom, app.screen.height / 2 - cam.y * cam.zoom);
@@ -149,6 +150,8 @@ function pick(sx: number, sy: number) {
     }
   }
   if (best !== null) return showPerson(best);
+  // a click on the map next to nobody closes the person card
+  if (r.selectedId !== null) return closeCard();
   let bestBand: BandView | null = null, bb = 40;
   for (const b of bands) {
     const p = r.tileTop(b.x, b.y);
@@ -156,6 +159,7 @@ function pick(sx: number, sy: number) {
     if (d < bb) { bb = d; bestBand = b; }
   }
   if (bestBand) showBand(bestBand);
+  else closeCard();
 }
 
 // ---------- network ----------
@@ -168,6 +172,7 @@ function applyTime(t: TickMessage['time'], population: number) {
   tickMs = t.tickMs;
   lastTickAt = performance.now();
   r.month = t.month;
+  r.fauna.year = t.year;
   $('#year').textContent = formatYear(t.year);
   $('#month').textContent = MONTHS[t.month];
   $('#era').textContent = t.eraName;
@@ -197,7 +202,28 @@ function onTick(m: TickMessage) {
   r.updatePeople(people, bandColors(), m.time.tickMs);
   applyTime(m.time, m.population);
   for (const e of m.events) addEvent(e, true);
+  // the open card keeps the age current while the years pass
+  const ageEl = document.getElementById('pAge');
+  if (ageEl && r.selectedId !== null) {
+    const row = people.find((p) => p[0] === r.selectedId);
+    if (row) ageEl.textContent = String(row[5]);
+  }
   if (activeTab === 'bands' || activeTab === 'stats') renderSide();
+}
+
+/** reload the page when the server runs a newer build (after an update of the container) */
+async function checkVersion() {
+  try {
+    const v = await fetch('version.json', { cache: 'no-store' }).then((r) => r.json());
+    if (v.build && v.build !== __BUILD__) location.reload();
+  } catch { /* offline: try again later */ }
+}
+setInterval(() => void checkVersion(), 60_000);
+// the version, so it is easy to see that an update arrived; the tooltip says when it was built
+{
+  $('#build').textContent = `ver. ${__VERSION__}`;
+  const t = new Date(parseInt(__BUILD__, 36));
+  if (!Number.isNaN(t.getTime())) $('#build').title = `от ${t.toLocaleString('bg-BG')}`;
 }
 
 function connect() {
@@ -208,7 +234,7 @@ function connect() {
     else if (m.t === 'tick') onTick(m);
     else if (m.t === 'newworld') location.reload();
   };
-  ws.onopen = () => $('#conn').classList.remove('off');
+  ws.onopen = () => { $('#conn').classList.remove('off'); void checkVersion(); };
   ws.onclose = () => {
     $('#conn').classList.add('off');
     setTimeout(connect, 3000);
@@ -356,10 +382,11 @@ $('#sideBody').addEventListener('click', (e) => {
 
 // ---------- cards ----------
 
-function openCard(html: string, beside = false) {
+function openCard(html: string, beside = false, extra = '') {
   $('#cardBody').innerHTML = html;
   $('#card').hidden = false;
   $('#card').classList.toggle('beside', beside);
+  $('#card').classList.toggle('wide', extra === 'wide');
   if (!beside) { follow = null; r.select(null); ($('#card') as HTMLElement).style.cssText = ''; }
 }
 function closeCard() {
@@ -370,14 +397,18 @@ function closeCard() {
 $('#cardClose').onclick = closeCard;
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeCard(); });
 $('#card').addEventListener('click', (e) => {
-  const el = (e.target as HTMLElement).closest<HTMLElement>('[data-person]');
-  if (el?.dataset.person) showPerson(Number(el.dataset.person));
+  const el = (e.target as HTMLElement).closest<HTMLElement>('[data-person],[data-tree]');
+  if (!el) return;
+  e.preventDefault();
+  if (el.dataset.tree) showTree(Number(el.dataset.tree));
+  else if (el.dataset.person) showPerson(Number(el.dataset.person));
 });
 
 async function showPerson(id: number) {
   const d = await api<PersonDetail>(`/api/person/${id}`).catch(() => null);
   if (!d) return;
-  const link = (p: { id: number; name: string } | null) => (p ? `<a href="#" data-person="${p.id}">${esc(p.name)}</a>` : '<span class="muted">неизвестен</span>');
+  // the first people have no parents: the world starts with them
+  const link = (p: { id: number; name: string } | null) => (p ? `<a href="#" data-person="${p.id}">${esc(p.name)}</a>` : `<span class="muted">${d.generation <= 1 ? 'от първите хора' : 'неизвестен'}</span>`);
   const genes = Object.entries(d.genes).map(([k, v]) => `<div class="gene"><span>${k}</span><div class="bar"><i style="width:${v}%"></i></div></div>`).join('');
   const alive = d.diedYear === null;
   const live = r.people.get(id);
@@ -386,7 +417,7 @@ async function showPerson(id: number) {
   openCard(`
     <div class="person-head"><div class="avatar ${d.sex ? 'f' : 'm'}">${d.sex ? '👩' : '👨'}</div>
       <div><h2>${esc(d.name)}</h2>
-      <div class="muted">${alive ? `${d.age} години · ${esc(d.bandName)}` : `${formatYear(d.bornYear)} – ${formatYear(d.diedYear!)}, ${esc(d.cause ?? '')} на ${d.age}`}</div>
+      <div class="muted">${alive ? `<span id="pAge">${d.age}</span> години · ${esc(d.bandName)}` : `${formatYear(d.bornYear)} – ${formatYear(d.diedYear!)}, ${esc(d.cause ?? '')} на ${d.age}`}</div>
       ${alive && d.task ? `<div>Сега ${esc(d.task)}</div>` : ''}<div class="muted">${d.generation}-о поколение</div></div></div>
     <div class="genes">${genes}</div>
     <dl class="family">
@@ -394,6 +425,7 @@ async function showPerson(id: number) {
       <dt>Партньор</dt><dd>${link(d.partner)}</dd>
       <dt>Деца</dt><dd>${d.children.length ? d.children.map((c) => `<a href="#" data-person="${c.id}" class="${c.alive ? '' : 'dead'}">${esc(c.name)}</a>`).join(', ') : '<span class="muted">няма</span>'}</dd>
     </dl>
+    <button class="btn tree-btn" data-tree="${d.id}">Родословие</button>
     ${d.deeds.length ? `<h3>Дела</h3><ul class="deeds">${d.deeds.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}`, beside);
   if (live && alive) { follow = id; r.select(id); }
 }
@@ -404,27 +436,58 @@ function followStep() {
   if (id === null) return;
   const p = r.people.get(id);
   if (!p) { r.select(null); follow = null; $('#card').classList.remove('beside'); ($('#card') as HTMLElement).style.cssText = ''; return; }
-  // follow where the person is heading, not every little step or hop, so nothing shakes
-  if (follow === id) { cam.tx = p.to.x; cam.ty = p.to.y - 6; }
+  // follow the smooth walking line, never the hops and the idle wiggle, so nothing shakes
+  if (follow === id) { cam.tx = p.pos.x; cam.ty = p.pos.y - 6; }
   const card = $('#card') as HTMLElement;
   if (card.hidden || !card.classList.contains('beside')) { cardPos = null; return; }
-  const ax = follow === id ? cam.x : p.to.x, ay = follow === id ? cam.y : p.to.y - 6;
+  // while the camera follows, the person stays in the middle, so the card holds still beside them
+  const ax = follow === id ? cam.x : p.pos.x, ay = follow === id ? cam.y : p.pos.y - 6;
   const sx = r.world.x + ax * cam.zoom, sy = r.world.y + ay * cam.zoom;
   const w = card.offsetWidth, h = card.offsetHeight;
   const W = app.screen.width, H = app.screen.height;
   const gap = 28 + 8 * cam.zoom;
   const side = document.body.classList.contains('side-hidden') ? 0 : ($('.side') as HTMLElement).offsetWidth + 16;
-  let left = sx - gap - w;
-  if (left < 12) left = Math.min(sx + gap, W - side - w - 12);
+  // stay on the same side while it fits, so the card does not swap back and forth
+  const leftFits = sx - gap - w >= 12, rightFits = sx + gap + w <= W - side - 12;
+  if (cardSide === 'left' ? !leftFits && rightFits : !rightFits && leftFits) cardSide = cardSide === 'left' ? 'right' : 'left';
+  const left = cardSide === 'left' ? Math.max(12, sx - gap - w) : Math.min(sx + gap, W - side - w - 12);
   const top = Math.max(12, Math.min(H - h - 12, sy - h / 2));
-  // glide to the new place and ignore small changes
+  // move with the person; a soft catch-up only smooths a switch of side
   if (!cardPos) cardPos = { x: left, y: top };
-  else if (Math.abs(left - cardPos.x) > 24 || Math.abs(top - cardPos.y) > 24) {
-    cardPos.x += (left - cardPos.x) * 0.12;
-    cardPos.y += (top - cardPos.y) * 0.12;
-  }
-  card.style.left = `${Math.round(cardPos.x)}px`;
-  card.style.top = `${Math.round(cardPos.y)}px`;
+  cardPos.x += (left - cardPos.x) * 0.25;
+  cardPos.y += (top - cardPos.y) * 0.25;
+  card.style.transform = `translate3d(${cardPos.x.toFixed(1)}px, ${cardPos.y.toFixed(1)}px, 0)`;
+}
+
+/** family tree: three generations of ancestors, and the straight lines back to the first people */
+async function showTree(id: number) {
+  const t = await api<FamilyTree>(`/api/tree/${id}`).catch(() => null);
+  if (!t) return;
+  // "11 785 – 11 708 г. пр.н.е.": the era is written once when both years share it
+  const years = (n: TreeNode) => {
+    const a = formatYear(n.bornYear);
+    if (n.diedYear === null) return `от ${a}`;
+    const b = formatYear(n.diedYear);
+    const tail = a.match(/ г\..*$/)?.[0] ?? '';
+    return tail && b.endsWith(tail) ? `${a.slice(0, -tail.length)} – ${b}` : `${a} – ${b}`;
+  };
+  const box = (n: TreeNode | null | undefined, gen: number): string => {
+    if (!n) return `<div class="tbox empty">${gen <= 1 ? 'от първите хора' : 'неизвестен'}</div>`;
+    const parents = n.mother !== undefined || n.father !== undefined
+      ? `<div class="tpar">${box(n.father, n.generation - 1)}${box(n.mother, n.generation - 1)}</div>` : '';
+    return `<div class="tn"><div class="tbox ${n.sex ? 'f' : 'm'}${n.diedYear !== null ? ' dead' : ''}" data-tree="${n.id}" title="Покажи неговото родословие">
+      <b>${esc(n.name)}</b><small>${years(n)}</small></div>${parents}</div>`;
+  };
+  const line = (title: string, l: TreeNode[]) => l.length
+    ? `<details class="tline"><summary>${title}: ${l.length} поколения назад, до ${esc(l[l.length - 1].name)}</summary><ol>${l.map((n) => `<li><a href="#" data-tree="${n.id}">${esc(n.name)}</a> <span class="muted">${years(n)}</span></li>`).join('')}</ol></details>`
+    : '';
+  const root = t.root;
+  openCard(`
+    <h2>Родословие</h2>
+    <div class="muted"><a href="#" data-person="${root.id}">${esc(root.name)}</a> · ${root.generation}-о поколение · цъкни някого, за да видиш неговите предци</div>
+    <div class="tree">${box(root, root.generation)}</div>
+    ${line('По майчина линия', t.motherLine)}
+    ${line('По бащина линия', t.fatherLine)}`, false, 'wide');
 }
 
 function showBand(b: BandView) {

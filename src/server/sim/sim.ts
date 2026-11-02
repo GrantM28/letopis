@@ -1,9 +1,9 @@
 import { Rng } from '../../shared/rng';
 import {
-  BandView, ChronicleEntry, PersonDetail, PersonRow, TASKS, TASK_NAMES, Task, TimeInfo, b64encode, formatYear, isWater, Biome,
+  BandView, ChronicleEntry, PersonDetail, PersonRow, TASKS, TASK_NAMES, Task, TimeInfo, TreeNode, FamilyTree, b64encode, formatYear, isWater, Biome, RIVER_WATER,
 } from '../../shared/types';
-import { Terrain, generateTerrain, findStart, idx, inBounds, W, H } from './world';
-import { FEMALE, MALE, bandColor, bandName, familyFrom, nickname, placeName } from './names';
+import { Terrain, generateTerrain, findStart, idx, inBounds, W, H, setWorldSize, OLD_SIZE, NEW_SIZE } from './world';
+import { FEMALE, MALE, bandColor, bandName, fixBandName, familyFrom, nickname, placeName } from './names';
 import { ERAS, TECHS, TECH_BY_ID, Tech, eraOf } from './tech';
 
 export const START_YEAR = -12000;
@@ -57,6 +57,8 @@ export interface SimState {
   version: 1;
   worldId: string;
   seed: number;
+  /** map side in tiles; missing in worlds saved before maps grew (192) */
+  size?: number;
   tick: number;
   rng: [number, number, number, number];
   nextPersonId: number;
@@ -114,20 +116,26 @@ export class Simulation {
   constructor(state: SimState | null, seed?: number) {
     if (state) {
       this.s = state;
+      setWorldSize(state.size ?? OLD_SIZE);
+      for (const b of state.bands) b.name = fixBandName(b.name);
+      state.usedBands = state.usedBands.map(fixBandName);
       this.t = generateTerrain(state.seed);
       this.rng = new Rng(state.rng);
       for (let i = 0; i < state.plants.length; i++) this.t.plants[i] = state.plants[i] / 100;
       for (let i = 0; i < state.game.length; i++) this.t.game[i] = state.game[i] / 100;
       const ex = Buffer.from(state.explored, 'base64');
       for (let i = 0; i < this.t.explored.length; i++) this.t.explored[i] = (ex[i >> 3] >> (i & 7)) & 1;
+      this.dryCamps();
     } else {
       const sd = seed ?? Math.floor(Math.random() * 2 ** 31);
+      setWorldSize(NEW_SIZE);
       this.t = generateTerrain(sd);
       this.rng = new Rng(sd ^ 0x5bd1e995);
       this.s = {
         version: 1,
         worldId: `${new Date().toISOString().slice(0, 10)}-${sd.toString(36)}`,
         seed: sd,
+        size: NEW_SIZE,
         tick: 0,
         rng: this.rng.s,
         nextPersonId: 1,
@@ -191,11 +199,31 @@ export class Simulation {
       'Началото! Няколко семейства живеят сред дивата природа. Нямат огън, нито къщи. Да видим докъде ще стигнат.');
   }
 
+  /** dry land a camp can stand on: not sea, lake or a river big enough to be drawn as water */
+  private campable(i: number): boolean {
+    return !isWater(this.t.biome[i]) && this.t.river[i] < RIVER_WATER;
+  }
+
+  /** camps saved on a river channel step onto the nearest bank */
+  private dryCamps() {
+    for (const b of this.s.bands) {
+      const cx = Math.round(b.cx), cy = Math.round(b.cy);
+      if (inBounds(cx, cy) && this.campable(idx(cx, cy))) continue;
+      search: for (let r = 1; r < 12; r++) {
+        for (let oy = -r; oy <= r; oy++) for (let ox = -r; ox <= r; ox++) {
+          if (Math.max(Math.abs(ox), Math.abs(oy)) !== r) continue;
+          const x = cx + ox, y = cy + oy;
+          if (inBounds(x, y) && this.campable(idx(x, y))) { b.cx = x; b.cy = y; break search; }
+        }
+      }
+    }
+  }
+
   private nearestLand(x: number, y: number): { x: number; y: number } {
     for (let r = 0; r < 30; r++) {
       for (let k = 0; k < 20; k++) {
         const nx = Math.round(x + this.rng.range(-r, r)), ny = Math.round(y + this.rng.range(-r, r));
-        if (inBounds(nx, ny) && !isWater(this.t.biome[idx(nx, ny)]) && this.t.height[idx(nx, ny)] < 0.6) return { x: nx, y: ny };
+        if (inBounds(nx, ny) && this.campable(idx(nx, ny)) && this.t.height[idx(nx, ny)] < 0.6) return { x: nx, y: ny };
       }
     }
     return { x, y };
@@ -811,7 +839,7 @@ export class Simulation {
     const t = this.t;
     if (!inBounds(x, y)) return -1;
     const c = idx(x, y);
-    if (isWater(t.biome[c]) || t.height[c] > 0.62) return -1;
+    if (!this.campable(c) || t.height[c] > 0.62) return -1;
     for (const o of this.s.bands) if (o.id !== self.id && Math.hypot(o.cx - x, o.cy - y) < 7) return -1;
     let s = 0;
     for (let oy = -R; oy <= R; oy += 2) for (let ox = -R; ox <= R; ox += 2) {
@@ -821,7 +849,7 @@ export class Simulation {
     }
     const temp = t.temp[c];
     if (temp < 0.3) s *= this.hasTech(self, 'clothing') ? 0.85 : 0.5;
-    if (t.river[c] || t.fish[c]) s *= 1.15;
+    if (t.fish[c]) s *= 1.15;
     return s;
   }
 
@@ -1071,6 +1099,41 @@ export class Simulation {
       children: d.children.map((c) => ({ ...(this.ref(c) ?? { id: c, name: '?' }), alive: this.byId.has(c) })),
       deeds: d.deeds, generation: d.gen,
     };
+  }
+
+  /** a person alive or dead, with the ids of the parents */
+  private kin(id: number | null): (TreeNode & { motherId: number | null; fatherId: number | null }) | null {
+    if (!id) return null;
+    const p = this.byId.get(id);
+    if (p) return { id, name: this.nameOf(p), sex: p.sex, bornYear: Math.floor(yearOf(p.born)), diedYear: null, generation: p.gen, motherId: p.motherId, fatherId: p.fatherId };
+    const d = this.lookupDead(id);
+    if (!d) return null;
+    return { id, name: d.name, sex: d.sex, bornYear: Math.floor(yearOf(d.born)), diedYear: Math.floor(yearOf(d.died)), generation: d.gen, motherId: d.motherId, fatherId: d.fatherId };
+  }
+
+  /** ancestors `depth` generations up, plus the straight mother and father lines back to the first people */
+  familyTree(id: number, depth = 3): FamilyTree | null {
+    const up = (nid: number | null, left: number): TreeNode | null => {
+      const k = this.kin(nid);
+      if (!k) return null;
+      const { motherId, fatherId, ...node } = k;
+      if (left > 0) { node.mother = up(motherId, left - 1); node.father = up(fatherId, left - 1); }
+      return node;
+    };
+    const root = up(id, depth);
+    if (!root) return null;
+    const line = (side: 'motherId' | 'fatherId'): TreeNode[] => {
+      const out: TreeNode[] = [];
+      let k = this.kin(id);
+      for (let n = 0; k && n < 5000; n++) {
+        k = this.kin(k[side]);
+        if (!k) break;
+        const { motherId: _m, fatherId: _f, ...node } = k;
+        out.push(node);
+      }
+      return out;
+    };
+    return { root, motherLine: line('motherId'), fatherLine: line('fatherId') };
   }
 
   /** notable living people: discoverers, leaders, the oldest */

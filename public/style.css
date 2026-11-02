@@ -81,9 +81,10 @@ h3 { font-family: var(--serif); font-weight: normal; color: var(--accent); margi
 .toast.out { opacity: 0; transform: translateY(10px); }
 
 .card { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(520px, calc(100vw - 32px)); max-height: calc(100vh - 64px); overflow-y: auto; background: var(--panel-solid); border: 1px solid var(--line); border-radius: 16px; padding: 22px; z-index: 20; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5); }
-.card.beside { transform: none; width: min(380px, calc(100vw - 32px)); max-height: min(560px, calc(100vh - 24px)); border-color: rgba(255, 42, 42, 0.55); }
+.card.beside { left: 0; top: 0; transform: none; will-change: transform; width: min(380px, calc(100vw - 32px)); max-height: min(560px, calc(100vh - 24px)); border-color: rgba(255, 42, 42, 0.55); }
 .card h2 { font-family: var(--serif); font-weight: normal; margin: 0 0 4px; display: flex; gap: 10px; align-items: center; }
 .card .close { position: absolute; top: 12px; right: 12px; }
+.card.beside .close { display: none; } /* a click on the map closes it */
 .card a { color: var(--accent-2); text-decoration: none; }
 .card a.dead { color: var(--muted); text-decoration: line-through; text-decoration-color: rgba(255,255,255,0.25); }
 .person-head { display: flex; gap: 14px; align-items: center; }
@@ -110,3 +111,22 @@ h3 { font-family: var(--serif); font-weight: normal; color: var(--accent); margi
   #toasts { margin-left: 0; width: calc(100vw - 32px); bottom: calc(42vh + 64px); }
   .brand { display: none; }
 }
+
+.brand .build { display: block; font-family: var(--sans, system-ui, sans-serif); font-size: 10px; color: var(--muted); letter-spacing: 0.02em; margin-top: 2px; }
+
+/* family tree */
+.card.wide { width: min(860px, calc(100vw - 32px)); }
+.tree-btn { margin-top: 12px; }
+.tree { overflow-x: auto; margin: 14px 0; padding-bottom: 6px; }
+.tn { display: flex; align-items: center; gap: 10px; }
+.tpar { display: flex; flex-direction: column; gap: 6px; padding-left: 10px; border-left: 1px solid var(--line); }
+.tbox { min-width: 150px; max-width: 190px; padding: 6px 9px; border-radius: 9px; background: rgba(127, 178, 217, 0.13); border: 1px solid rgba(127, 178, 217, 0.35); cursor: pointer; line-height: 1.25; }
+.tbox.f { background: rgba(224, 168, 79, 0.13); border-color: rgba(224, 168, 79, 0.4); }
+.tbox.dead { opacity: 0.75; }
+.tbox.empty { cursor: default; color: var(--muted); background: transparent; border-style: dashed; border-color: var(--line); font-size: 13px; }
+.tbox b { display: block; font-weight: 600; font-size: 13.5px; }
+.tbox small { color: var(--muted); font-size: 12px; }
+.tbox:not(.empty):hover { border-color: var(--accent-2); }
+.tline { margin-top: 8px; }
+.tline summary { cursor: pointer; color: var(--accent-2); }
+.tline ol { max-height: 260px; overflow-y: auto; margin: 8px 0 0; padding-left: 28px; font-size: 14px; }

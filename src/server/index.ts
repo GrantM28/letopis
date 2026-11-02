@@ -170,6 +170,10 @@ const server = http.createServer((req, res) => {
     if (p === '/api/heroes') return json(res, sim.heroes());
     if (p === '/api/stats') return json(res, store.stats(world));
     if (p === '/api/worlds') return json(res, store.worlds());
+    if (p.startsWith('/api/tree/')) {
+      const t = sim.familyTree(Number(p.split('/').pop()));
+      return t ? json(res, t) : json(res, { error: 'няма такъв човек' }, 404);
+    }
     if (p.startsWith('/api/person/')) {
       const d = sim.personDetail(Number(p.split('/').pop()));
       return d ? json(res, d) : json(res, { error: 'няма такъв човек' }, 404);
@@ -177,7 +181,12 @@ const server = http.createServer((req, res) => {
     // static files
     let file = path.normalize(path.join(PUBLIC, p === '/' ? 'index.html' : p));
     if (!file.startsWith(PUBLIC) || !existsSync(file) || statSync(file).isDirectory()) file = path.join(PUBLIC, 'index.html');
-    res.writeHead(200, { 'content-type': MIME[path.extname(file)] ?? 'application/octet-stream' });
+    const fresh = file.endsWith('index.html') || file.endsWith('version.json');
+    res.writeHead(200, {
+      'content-type': MIME[path.extname(file)] ?? 'application/octet-stream',
+      // the page and its version must always be fresh; the rest carries ?v=<build>
+      'cache-control': fresh ? 'no-cache' : 'public, max-age=86400',
+    });
     createReadStream(file).pipe(res);
   } catch (e) {
     log('HTTP грешка', e);

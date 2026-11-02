@@ -34,6 +34,9 @@ export const BIOME_NAMES: Record<number, string> = {
   13: 'Езеро',
 };
 
+/** river flow from which a river is wide enough to be drawn as water (and no camp stands on it) */
+export const RIVER_WATER = 40;
+
 export function isWater(b: number): boolean {
   return b === Biome.DeepWater || b === Biome.Water || b === Biome.Lake;
 }
@@ -150,6 +153,25 @@ export interface PersonDetail {
   children: { id: number; name: string; alive: boolean }[];
   deeds: string[];
   generation: number;
+}
+
+/** one person in the family tree */
+export interface TreeNode {
+  id: number;
+  name: string;
+  sex: 0 | 1;
+  bornYear: number;
+  diedYear: number | null;
+  generation: number;
+  mother?: TreeNode | null;
+  father?: TreeNode | null;
+}
+
+export interface FamilyTree {
+  root: TreeNode;
+  /** mother's mother's ... line and father's father's ... line up to the first people, nearest first */
+  motherLine: TreeNode[];
+  fatherLine: TreeNode[];
 }
 
 export function formatYear(year: number): string {

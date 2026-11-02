@@ -79,14 +79,25 @@ const TOTEM_N = ['Слънцето', 'Езерото', 'Еленчето', 'Пл
 const ADJ_M = ['Белия', 'Сивия', 'Черния', 'Червения', 'Златния', 'Стария', 'Бързия', 'Тихия', 'Големия', 'Малкия', 'Мъдрия', 'Самотния'];
 const ADJ_F = ['Бялата', 'Сивата', 'Черната', 'Червената', 'Златната', 'Старата', 'Бързата', 'Тихата', 'Голямата', 'Малката', 'Мъдрата', 'Самотната'];
 
+const bareM = (t: string) => t.slice(0, -1);   // Гарвана -> Гарван, Коня -> Кон
+const bareF = (t: string) => t.slice(0, -2);   // Звездата -> Звезда
+
+/** Names saved before the article fix ("Малкия Гарвана") get the right form. */
+export function fixBandName(name: string): string {
+  for (const a of ADJ_M) for (const t of TOTEM_M) name = name.replace(`${a} ${t}`, `${a} ${bareM(t)}`);
+  for (const a of ADJ_F) for (const t of TOTEM_F) name = name.replace(`${a} ${t}`, `${a} ${bareF(t)}`);
+  return name;
+}
+
 export function bandName(rng: Rng, used: Set<string>): string {
   for (let k = 0; k < 200; k++) {
     let totem: string;
     const r = rng.next();
     // plain names first, adjectives once the plain ones are taken
     const fancy = k > 8 || rng.chance(0.25);
-    if (r < 0.45) totem = fancy ? `${rng.pick(ADJ_M)} ${rng.pick(TOTEM_M)}` : rng.pick(TOTEM_M);
-    else if (r < 0.9) totem = fancy ? `${rng.pick(ADJ_F)} ${rng.pick(TOTEM_F)}` : rng.pick(TOTEM_F);
+    // with an adjective the article moves to the adjective: "Малкия Гарван", "Самотната Звезда"
+    if (r < 0.45) totem = fancy ? `${rng.pick(ADJ_M)} ${bareM(rng.pick(TOTEM_M))}` : rng.pick(TOTEM_M);
+    else if (r < 0.9) totem = fancy ? `${rng.pick(ADJ_F)} ${bareF(rng.pick(TOTEM_F))}` : rng.pick(TOTEM_F);
     else totem = rng.pick(TOTEM_N);
     const name = `Родът на ${totem}`;
     if (!used.has(name)) { used.add(name); return name; }

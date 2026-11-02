@@ -1,0 +1,20 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>letopis-dev</Name>
+  <Repository>ghcr.io/leppermesiah/letopis:dev</Repository>
+  <Registry>https://github.com/leppermesiah/letopis/pkgs/container/letopis</Registry>
+  <Network>bridge</Network>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/leppermesiah/letopis</Support>
+  <Project>https://github.com/leppermesiah/letopis</Project>
+  <Overview>Летопис: idle симулация на цивилизация, която живее сама. Хора с български имена тръгват от каменната епоха и се развиват без намеса. Гледа се в браузъра. ТЕСТОВА версия от клона dev: обновява се автоматично и светът върви по-бързо.</Overview>
+  <Category>GameServers:</Category>
+  <WebUI>http://[IP]:[PORT:2223]/</WebUI>
+  <Icon>https://raw.githubusercontent.com/leppermesiah/letopis/main/public/favicon.svg</Icon>
+  <ExtraParams>--restart=unless-stopped --cpus=1 --memory=1g</ExtraParams>
+  <Config Name="Уеб порт" Target="2222" Default="2223" Mode="tcp" Description="Порт за браузъра" Type="Port" Display="always" Required="true" Mask="false">2223</Config>
+  <Config Name="Данни" Target="/data" Default="/mnt/user/appdata/letopis-dev" Mode="rw" Description="Тук живее светът: world.json.gz, летописът (SQLite) и архивът на старите светове" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/letopis-dev</Config>
+  <Config Name="Часова зона" Target="TZ" Default="Europe/Sofia" Mode="" Description="" Type="Variable" Display="advanced" Required="false" Mask="false">Europe/Sofia</Config>
+  <Config Name="Скорост (само за тест)" Target="LETOPIS_SPEED" Default="20" Mode="" Description="1 = нормално. Тестовият свят върви 20 пъти по-бързо, за да се виждат промените." Type="Variable" Display="always" Required="false" Mask="false">20</Config>
+</Container>

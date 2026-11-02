@@ -2,8 +2,16 @@ import { Rng } from '../../shared/rng';
 import { Simplex } from '../../shared/noise';
 import { Biome, isWater } from '../../shared/types';
 
-export const W = 192;
-export const H = 192;
+/** Map side in tiles. Old worlds were 192; new ones are 272 (about twice the area). */
+export const OLD_SIZE = 192;
+export const NEW_SIZE = 272;
+export let W = OLD_SIZE;
+export let H = OLD_SIZE;
+/** Set before generating or loading a world: one world per process. */
+export function setWorldSize(n: number) {
+  W = n;
+  H = n;
+}
 
 /** Static terrain plus the living resources on each tile. */
 export interface Terrain {
@@ -43,6 +51,8 @@ export function generateTerrain(seed: number): Terrain {
   const wet = new Simplex(rng);
   const warp = new Simplex(rng);
   const n = W * H;
+  // keep hills, rivers and coasts the same size in tiles on a bigger map
+  const k = W / OLD_SIZE, kk = k * k;
   const t: Terrain = {
     w: W, h: H,
     height: new Float32Array(n),
@@ -67,16 +77,16 @@ export function generateTerrain(seed: number): Terrain {
   for (let y = 0; y < H; y++) {
     for (let x = 0; x < W; x++) {
       const nx = x / W, ny = y / H;
-      const wx = nx + 0.12 * warp.fbm(nx * 3, ny * 3, 3);
-      const wy = ny + 0.12 * warp.fbm(nx * 3 + 7.3, ny * 3 + 2.1, 3);
-      let e = elev.fbm(wx * 3.2, wy * 3.2, 6, 2.0, 0.5);
+      const wx = nx + 0.12 * warp.fbm(nx * 3 * k, ny * 3 * k, 3);
+      const wy = ny + 0.12 * warp.fbm(nx * 3 * k + 7.3, ny * 3 * k + 2.1, 3);
+      let e = elev.fbm(wx * 3.2 * k, wy * 3.2 * k, 6, 2.0, 0.5);
       // continent mask: distance from centre with an elliptic falloff
       const dx = (nx - 0.5) / 0.48, dy = (ny - 0.5) / 0.46;
       const d = Math.sqrt(dx * dx + dy * dy);
       e = e * 0.85 + 0.42 - Math.pow(d, 2.2) * 0.75;
       // a mountain spine
-      const spine = Math.exp(-Math.pow((wx - ridgeX - 0.15 * Math.sin(wy * 6)) / 0.06, 2)) * 0.28 * (1 - d * 0.7);
-      e += Math.max(0, spine) * (0.6 + 0.4 * elev.noise(wx * 9, wy * 9));
+      const spine = Math.exp(-Math.pow((wx - ridgeX - 0.15 * Math.sin(wy * 6 * k)) / (0.06 / k), 2)) * 0.28 * (1 - d * 0.7);
+      e += Math.max(0, spine) * (0.6 + 0.4 * elev.noise(wx * 9 * k, wy * 9 * k));
       t.height[idx(x, y)] = e;
     }
   }
@@ -101,7 +111,7 @@ export function generateTerrain(seed: number): Terrain {
 
   // Rivers: start at wet highlands, run downhill to the sea.
   const sources: number[] = [];
-  for (let k = 0; k < 4000 && sources.length < 34; k++) {
+  for (let a = 0; a < 4000 * kk && sources.length < Math.round(34 * kk); a++) {
     const x = rng.int(4, W - 5), y = rng.int(4, H - 5);
     const i = idx(x, y);
     if (t.height[i] > 0.45 && t.moist[i] > 0.45 && !sources.some((s) => Math.abs((s % W) - x) + Math.abs(Math.floor(s / W) - y) < 14)) sources.push(i);
@@ -110,7 +120,7 @@ export function generateTerrain(seed: number): Terrain {
     let x = s % W, y = Math.floor(s / W);
     let flow = 1;
     const visited = new Set<number>();
-    for (let step = 0; step < 400; step++) {
+    for (let step = 0; step < 400 * k; step++) {
       const i = idx(x, y);
       if (t.height[i] <= SEA) break;
       visited.add(i);
