@@ -72,6 +72,8 @@ export interface WorldInfo {
   biome: string;
   river: string;
   temp: string;
+  /** which tree can grow on each tile (index into TREE_KINDS, 0 none) */
+  treeKinds: string;
 }
 
 export interface TimeInfo {
@@ -122,6 +124,23 @@ export interface ChronicleEntry {
   kids?: string;
   personId?: number;
   bandId?: number;
+  /** names in the text that lead somewhere: a person (p) or a band (b) */
+  refs?: ChronicleRef[];
+}
+
+export interface ChronicleRef { n: string; p?: number; b?: number }
+
+/** a band that is no more: what the chronicle still knows about it */
+export interface GoneBand {
+  id: number;
+  name: string;
+  settlementName: string | null;
+  color: number;
+  foundedYear: number;
+  endedYear: number;
+  /** 'extinct' or the name of the band it joined */
+  end: string;
+  techs: string[];
 }
 
 export interface TickMessage {
@@ -131,6 +150,8 @@ export interface TickMessage {
   people: PersonRow[];
   events: ChronicleEntry[];
   explored?: string; // base64 bitset, only when changed
+  /** trees that grew or were cut: [tile, stage, tile, stage, ...] */
+  trees?: number[];
   population: number;
 }
 
@@ -140,6 +161,8 @@ export interface SnapshotMessage {
   bands: BandView[];
   people: PersonRow[];
   explored: string;
+  /** size of every tree, one byte per tile (0 none .. 4 big), base64 */
+  trees: string;
   population: number;
   totalBorn: number;
   totalDied: number;

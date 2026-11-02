@@ -56,6 +56,7 @@ function makeWorldInfo(): WorldInfo {
   return {
     worldId: sim.s.worldId, seed: sim.s.seed, w: t.w, h: t.h,
     height: b64encode(height), biome: b64encode(t.biome), river: b64encode(t.river), temp: b64encode(temp),
+    treeKinds: b64encode(sim.treeKind),
   };
 }
 
@@ -74,6 +75,8 @@ function flush() {
   store.addEvents(sim.s.worldId, sim.events);
   store.addDead(sim.s.worldId, sim.deadQueue);
   sim.deadQueue = [];
+  store.addGoneBands(sim.s.worldId, sim.goneQueue);
+  sim.goneQueue = [];
 }
 
 // ---------- the endless loop ----------
@@ -148,7 +151,7 @@ function json(res: http.ServerResponse, data: unknown, status = 200) {
 
 function snapshot(): SnapshotMessage {
   return {
-    t: 'snapshot', time: sim.timeInfo(SPEED), bands: sim.bandViews(), people: sim.personRows(), explored: sim.exploredB64(),
+    t: 'snapshot', time: sim.timeInfo(SPEED), bands: sim.bandViews(), people: sim.personRows(), explored: sim.exploredB64(), trees: sim.treesB64(),
     population: sim.s.people.length, totalBorn: sim.s.totalBorn, totalDied: sim.s.totalDied,
   };
 }
@@ -178,6 +181,13 @@ const server = http.createServer((req, res) => {
     if (p.startsWith('/api/tree/')) {
       const t = sim.familyTree(Number(p.split('/').pop()));
       return t ? json(res, t) : json(res, { error: 'няма такъв човек' }, 404);
+    }
+    if (p.startsWith('/api/band/')) {
+      const id = Number(p.split('/').pop());
+      const live = sim.bandViews().find((b) => b.id === id);
+      if (live) return json(res, { live });
+      const gone = store.getGoneBand(world, id);
+      return gone ? json(res, { gone }) : json(res, { error: 'няма такъв род' }, 404);
     }
     if (p.startsWith('/api/person/')) {
       const d = sim.personDetail(Number(p.split('/').pop()));
@@ -211,6 +221,7 @@ wss.on('connection', (ws) => {
 function broadcast() {
   if (!clients.size) {
     pendingEvents = [];
+    sim.treeChanges = [];
     return;
   }
   const msg: TickMessage = {
@@ -221,6 +232,8 @@ function broadcast() {
     msg.explored = sim.exploredB64();
     sim.exploredDirty = false;
   }
+  if (sim.treeChanges.length) msg.trees = sim.treeChanges;
+  sim.treeChanges = [];
   pendingEvents = [];
   const data = JSON.stringify(msg);
   for (const ws of clients) if (ws.readyState === WebSocket.OPEN) ws.send(data);

@@ -1,7 +1,7 @@
 import { Application } from 'pixi.js';
 import { Atlas, WorldRenderer, iso, TW, TH } from './render';
 import {
-  BandView, ChronicleEntry, FamilyTree, MONTHS, TreeNode, PersonDetail, PersonRow, SnapshotMessage, TASKS, TASK_NAMES, TickMessage, WorldInfo, b64decode, formatYear,
+  BandView, ChronicleEntry, FamilyTree, GoneBand, MONTHS, TreeNode, PersonDetail, PersonRow, SnapshotMessage, TASKS, TASK_NAMES, TickMessage, WorldInfo, b64decode, formatYear,
 } from '../shared/types';
 import { SECRET_COUNT, SECRET_HEROES, SECRET_KINDS, SecretFind, SecretSpot } from '../shared/secrets';
 
@@ -191,6 +191,7 @@ function applyTime(t: TickMessage['time'], population: number) {
 function onSnapshot(m: SnapshotMessage) {
   bands = m.bands;
   people = m.people;
+  if (m.trees) r.setTrees(m.trees);
   r.setExplored(b64decode(m.explored));
   r.updateBands(bands, kids);
   r.updatePeople(people, bandColors(), 400);
@@ -204,6 +205,7 @@ function onTick(m: TickMessage) {
   bands = m.bands;
   people = m.people;
   if (m.explored) r.setExplored(b64decode(m.explored));
+  if (m.trees) r.updateTrees(m.trees);
   r.updateBands(bands, kids);
   r.updatePeople(people, bandColors(), m.time.tickMs);
   applyTime(m.time, m.population);
@@ -253,14 +255,41 @@ function evText(e: ChronicleEntry): string {
   return kids && e.kids ? e.kids : e.text;
 }
 
+/** the text with the names of people and bands as blue links */
+function linkedText(e: ChronicleEntry): string {
+  const text = evText(e);
+  const refs = [...(e.refs ?? [])].sort((a, b) => b.n.length - a.n.length);
+  // longest names first, never two links over the same letters
+  const taken: { a: number; z: number; r: (typeof refs)[number] }[] = [];
+  for (const r of refs) {
+    let from = 0;
+    for (;;) {
+      const a = text.indexOf(r.n, from);
+      if (a < 0) break;
+      const z = a + r.n.length;
+      if (!taken.some((t) => a < t.z && z > t.a)) taken.push({ a, z, r });
+      from = z;
+    }
+  }
+  taken.sort((x, y) => x.a - y.a);
+  let out = '', at = 0;
+  for (const t of taken) {
+    out += esc(text.slice(at, t.a));
+    const attr = t.r.p ? `data-person="${t.r.p}"` : `data-band="${t.r.b}"`;
+    out += `<a href="#" class="ref" ${attr}>${esc(text.slice(t.a, t.z))}</a>`;
+    at = t.z;
+  }
+  return out + esc(text.slice(at));
+}
+
 function eventHtml(e: ChronicleEntry): string {
   const icon: Record<string, string> = {
     discovery: '💡', rediscovery: '🔁', settle: '🏘️', colony: '🏘️', split: '🚶', death: '🕯️', twins: '👶', hunt: '🦣',
     winter: '❄️', secret: '✨', drought: '☀️', extinct: '🌑', lost: '📜', meet: '🤝', learn: '📚', era: '⭐', milestone: '👥', genesis: '🌅', merge: '🔗', marriage: '💞', end: '🌑',
   };
-  return `<li class="ev imp${e.importance}" data-person="${e.personId ?? ''}" data-band="${e.bandId ?? ''}">
+  return `<li class="ev imp${e.importance}">
     <span class="ev-icon">${icon[e.kind] ?? '•'}</span>
-    <div><div class="ev-year">${formatYear(e.year)}</div><div class="ev-text">${esc(evText(e))}</div></div></li>`;
+    <div><div class="ev-year">${formatYear(e.year)}</div><div class="ev-text">${linkedText(e)}</div></div></li>`;
 }
 
 function addEvent(e: ChronicleEntry, live: boolean) {
@@ -287,7 +316,11 @@ const feedFilter = (e: ChronicleEntry) => !onlyBig || e.importance >= 2;
 function toast(e: ChronicleEntry) {
   const t = document.createElement('div');
   t.className = `toast imp${e.importance}`;
-  t.innerHTML = `<div class="ev-year">${formatYear(e.year)}</div>${esc(evText(e))}`;
+  t.innerHTML = `<div class="ev-year">${formatYear(e.year)}</div>${linkedText(e)}`;
+  t.onclick = (ev) => {
+    const el = (ev.target as HTMLElement).closest<HTMLElement>('[data-person],[data-band]');
+    if (el) { ev.preventDefault(); openRef(el); }
+  };
   $('#toasts').prepend(t);
   setTimeout(() => t.classList.add('out'), 9000);
   setTimeout(() => t.remove(), 10000);
@@ -392,13 +425,32 @@ document.querySelectorAll<HTMLButtonElement>('.tab').forEach((b) => {
 $('#sideBody').addEventListener('click', (e) => {
   const el = (e.target as HTMLElement).closest<HTMLElement>('[data-person],[data-band]');
   if (!el) return;
+  e.preventDefault();
+  openRef(el);
+});
+
+/** a name was clicked: go there if it still lives, otherwise just tell about it */
+function openRef(el: HTMLElement) {
   const pid = Number(el.dataset.person), bid = Number(el.dataset.band);
   if (pid) showPerson(pid);
   else if (bid) {
     const b = bands.find((x) => x.id === bid);
     if (b) { stopTour(); lookAt(b.x, b.y, 1.6); showBand(b); }
+    else showGoneBand(bid);
   }
-});
+}
+
+async function showGoneBand(id: number) {
+  const r2 = await api<{ live?: BandView; gone?: GoneBand }>(`/api/band/${id}`).catch(() => null);
+  if (r2?.live) { const b = r2.live; stopTour(); lookAt(b.x, b.y, 1.6); showBand(b); return; }
+  const g = r2?.gone;
+  if (!g) { openCard('<h2>Изгубен в мъглата на времето</h2><p class="muted">Летописът не помни повече за този род.</p>'); return; }
+  openCard(`
+    <h2><span class="dot" style="background:#${g.color.toString(16).padStart(6, '0')}"></span> ${esc(g.settlementName ?? g.name)}</h2>
+    <div class="muted">${g.settlementName ? `${esc(g.name)} · ` : ''}${formatYear(g.foundedYear)} – ${formatYear(g.endedYear)}</div>
+    <p>${g.end === 'extinct' ? 'Този род угасна. Няма останали хора от него.' : `Последните от този род се присъединиха към ${esc(g.end.replace(/^Родът/, 'рода').replace(/^Селото/, 'селото'))}.`}</p>
+    <h3>Какво знаеха</h3><div class="techs">${g.techs.map((t) => `<span class="pill">${esc(t)}</span>`).join('') || '<span class="muted">Нищо</span>'}</div>`);
+}
 
 // ---------- cards ----------
 
@@ -417,11 +469,11 @@ function closeCard() {
 $('#cardClose').onclick = closeCard;
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeCard(); });
 $('#card').addEventListener('click', (e) => {
-  const el = (e.target as HTMLElement).closest<HTMLElement>('[data-person],[data-tree]');
+  const el = (e.target as HTMLElement).closest<HTMLElement>('[data-person],[data-tree],[data-band]');
   if (!el) return;
   e.preventDefault();
   if (el.dataset.tree) showTree(Number(el.dataset.tree));
-  else if (el.dataset.person) showPerson(Number(el.dataset.person));
+  else openRef(el);
 });
 
 async function showPerson(id: number) {
@@ -624,6 +676,10 @@ app.ticker.add((t) => {
   cam.zoom += (cam.tz - cam.zoom) * k;
   applyCam();
   r.frame(t.deltaTime, Date.now());
+  // nothing moves when zoomed far out: while the camera rests too, draw a few times a second only
+  const resting = Math.abs(cam.tx - cam.x) + Math.abs(cam.ty - cam.y) < 0.5 && Math.abs(cam.tz - cam.zoom) < 0.002;
+  const fps = r.still && resting && !tour && !dragging && pointers.size === 0 ? 12 : 0;
+  if (app.ticker.maxFPS !== fps) app.ticker.maxFPS = fps;
   const left = Math.max(0, tickMs - (now - lastTickAt));
   ($('#tickBar') as HTMLElement).style.width = `${100 - (left / tickMs) * 100}%`;
 });

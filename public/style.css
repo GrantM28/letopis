@@ -82,6 +82,10 @@ h3 { font-family: var(--serif); font-weight: normal; color: var(--accent); margi
 #toasts { position: fixed; left: 50%; transform: translateX(-50%); bottom: 64px; width: min(560px, calc(100vw - var(--side-w) - 48px)); display: flex; flex-direction: column; gap: 8px; z-index: 6; pointer-events: none; margin-left: calc(var(--side-w) / -2); }
 .toast { background: var(--panel-solid); border: 1px solid var(--line); border-left: 3px solid var(--accent-2); border-radius: 10px; padding: 10px 14px; box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35); transition: opacity 0.8s, transform 0.8s; }
 .toast.imp3 { border-left-color: var(--imp3); font-family: var(--serif); }
+/* names in the chronicle that lead to a person or a band */
+a.ref { color: var(--accent-2); text-decoration: none; border-bottom: 1px dotted currentColor; cursor: pointer; }
+a.ref:hover { border-bottom-style: solid; }
+.toast a.ref { pointer-events: auto; }
 .toast.out { opacity: 0; transform: translateY(10px); }
 
 .card { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(520px, calc(100vw - 32px)); max-height: calc(100vh - 64px); overflow-y: auto; background: var(--panel-solid); border: 1px solid var(--line); border-radius: 16px; padding: 22px; z-index: 20; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5); }

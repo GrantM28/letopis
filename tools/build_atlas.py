@@ -194,6 +194,15 @@ for look, young, old in (('chiefA', 'S', 'T'), ('chiefB', 'U', 'V')):
     for age, sheet in (('y', young), ('o', old)):
         group(f'{look}_{age}_idle', ' '.join(f'{sheet}{r}{c}' for r in (1, 2) for c in (1, 2, 3, 4)), 'person', 11.5, 64)
         group(f'{look}_{age}_walk', ' '.join(f'{sheet}{r}{c}' for r in (3, 4) for c in (1, 2, 3, 4)), 'person', 11.5, 64)
+# growing trees (sheets W-Z): columns are kinds, rows are stages 1-4 (sapling, young, grown, big).
+# Kind 'grow' keeps the sizes of the sheet: world units per source pixel instead of a fixed width.
+GROW_WPP = 0.1   # world units per sheet pixel: the big oak is about 27 wide, like the old trees
+GROW_TEX = 4.6   # texture pixels per world unit (same sharpness as the other trees)
+GROW_BOOST = {'Y4': 1.22}  # the conifer sheet drew its last row no bigger than the third
+for sheet, kinds in (('W', 'spruceS bareS autumn bare'), ('X', 'birch birchY fruit apple'),
+                     ('Y', 'spruceL spruceD pine pineU'), ('Z', 'oak oakL blossom oakOld')):
+    for c, kind in enumerate(kinds.split(), start=1):
+        group(f'g_{kind}', ' '.join(f'{sheet}{r}{c}' for r in (1, 2, 3, 4)), 'grow', GROW_WPP, 0)
 # band symbols (white, tinted in game), same order as SYMBOLS in render.ts
 group('sym', 'J11 J12 J13 J14 J21 J22 J23 J24 J31 J32 J33 J34 J41 J42 J43 J44', 'symbol', 6, 64)
 
@@ -278,6 +287,11 @@ def main() -> int:
                 h = tex
                 w = max(1, round(w0 * h / h0))
                 s = world / h
+            elif kind == 'grow':
+                ww = w0 * world * GROW_BOOST.get(cid[:2], 1)
+                w = max(1, round(ww * GROW_TEX))
+                h = max(1, round(h0 * w / w0))
+                s = ww / w
             else:
                 w = tex
                 h = max(1, round(h0 * w / w0))
@@ -302,7 +316,7 @@ def main() -> int:
                 items.append((name + '_t', top_only(img, ay * h), 0.5, ay, s))
                 continue
             if kind in ('person', 'cloth'):
-                base, cloth = split_cloth(img, head=0.48 if cid == 'I13' else 1.0 if cid[0] in 'STUV' else 0.3 if kind == 'person' else 0)
+                base, cloth = split_cloth(img, head=0.48 if cid == 'I13' else 1.0 if (cid[0] in 'STUV' and cid[1].isdigit()) else 0.3 if kind == 'person' else 0)
                 items.append((name, base, 0.5, ay, s))
                 items.append((name + '_c', cloth, 0.5, ay, s))
             else:

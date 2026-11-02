@@ -5,6 +5,7 @@ import { Simplex } from '../shared/noise';
 import { Fauna } from './animals';
 import { SECRET_KINDS, SecretSpot, secretSpots } from '../shared/secrets';
 import { Rng } from '../shared/rng';
+import { CONIFERS, TREE_KINDS } from '../shared/trees';
 import { BandView, Biome, PersonRow, TASKS, WorldInfo, b64decode, isWater, RIVER_WATER } from '../shared/types';
 
 export const TW = 32; // tile width
@@ -131,8 +132,9 @@ void main(void) {
 }
 `;
 
-type ObjKind = 'decid' | 'conifer' | 'other';
-interface WorldObject { s: Sprite; i: number; kind: ObjKind; base: string; n: number; size: number; flip: number }
+type ObjKind = 'tree' | 'other';
+/** tk: kind of tree (TREE_KINDS) for the trees the simulation grows */
+interface WorldObject { s: Sprite; i: number; kind: ObjKind; base: string; n: number; size: number; flip: number; tk?: number }
 
 export class WorldRenderer {
   app: Application;
@@ -155,6 +157,10 @@ export class WorldRenderer {
   temp!: Uint8Array;
   explored: Uint8Array = new Uint8Array(0);
   cleared = new Set<number>();
+  /** what tree can grow on each tile and how big it is now (from the server) */
+  treeKind: Uint8Array = new Uint8Array(0);
+  treeStage: Uint8Array = new Uint8Array(0);
+  treeObjs = new Map<number, WorldObject>();
   fogChunks = new Map<number, Graphics>();
   objChunks = new Map<number, WorldObject[]>();
   chunkViews: { area: Rectangle; parts: Container[] }[] = [];
@@ -175,6 +181,8 @@ export class WorldRenderer {
   seasonKey = '';
   zoom = 1;
   night = true;
+  /** zoomed out to half or less: no animations */
+  still = false;
 
   constructor(app: Application, atlas: Atlas) {
     this.app = app;
@@ -204,6 +212,10 @@ export class WorldRenderer {
         for (let i = 6; i > 0; i--) x.ellipse(52, 26, 24 + i * 4, 12 + i * 2).fill({ color: 0x7a5a36, alpha: 0.12 });
         x.ellipse(52, 26, 26, 13).fill({ color: 0x8c6b44, alpha: 0.5 });
       }),
+      // gold star over the heads of those who lived to 70
+      star: g((x) => {
+        x.star(8, 8, 5, 7, 3).fill(0xffd34d).stroke({ color: 0x6b4a10, width: 1.2 });
+      }),
       glow: g((x) => {
         for (let i = 10; i > 0; i--) x.circle(40, 40, i * 4).fill({ color: 0xff8a2a, alpha: 0.035 });
       }),
@@ -222,6 +234,9 @@ export class WorldRenderer {
       this.level[i] = isWater(this.biome[i]) ? 0 : 1 + Math.floor(Math.max(0, v) * 14);
     }
     this.explored = new Uint8Array(info.w * info.h);
+    this.treeKind = info.treeKinds ? b64decode(info.treeKinds) : new Uint8Array(info.w * info.h);
+    this.treeStage = new Uint8Array(info.w * info.h);
+    this.treeObjs.clear();
     this.cleared.clear();
     for (const l of [this.terrainLayer, this.waterLayer, this.snowCold, this.snowCool, this.fogLayer, this.objLayer]) l.removeChildren().forEach((c) => c.destroy({ children: true }));
     this.fogChunks.clear();
@@ -386,31 +401,37 @@ export class WorldRenderer {
       objs.addChild(s);
       list.push({ s, i, kind, base: name, n: hash(x + 3, y + 77), size: mul, flip });
     };
-    const decid = (k: number) => pick(t < 0.42 ? ['pine0', 'birch0', 'birch1', 'oak1', 'spruce0'] : ['oak0', 'oak1', 'oak2', 'birch0', 'oak0', 'birch1', 'pine1'], k);
-    const conifer = (k: number) => pick(['spruce0', 'spruce1', 'spruce0', 'pine0'], k);
-    const isConifer = (name: string) => name.startsWith('spruce') || name.startsWith('pine');
-    const tree = (name: string, ox: number, oy: number, size = 1) => add(name, isConifer(name) ? 'conifer' : 'decid', ox, oy, size);
+    // trees: where they can grow comes from the server, their size from every tick
+    const tk = this.treeKind[i];
+    if (tk) {
+      const forest = b === Biome.Forest || b === Biome.Taiga;
+      const ox = forest ? (n2 - 0.5) * 10 : 0, oy = forest ? (hash(x, y + 41) - 0.5) * 4 : 0;
+      const name = `g_${TREE_KINDS[tk]}3`;
+      if (this.atlas.has(name)) {
+        add(name, 'tree', ox, oy);
+        const o = list[list.length - 1];
+        o.tk = tk;
+        o.s.visible = false;
+        this.treeObjs.set(i, o);
+      }
+      return;
+    }
+    void dense;
     switch (b) {
-      // forests: clumps of trees with clearings, not a tree on every tile
       case Biome.Forest:
-        if (n < dense - 0.12) tree(decid(n2), (n2 - 0.5) * 10, (hash(x, y + 41) - 0.5) * 4);
-        else if (n > 0.93) add(pick(['fern', 'mushroom', 'log', 'stump', 'berries', 'bush0'], (n - 0.93) / 0.07), 'other', (n2 - 0.5) * 8, 2);
+        if (n > 0.93) add(pick(['fern', 'mushroom', 'log', 'stump', 'berries', 'bush0'], (n - 0.93) / 0.07), 'other', (n2 - 0.5) * 8, 2);
         break;
       case Biome.Taiga:
-        if (n < dense - 0.05) tree(conifer(n2), (n2 - 0.5) * 10, (hash(x, y + 41) - 0.5) * 4);
-        else if (n > 0.95) add(pick(['fern', 'boulder0', 'stump', 'log'], (n - 0.95) / 0.05), 'other', (n2 - 0.5) * 8, 2);
+        if (n > 0.95) add(pick(['fern', 'boulder0', 'stump', 'log'], (n - 0.95) / 0.05), 'other', (n2 - 0.5) * 8, 2);
         break;
       case Biome.Grassland:
-        if (n < 0.03) tree(pick(['oak0', 'apple', 'sapling', 'oak2', 'birch0'], n / 0.03), 0, 0);
-        else if (n < 0.07) add(pick(['bush0', 'bush1', 'berries', 'flowerbush', 'flowers', 'tuft'], (n - 0.03) / 0.04), 'other', (n2 - 0.5) * 10, 0);
+        if (n >= 0.03 && n < 0.07) add(pick(['bush0', 'bush1', 'berries', 'flowerbush', 'flowers', 'tuft'], (n - 0.03) / 0.04), 'other', (n2 - 0.5) * 10, 0);
         break;
       case Biome.Plains:
-        if (n < 0.015) tree('sapling', 0, 0);
-        else if (n < 0.05) add(pick(['tuft', 'stones', 'bush1', 'flowers'], (n - 0.015) / 0.035), 'other', (n2 - 0.5) * 10, 0);
+        if (n >= 0.015 && n < 0.05) add(pick(['tuft', 'stones', 'bush1', 'flowers'], (n - 0.015) / 0.035), 'other', (n2 - 0.5) * 10, 0);
         break;
       case Biome.Hills:
-        if (n < 0.04) tree(pick(['oak2', 'pine1', 'bush0'], n / 0.04), 0, 0);
-        else if (n < 0.08) add(pick(['boulder0', 'boulder1', 'tuft', 'stones'], (n - 0.04) / 0.04), 'other', (n2 - 0.5) * 10, 0);
+        if (n >= 0.04 && n < 0.08) add(pick(['boulder0', 'boulder1', 'tuft', 'stones'], (n - 0.04) / 0.04), 'other', (n2 - 0.5) * 10, 0);
         break;
       case Biome.Mountain:
         if (n < 0.06) add(pick(['boulder0', 'boulder1', 'boulder2', 'boulder3'], n / 0.06), 'other', (n2 - 0.5) * 8, 0);
@@ -428,30 +449,56 @@ export class WorldRenderer {
     }
   }
 
-  /** trees follow the seasons: bare or snowy in winter, red in autumn, some blossom in spring */
+  /** the sprite of a tree for its size and the season: bare or snowy in winter, red or yellow in autumn, blossom in spring */
+  private treeName(o: WorldObject): string {
+    const stage = Math.max(1, this.treeStage[o.i]);
+    const kind = TREE_KINDS[o.tk!];
+    const key = this.seasonKey;
+    const t = this.temp[o.i] / 255;
+    let k: string = kind;
+    if (CONIFERS.has(o.tk!)) {
+      if (key === 'winter' && t < 0.5 && kind.startsWith('spruce')) k = 'spruceS';
+    } else if (key === 'winter' && t < 0.7) {
+      k = t < 0.5 ? 'bareS' : 'bare';
+    } else if (key === 'autumn') {
+      if (kind === 'birch') k = o.n < 0.7 ? 'birchY' : kind;
+      else if (kind === 'fruit') k = 'apple';
+      else if (o.n < 0.35) k = 'autumn';
+    } else if (key === 'spring' && (kind === 'oak' || kind === 'oakL' || kind === 'fruit') && o.n < 0.35) {
+      k = 'blossom';
+    }
+    return `g_${k}${stage - 1}`;
+  }
+
+  private drawTree(o: WorldObject) {
+    this.atlas.set(o.s, this.treeName(o), o.size);
+    o.s.scale.x *= o.flip;
+    o.s.visible = !!this.explored[o.i] && this.treeStage[o.i] > 0;
+  }
+
+  /** all the trees at once (snapshot), base64 bytes 0..4 */
+  setTrees(b64: string) {
+    if (!this.info) return;
+    this.treeStage = b64decode(b64);
+    for (const o of this.treeObjs.values()) this.drawTree(o);
+  }
+
+  /** trees that grew or were cut this month: [tile, stage, ...] */
+  updateTrees(ch: number[]) {
+    for (let k = 0; k + 1 < ch.length; k += 2) {
+      const i = ch[k];
+      this.treeStage[i] = ch[k + 1];
+      const o = this.treeObjs.get(i);
+      if (o) this.drawTree(o);
+    }
+  }
+
   private applySeason() {
     const m = this.month;
     const key = m === 11 || m <= 1 ? 'winter' : m >= 9 ? 'autumn' : m === 3 || m === 4 ? 'spring' : 'summer';
     if (key === this.seasonKey || !this.info) return;
     this.seasonKey = key;
-    for (const list of this.objChunks.values()) {
-      for (const o of list) {
-        if (o.kind === 'other') continue;
-        const t = this.temp[o.i] / 255;
-        let name = o.base;
-        if (o.kind === 'conifer') {
-          if (key === 'winter' && t < 0.5 && o.base.startsWith('spruce')) name = 'spruce_snow';
-        } else if (key === 'winter' && t < 0.7) {
-          name = t < 0.5 ? 'bare_snow' : 'bare';
-        } else if (key === 'autumn' && o.n < 0.3) {
-          name = 'autumn';
-        } else if (key === 'spring' && o.base.startsWith('oak') && o.n < 0.35) {
-          name = 'blossom';
-        }
-        this.atlas.set(o.s, name, o.size);
-        o.s.scale.x *= o.flip;
-      }
-    }
+    for (const o of this.treeObjs.values()) this.drawTree(o);
   }
 
   private setupWaterFilter() {
@@ -494,7 +541,9 @@ export class WorldRenderer {
   }
 
   private refreshObjects(chunk: number) {
-    for (const o of this.objChunks.get(chunk) ?? []) o.s.visible = !!this.explored[o.i] && !this.cleared.has(o.i);
+    for (const o of this.objChunks.get(chunk) ?? []) {
+      o.s.visible = !!this.explored[o.i] && (o.tk ? this.treeStage[o.i] > 0 : !this.cleared.has(o.i));
+    }
   }
 
   /** bands clear the trees around their camp */
@@ -693,9 +742,34 @@ export class WorldRenderer {
     if (id !== null) this.people.get(id)?.setSelected(true);
   }
 
+  /** dark hours of the 8 minute day (same clock as the night shade) */
+  isNight(nowMs = Date.now()): boolean {
+    const day = (nowMs / (8 * 60 * 1000)) % 1;
+    return Math.cos(day * Math.PI * 2) < -0.25;
+  }
+
+  /** at night everyone sleeps within two tiles of the camp (a scout stays where he is) */
+  private nightRow(r: PersonRow): PersonRow {
+    const c = this.camps.get(r[4]);
+    if (!c || TASKS[r[3]] === 'scout') return r;
+    const x = r[1] / 10, y = r[2] / 10;
+    const dx = x - c.tx, dy = y - c.ty, d = Math.hypot(dx, dy);
+    if (d <= 2) return r;
+    // spread around the fire, the same spot every night for the same person
+    const a = hash(r[0], 5) * Math.PI * 2, rr = 0.6 + hash(r[0], 9) * 1.3;
+    let nx = c.tx + Math.cos(a) * rr, ny = c.ty + Math.sin(a) * rr;
+    if (!this.walkable(Math.round(nx), Math.round(ny))) { nx = c.tx + (hash(r[0], 2) - 0.5) * 0.6; ny = c.ty + (hash(r[0], 4) - 0.5) * 0.6; }
+    const out = [...r] as PersonRow;
+    out[1] = Math.round(nx * 10);
+    out[2] = Math.round(ny * 10);
+    return out;
+  }
+
   updatePeople(rows: PersonRow[], bandColors: Map<number, number>, tickMs: number) {
     const seen = new Set<number>();
-    for (const r of rows) {
+    const night = this.isNight();
+    for (const r0 of rows) {
+      const r = night ? this.nightRow(r0) : r0;
       seen.add(r[0]);
       let p = this.people.get(r[0]);
       if (!p) {
@@ -710,8 +784,13 @@ export class WorldRenderer {
 
   /** called every frame */
   frame(dt: number, nowMs: number) {
-    this.time += dt / 60;
+    // zoomed far out the whole map is on screen: everything stands still (only the snow still comes and goes)
+    const still = this.world.scale.x <= 0.5;
+    this.still = still;
+    if (!still) this.time += dt / 60;
     if (this.waterFilter) {
+      const want = still ? null : [this.waterFilter];
+      if ((this.waterLayer.filters?.length ?? 0) !== (want?.length ?? 0)) this.waterLayer.filters = want;
       const u = this.waterFilter.resources.waterUniforms.uniforms;
       u.uTime = this.time;
       const s = this.world.scale.x;
@@ -745,6 +824,12 @@ export class WorldRenderer {
     }
     this.peopleLayer.visible = zoom > 0.4;
     this.labelLayer.alpha = 1;
+    if (still) {
+      // no walking, fire or banners: just keep the camp names readable
+      for (const c of this.camps.values()) c.scaleTag(zoom);
+      this.secretFrame(nowMs, zoom, winter);
+      return;
+    }
     for (const p of this.people.values()) p.frame(nowMs);
     for (const c of this.camps.values()) c.frame(nowMs, zoom);
     this.fauna.frame(performance.now(), Math.min(0.1, dt / 60));
@@ -785,6 +870,7 @@ export class PersonSprite {
   pose = '';
   facing = 1;
   outline: Container | null = null;
+  star: Sprite | null = null;
 
   constructor(r: WorldRenderer, row: PersonRow) {
     this.r = r;
@@ -806,6 +892,22 @@ export class PersonSprite {
     this.female = row[6] === 1;
     this.chief = row[7] === 1;
     this.setPose(this.idlePose());
+    this.updateStar();
+  }
+
+  /** 70 and more: a small gold star next to the head */
+  private updateStar() {
+    const want = this.age >= 70;
+    if (want && !this.star) {
+      this.star = new Sprite(this.r.tex.star);
+      this.star.anchor.set(0.5);
+      this.star.scale.set(0.25);
+      this.c.addChild(this.star);
+    } else if (!want && this.star) {
+      this.star.destroy();
+      this.star = null;
+    }
+    if (this.star) this.star.position.set(3.2, -Math.abs(this.body.height) - 1.5);
   }
 
   private setPose(name: string) {
@@ -814,6 +916,7 @@ export class PersonSprite {
     this.r.atlas.set(this.body, name);
     this.r.atlas.set(this.cloth, name + '_c');
     this.updateOutline();
+    if (this.star) this.star.position.set(3.2, -Math.abs(this.body.height) - 1.5);
   }
 
   /** a red outline: the silhouette drawn in red, shifted in 8 directions behind the person */
@@ -903,6 +1006,7 @@ export class PersonSprite {
     this.dur = Math.max(400, Math.min(tickMs * 0.85, 12000));
     this.cloth.tint = color;
     this.age = row[5];
+    this.updateStar();
     this.female = row[6] === 1;
     this.chief = row[7] === 1;
     const s = this.age < 12 ? 0.75 + this.age * 0.02 : this.age > 60 ? 0.95 : 1;
@@ -1145,6 +1249,10 @@ export class CampSprite {
     if (this.hasFire) this.glow.scale.set(0.95 + Math.sin(now / 90 + this.id) * 0.06);
     this.bannerCloth.skew.y = Math.sin(now / 500 + this.id) * 0.05;
     this.symbol.skew.y = this.bannerCloth.skew.y;
+    this.scaleTag(zoom);
+  }
+
+  scaleTag(zoom: number) {
     this.tag.scale.set(1 / Math.max(0.3, Math.min(2, zoom)));
   }
 
