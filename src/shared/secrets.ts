@@ -41,7 +41,7 @@ export interface SecretKind {
 
 export const SECRET_KINDS: SecretKind[] = [
   { id: 'ufo', name: 'летяща чиния', text: 'Тиха сребърна чиния виси ниско над тревата и свети. Никой в летописа не знае откъде е дошла.', likes: [Biome.Plains, Biome.Grassland, Biome.Desert] },
-  { id: 'meteor', name: 'паднал метеорит', text: 'Камък от небето, още топъл. Около него тревата е опърлена.', likes: [Biome.Tundra, Biome.Plains, Biome.Desert] },
+  { id: 'meteor', name: 'паднал метеорит', text: 'Камък от небето, още топъл. Около него тревата е опърлена.', likes: [Biome.Plains, Biome.Desert, Biome.Hills] },
   { id: 'eggs', name: 'гнездо с шарени яйца', text: 'Някой е изписал яйцата с червени и сини шарки и ги е скрил в гнездо. Великден е подранил с няколко хиляди години.', likes: [Biome.Grassland, Biome.Forest] },
   { id: 'goldegg', name: 'златно яйце', text: 'Яйце от чисто злато върху камък. Понякога се пропуква и отвътре блести.', likes: [Biome.Hills, Biome.Grassland] },
   { id: 'robot', name: 'ръждясал робот', text: 'Малък робот, обрасъл с мъх. Когато го погледнеш, очите му светват и ти маха.', likes: [Biome.Forest, Biome.Plains, Biome.Marsh] },
@@ -55,7 +55,17 @@ export interface SecretSpot { k: number; kind: number; x: number; y: number }
 export function secretSpots(seed: number, w: number, h: number, biome: Uint8Array, river: Uint8Array): SecretSpot[] {
   const rng = new Rng((seed ^ 0x5ec2e7) >>> 0);
   const out: SecretSpot[] = [];
-  const dry = (i: number) => !isWater(biome[i]) && river[i] < RIVER_WATER && biome[i] !== Biome.Snow;
+  // never on lasting snow or frozen tundra, nor right at their edge: there they could never be seen
+  const icy = (i: number) => biome[i] === Biome.Snow || biome[i] === Biome.Tundra;
+  const dry = (i: number) => {
+    if (isWater(biome[i]) || river[i] >= RIVER_WATER || icy(i)) return false;
+    const x = i % w, y = (i - x) / w;
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+      const nx = x + dx, ny = y + dy;
+      if (nx >= 0 && ny >= 0 && nx < w && ny < h && icy(ny * w + nx)) return false;
+    }
+    return true;
+  };
   for (let k = 0; k < SECRET_COUNT; k++) {
     const kind = k % SECRET_KINDS.length;
     const likes = SECRET_KINDS[kind].likes;

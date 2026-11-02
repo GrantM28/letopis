@@ -149,7 +149,16 @@ export class WorldRenderer {
   peopleLayer = new Container();
   glowLayer = new Container();
   labelLayer = new Container();
-  nightOverlay = new Graphics();
+  /** the night veil: a small 2D canvas (a quarter of the screen) stretched over everything */
+  nightCanvas = document.createElement('canvas');
+  nightSprite!: Sprite;
+  nightAt = 0;
+  /** zoomed far out: the whole map is one ready picture instead of tens of thousands of sprites */
+  farLayer = new Container();
+  farSprite: Sprite | null = null;
+  farKey = '';
+  farAt = 0;
+  far = false;
   info!: WorldInfo;
   level!: Uint8Array;
   biome!: Uint8Array;
@@ -187,8 +196,12 @@ export class WorldRenderer {
   constructor(app: Application, atlas: Atlas) {
     this.app = app;
     this.atlas = atlas;
-    this.world.addChild(this.waterLayer, this.terrainLayer, this.snowLayer, this.objLayer, this.campLayer, this.peopleLayer, this.fogLayer, this.glowLayer, this.labelLayer);
-    app.stage.addChild(this.world, this.nightOverlay);
+    this.world.addChild(this.farLayer, this.waterLayer, this.terrainLayer, this.snowLayer, this.objLayer, this.campLayer, this.peopleLayer, this.fogLayer, this.glowLayer, this.labelLayer);
+    this.nightCanvas.width = 8;
+    this.nightCanvas.height = 8;
+    this.nightSprite = new Sprite(Texture.from(this.nightCanvas));
+    this.nightSprite.eventMode = 'none';
+    app.stage.addChild(this.world, this.nightSprite);
     this.snowCold = new Container();
     this.snowCool = new Container();
     this.snowLayer.addChild(this.snowCool, this.snowCold);
@@ -782,30 +795,91 @@ export class WorldRenderer {
     for (const [id, p] of this.people) if (!seen.has(id)) { p.destroy(); this.people.delete(id); }
   }
 
-  /** the night: a dark veil with clear light 2 tiles around every fire, fading out by 3.5 tiles */
-  private drawNight(dark: number) {
-    const g = this.nightOverlay;
-    g.clear();
-    if (dark <= 0.005) return;
+  /** the night: a dark veil with clear light 2 tiles around every fire, fading out by 3.5 tiles.
+   *  Drawn on a small canvas a few times a second: cheap for the graphics card and the processor. */
+  private drawNight(dark: number, nowMs: number) {
+    const spr = this.nightSprite;
+    spr.visible = dark > 0.005;
+    if (!spr.visible) return;
+    const moving = this.world.x !== this.lastCam[0] || this.world.y !== this.lastCam[1] || this.world.scale.x !== this.lastCam[2];
+    if (!moving && nowMs - this.nightAt < 250) return;
+    this.nightAt = nowMs;
+    this.lastCam = [this.world.x, this.world.y, this.world.scale.x];
+    const Q = 4; // canvas pixels are 4x4 screen pixels; the edges are soft anyway
     const W = this.app.screen.width, H = this.app.screen.height;
+    const cw = Math.ceil(W / Q), ch = Math.ceil(H / Q);
+    const cv = this.nightCanvas;
+    if (cv.width !== cw || cv.height !== ch) { cv.width = cw; cv.height = ch; }
+    const g = cv.getContext('2d')!;
+    g.globalCompositeOperation = 'source-over';
+    g.clearRect(0, 0, cw, ch);
+    g.fillStyle = `rgba(5, 10, 28, ${dark.toFixed(3)})`;
+    g.fillRect(0, 0, cw, ch);
     const z = this.world.scale.x;
-    const fires: { x: number; y: number }[] = [];
+    // a circle of r tiles is an ellipse on screen
+    const rx = ((TW / 2) * Math.SQRT2 * z) / Q, ry = ((TH / 2) * Math.SQRT2 * z) / Q;
+    g.globalCompositeOperation = 'destination-out';
     for (const c of this.camps.values()) {
       if (!c.hasFire) continue;
       const p = this.tileTop(c.tx, c.ty);
-      const x = this.world.x + p.x * z, y = this.world.y + p.y * z;
-      if (x > -200 * z && y > -120 * z && x < W + 200 * z && y < H + 120 * z) fires.push({ x, y });
+      const x = (this.world.x + p.x * z) / Q, y = (this.world.y + p.y * z) / Q;
+      const R = 3.5 * rx;
+      if (x < -R || y < -R || x > cw + R || y > ch + R) continue;
+      g.save();
+      g.translate(x, y);
+      g.scale(1, ry / rx);
+      const grad = g.createRadialGradient(0, 0, 2 * rx, 0, 0, R);
+      grad.addColorStop(0, 'rgba(0,0,0,1)');
+      grad.addColorStop(1, 'rgba(0,0,0,0)');
+      g.fillStyle = grad;
+      g.beginPath();
+      g.arc(0, 0, R, 0, Math.PI * 2);
+      g.fill();
+      g.restore();
     }
-    // rings of veil, each with a slightly bigger hole: together they make a soft edge
-    const steps = fires.length ? 7 : 1;
-    const a = 1 - Math.pow(1 - dark, 1 / steps);
-    // one tile is TW wide and TH tall on screen; a circle of r tiles is an ellipse
-    const rx = (TW / 2) * Math.SQRT2 * z, ry = (TH / 2) * Math.SQRT2 * z;
-    for (let k = 0; k < steps; k++) {
-      g.rect(0, 0, W, H).fill({ color: 0x050a1c, alpha: a });
-      const r = 2 + (1.5 * (k + 1)) / steps;
-      for (const f of fires) g.ellipse(f.x, f.y, r * rx, r * ry).cut();
-    }
+    spr.texture.source.resize(cw, ch);
+    spr.texture.source.update();
+    spr.width = W;
+    spr.height = H;
+  }
+
+  private lastCam = [0, 0, 0];
+
+  /** the whole map as one picture for far zoom; made again when the season or the snow changes, or after two minutes */
+  private updateFar(key: string, nowMs: number) {
+    if (this.farSprite && key === this.farKey && nowMs - this.farAt < 120000) return;
+    this.farKey = key;
+    this.farAt = nowMs;
+    const { w, h } = this.info;
+    const x0 = iso(0, h).x - TW, x1 = iso(w, 0).x + TW;
+    const y0 = -15 * ELEV - 40, y1 = iso(w, h).y + 40;
+    const frame = new Rectangle(x0, y0, x1 - x0, y1 - y0);
+    const res = Math.min(0.3, 4000 / frame.width, 4000 / frame.height);
+    // draw everything still: ground, water, snow, trees, fog; no people, camps or names
+    const save = { x: this.world.x, y: this.world.y, s: this.world.scale.x };
+    this.world.position.set(0, 0);
+    this.world.scale.set(1);
+    for (const c of this.chunkViews) for (const part of c.parts) part.visible = true;
+    const hide = [this.farLayer, this.campLayer, this.peopleLayer, this.glowLayer, this.labelLayer];
+    const was = hide.map((l) => l.visible);
+    for (const l of hide) l.visible = false;
+    for (const l of [this.waterLayer, this.terrainLayer, this.snowLayer, this.objLayer, this.fogLayer]) l.visible = true;
+    // the fog without its blur: the blur filter would paint the whole frame black, and far away a sharp edge is fine
+    const fogFilters = this.fogLayer.filters;
+    this.fogLayer.filters = null;
+    this.fogLayer.alpha = 0.9;
+    const tex = this.app.renderer.generateTexture({ target: this.world, frame, resolution: res, clearColor: [0, 0, 0, 0] });
+    this.fogLayer.filters = fogFilters;
+    this.fogLayer.alpha = 1;
+    hide.forEach((l, k) => { l.visible = was[k]; });
+    this.world.position.set(save.x, save.y);
+    this.world.scale.set(save.s);
+    this.farSprite?.destroy(true);
+    this.farSprite = new Sprite(tex);
+    this.farSprite.position.set(x0, y0);
+    this.farSprite.width = frame.width;
+    this.farSprite.height = frame.height;
+    this.farLayer.addChild(this.farSprite);
   }
 
   /** called every frame */
@@ -837,9 +911,24 @@ export class WorldRenderer {
     const day = (nowMs / (8 * 60 * 1000)) % 1;
     const sun = Math.cos(day * Math.PI * 2); // 1 noon, -1 midnight
     const dark = this.night ? Math.max(0, Math.min(0.82, -sun * 1.0 + 0.05)) : 0;
-    this.drawNight(dark);
+    this.drawNight(dark, nowMs);
     this.glowLayer.alpha = Math.min(0.45, dark * 0.55);
     const zoom = this.world.scale.x;
+    // far away: one picture of the map, only the camps and their names stay live
+    const far = zoom <= 0.4 && !!this.info;
+    if (far) {
+      this.updateFar(`${this.seasonKey}|${this.snowCold.alpha.toFixed(2)}|${this.snowCool.alpha}`, nowMs);
+      for (const l of [this.waterLayer, this.terrainLayer, this.snowLayer, this.objLayer, this.fogLayer, this.peopleLayer, this.glowLayer]) l.visible = false;
+      this.farLayer.visible = true;
+      for (const c of this.camps.values()) c.scaleTag(zoom);
+      this.far = true;
+      return;
+    }
+    if (this.far) {
+      this.far = false;
+      this.farLayer.visible = false;
+      for (const l of [this.waterLayer, this.terrainLayer, this.snowLayer, this.objLayer, this.fogLayer, this.glowLayer]) l.visible = true;
+    }
     // draw only the chunks on screen
     const vx = -this.world.x / zoom, vy = -this.world.y / zoom;
     const vw = this.app.screen.width / zoom, vh = this.app.screen.height / zoom;
