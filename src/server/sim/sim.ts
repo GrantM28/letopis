@@ -981,7 +981,9 @@ export class Simulation {
     for (let k = 0; k < 24; k++) {
       const x = Math.round(b.cx + this.rng.range(-range, range)), y = Math.round(b.cy + this.rng.range(-range, range));
       const s = this.campScore(x, y, 4, b);
-      if (s > bestS) { bestS = s; best = { x, y }; }
+      // -1 means "no camp possible here" (off the map, water, too close to others): never pick it,
+      // even when the current camp scores -1 itself
+      if (s > 0 && s > bestS) { bestS = s; best = { x, y }; }
     }
     if (best.x === b.cx && best.y === b.cy) return;
     // the chief goes first to look at the place; without one the whole band just goes
