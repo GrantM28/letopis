@@ -3,7 +3,7 @@ import { Atlas, WorldRenderer, iso, TW, TH } from './render';
 import {
   BandView, ChronicleEntry, FamilyTree, MONTHS, TreeNode, PersonDetail, PersonRow, SnapshotMessage, TASKS, TASK_NAMES, TickMessage, WorldInfo, b64decode, formatYear,
 } from '../shared/types';
-import { SECRET_COUNT, SECRET_KINDS, SecretSpot } from '../shared/secrets';
+import { SECRET_COUNT, SECRET_HEROES, SECRET_KINDS, SecretFind, SecretSpot } from '../shared/secrets';
 
 // ---------- small helpers ----------
 
@@ -320,6 +320,20 @@ function renderSide() {
     });
   } else if (activeTab === 'stats') {
     renderStats(body);
+  } else if (activeTab === 'secrets') {
+    api<{ found: SecretFind[] }>('/api/secrets').then(({ found }) => {
+      if (activeTab !== 'secrets') return;
+      const at = new Map(found.map((f) => [f.k, f.at]));
+      const when = (ms: number) => {
+        if (!ms) return '';
+        const d = new Date(ms), two = (n: number) => String(n).padStart(2, '0');
+        return ` - Открит на ${two(d.getDate())}.${two(d.getMonth() + 1)}.${d.getFullYear()} в ${two(d.getHours())}:${two(d.getMinutes())}ч.`;
+      };
+      body.innerHTML = `<p class="muted">Намерени ${found.length} от ${SECRET_COUNT}. Тайните са мънички и се крият из проучената земя. Зимата ги затрупва със сняг.</p>
+        <ol class="secrets">${SECRET_HEROES.map((h, k) => at.has(k)
+          ? `<li class="found"><b>${esc(h)}</b>${when(at.get(k)!)}</li>`
+          : '<li>Намери ме</li>').join('')}</ol>`;
+    });
   }
 }
 
@@ -466,8 +480,10 @@ async function showSecret(spot: SecretSpot) {
   const kind = SECRET_KINDS[spot.kind];
   const res = await fetch(`/api/secret/${spot.k}`, { method: 'POST' }).then((x) => x.json()).catch(() => null) as { first: boolean; found: number } | null;
   r.markSecret(spot.k);
+  if (activeTab === 'secrets') renderSide();
   openCard(`
-    <h2>✨ ${esc(kind.name[0].toUpperCase() + kind.name.slice(1))}</h2>
+    <h2>✨ №${spot.k + 1} ${esc(SECRET_HEROES[spot.k])}</h2>
+    <div class="muted">${esc(kind.name[0].toUpperCase() + kind.name.slice(1))}</div>
     <p>${esc(kind.text)}</p>
     <div class="muted">${res ? `${res.first ? 'Ти си първият, който я откри!' : 'Някой вече я е открил преди теб.'} Намерени тайни: ${res.found} от ${SECRET_COUNT}.` : ''}</div>`);
 }
@@ -609,7 +625,7 @@ const info = await api<WorldInfo>('/api/world');
 worldId = info.worldId;
 const seenBefore = store<number>(`letopis.seen.${worldId}`, 0);
 r.setWorld(info);
-api<{ found: number[] }>('/api/secrets').then((s) => r.setSecrets(s.found)).catch(() => r.setSecrets([]));
+api<{ found: SecretFind[] }>('/api/secrets').then((s) => r.setSecrets(s.found.map((f) => f.k))).catch(() => r.setSecrets([]));
 const snap = await api<SnapshotMessage>('/api/snapshot');
 onSnapshot(snap);
 const recent = await api<ChronicleEntry[]>('/api/chronicle?limit=120');

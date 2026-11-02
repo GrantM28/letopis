@@ -3,7 +3,7 @@ import {
   BandView, ChronicleEntry, PersonDetail, PersonRow, TASKS, TASK_NAMES, Task, TimeInfo, TreeNode, FamilyTree, b64encode, formatYear, isWater, Biome, RIVER_WATER,
 } from '../../shared/types';
 import { Terrain, generateTerrain, findStart, idx, inBounds, W, H, setWorldSize, OLD_SIZE, NEW_SIZE } from './world';
-import { SECRET_COUNT, SECRET_KINDS } from '../../shared/secrets';
+import { SECRET_COUNT, SECRET_HEROES, SECRET_KINDS, SecretFind } from '../../shared/secrets';
 import { FEMALE, MALE, bandColor, bandName, fixBandName, familyFrom, nickname, placeName } from './names';
 import { ERAS, TECHS, TECH_BY_ID, Tech, eraOf } from './tech';
 
@@ -60,8 +60,8 @@ export interface SimState {
   seed: number;
   /** map side in tiles; missing in worlds saved before maps grew (192) */
   size?: number;
-  /** secrets (easter eggs) found by the people watching, by number */
-  secrets?: number[];
+  /** secrets (easter eggs) found by the people watching; numbers only in v1.04 saves */
+  secrets?: (number | SecretFind)[];
   tick: number;
   rng: [number, number, number, number];
   nextPersonId: number;
@@ -1193,16 +1193,25 @@ export class Simulation {
     return { root, motherLine: line('motherId'), fatherLine: line('fatherId') };
   }
 
+  /** finds so far, oldest first */
+  secretFinds(): SecretFind[] {
+    return (this.s.secrets ?? []).map((f) => (typeof f === 'number' ? { k: f, at: 0 } : f));
+  }
+
   /** someone watching found secret k: the first find goes into the chronicle */
-  findSecret(k: number): { first: boolean; found: number } | null {
+  findSecret(k: number): { first: boolean; found: number; at: number } | null {
     if (!Number.isInteger(k) || k < 0 || k >= SECRET_COUNT) return null;
-    const list = (this.s.secrets ??= []);
-    if (list.includes(k)) return { first: false, found: list.length };
-    list.push(k);
+    const list = this.secretFinds();
+    const had = list.find((f) => f.k === k);
+    if (had) return { first: false, found: list.length, at: had.at };
+    const at = Date.now();
+    list.push({ k, at });
+    this.s.secrets = list;
     const kind = SECRET_KINDS[k % SECRET_KINDS.length];
-    this.emit('secret', 2, `Някой, който гледа отгоре, забеляза ${kind.name}. Намерени тайни: ${list.length} от ${SECRET_COUNT}.`,
-      `Ура! Някой намери ${kind.name}! Тайни: ${list.length} от ${SECRET_COUNT}.`);
-    return { first: true, found: list.length };
+    const hero = SECRET_HEROES[k];
+    this.emit('secret', 2, `Тайна №${k + 1}, ${hero}: някой, който гледа отгоре, забеляза ${kind.name}. Намерени тайни: ${list.length} от ${SECRET_COUNT}.`,
+      `Ура! Намерена е тайна №${k + 1}, ${hero}: ${kind.name}! Тайни: ${list.length} от ${SECRET_COUNT}.`);
+    return { first: true, found: list.length, at };
   }
 
   /** notable living people: discoverers, leaders, the oldest */

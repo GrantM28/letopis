@@ -170,7 +170,7 @@ const server = http.createServer((req, res) => {
     if (p === '/api/heroes') return json(res, sim.heroes());
     if (p === '/api/stats') return json(res, store.stats(world));
     if (p === '/api/worlds') return json(res, store.worlds());
-    if (p === '/api/secrets') return json(res, { found: sim.s.secrets ?? [] });
+    if (p === '/api/secrets') return json(res, { found: sim.secretFinds() });
     if (p.startsWith('/api/secret/') && req.method === 'POST') {
       const r = sim.findSecret(Number(p.split('/').pop()));
       return r ? json(res, r) : json(res, { error: 'няма такава тайна' }, 404);
