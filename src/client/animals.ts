@@ -254,7 +254,7 @@ export class Fauna {
     const seen = new Set<number>();
     for (const b of bands) {
       seen.add(b.id);
-      const techs = new Set(b.techs);
+      const techs = new Set(b.techIds);
       const want = TAME.filter((t) => (!t.tech || techs.has(t.tech)) && (!t.settled || b.settled) && (t.from === undefined || this.year >= t.from));
       const key = want.map((t) => t.sp.id).join(',');
       let list = this.tame.get(b.id);

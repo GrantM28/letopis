@@ -41,7 +41,7 @@ export function isWater(b: number): boolean {
   return b === Biome.DeepWater || b === Biome.Water || b === Biome.Lake;
 }
 
-export type Task = 'rest' | 'gather' | 'hunt' | 'fish' | 'craft' | 'farm' | 'herd' | 'build' | 'child' | 'elder' | 'travel';
+export type Task = 'rest' | 'gather' | 'hunt' | 'fish' | 'craft' | 'farm' | 'herd' | 'build' | 'child' | 'elder' | 'travel' | 'lead' | 'scout';
 
 export const TASK_NAMES: Record<Task, string> = {
   rest: 'почива',
@@ -55,7 +55,12 @@ export const TASK_NAMES: Record<Task, string> = {
   child: 'играе',
   elder: 'разказва истории',
   travel: 'пътува',
+  lead: 'води рода',
+  scout: 'търси ново място за лагера',
 };
+
+/** the head of a band or a village, by era: always the oldest man */
+export const CHIEF_TITLES = ['Старейшина', 'Старейшина', 'Вожд', 'Княз', 'Кмет', 'Кмет', 'Кмет', 'Кмет', 'Кмет'];
 
 export interface WorldInfo {
   worldId: string;
@@ -90,6 +95,10 @@ export interface BandView {
   settled: boolean;
   settlementName: string | null;
   techs: string[];
+  /** tech ids, for the page to decide what it draws */
+  techIds: string[];
+  /** the head of the band: name and title */
+  chief: { id: number; name: string; title: string } | null;
   size: number;
   food: number;
   founded: number; // year
@@ -97,10 +106,10 @@ export interface BandView {
   dwelling: 'none' | 'tent' | 'hut' | 'house';
 }
 
-/** compact person: [id, x*10, y*10, taskIndex, bandId, ageYears, sex(0 m,1 f)] */
-export type PersonRow = [number, number, number, number, number, number, number];
+/** compact person: [id, x*10, y*10, taskIndex, bandId, ageYears, sex(0 m,1 f), chief(1) or not(0)] */
+export type PersonRow = [number, number, number, number, number, number, number, number];
 
-export const TASKS: Task[] = ['rest', 'gather', 'hunt', 'fish', 'craft', 'farm', 'herd', 'build', 'child', 'elder', 'travel'];
+export const TASKS: Task[] = ['rest', 'gather', 'hunt', 'fish', 'craft', 'farm', 'herd', 'build', 'child', 'elder', 'travel', 'lead', 'scout'];
 
 export interface ChronicleEntry {
   id: number;
@@ -153,6 +162,8 @@ export interface PersonDetail {
   children: { id: number; name: string; alive: boolean }[];
   deeds: string[];
   generation: number;
+  /** "Старейшина на Родът на ..." when the person leads a band */
+  title: string | null;
 }
 
 /** one person in the family tree */

@@ -1,6 +1,6 @@
 import { Rng } from '../../shared/rng';
 import {
-  BandView, ChronicleEntry, PersonDetail, PersonRow, TASKS, TASK_NAMES, Task, TimeInfo, TreeNode, FamilyTree, b64encode, formatYear, isWater, Biome, RIVER_WATER,
+  BandView, ChronicleEntry, PersonDetail, PersonRow, TASKS, TASK_NAMES, Task, CHIEF_TITLES, TimeInfo, TreeNode, FamilyTree, b64encode, formatYear, isWater, Biome, RIVER_WATER,
 } from '../../shared/types';
 import { Terrain, generateTerrain, findStart, idx, inBounds, W, H, setWorldSize, OLD_SIZE, NEW_SIZE } from './world';
 import { SECRET_COUNT, SECRET_HEROES, SECRET_KINDS, SecretFind } from '../../shared/secrets';
@@ -51,6 +51,10 @@ export interface Band {
   lastNeed: number;
   fed?: number; // smoothed food cover, 1 = just enough
   met: number[]; // bands already met
+  /** the head of the band: always the oldest man */
+  chiefId?: number | null;
+  /** nomads: the chief went ahead to look at a new place; the band follows when he gets there */
+  scout?: { x: number; y: number; px?: number; py?: number } | null;
 }
 
 /** Everything in here is saved to disk. */
@@ -482,6 +486,7 @@ export class Simulation {
     const season = this.seasonFactor(b);
     const workers: Person[] = [];
     let need = 0;
+    const chief = this.ensureChief(b, m);
     for (const p of m) {
       const a = this.ageOf(p);
       need += a < 12 ? 0.6 : a > 60 ? 0.8 : 1;
@@ -489,6 +494,7 @@ export class Simulation {
       else if (a > 58) p.task = 'elder';
       else workers.push(p);
     }
+
     // choose jobs
     const canFish = this.hasTech(b, 'fishing') && this.areaHas(b, R, 'fish');
     const farms = this.hasTech(b, 'agriculture') && b.settled;
@@ -552,6 +558,8 @@ export class Simulation {
       p.x = ok ? x : b.cx + this.rng.range(-0.3, 0.3);
       p.y = ok ? y : b.cy + this.rng.range(-0.3, 0.3);
     }
+    // the chief still brings food like everyone else, but he is seen by the camp (or out scouting)
+    if (chief) this.lead(b, chief, m);
     prod += (this.harvest(t.plants, b, R, gatherWant, 0.07) + this.harvest(t.game, b, R + 2, huntWant, 0.045)) * craftBonus * fire;
     if (farmWant > 0) prod += Math.min(farmWant, this.arable(b) * 1.0 * this.farmSeason()) * craftBonus;
     const spoil = this.hasTech(b, 'pottery') ? 0.05 : this.hasTech(b, 'grinding') ? 0.08 : 0.12;
@@ -687,9 +695,11 @@ export class Simulation {
     const used = new Set(this.s.usedPlaces);
     b.settlementName = placeName(this.rng, used);
     this.s.usedPlaces = [...used];
-    const elder = m.reduce((a, p) => (this.ageOf(p) > this.ageOf(a) ? p : a), m[0]);
+    b.scout = null;
+    const chief = b.chiefId ? this.byId.get(b.chiefId) : undefined;
+    const elder = chief ?? m.reduce((a, p) => (this.ageOf(p) > this.ageOf(a) ? p : a), m[0]);
     this.emit('settle', 3,
-      `${b.name} спря да скита и основа селото ${b.settlementName}. Най-възрастната в рода, ${this.nameOf(elder)}, избра мястото край водата.`,
+      `${b.name} спря да скита и основа селото ${b.settlementName}. ${chief ? `Старейшината ${this.nameOf(elder)}` : `Най-възрастният в рода, ${this.nameOf(elder)},`} избра мястото край водата.`,
       `${b.name} построи село и го нарече ${b.settlementName}!`, elder.id, b.id);
   }
 
@@ -910,7 +920,63 @@ export class Simulation {
     return s;
   }
 
+  /** the band's head: the oldest man; a new one when he dies or leaves */
+  private ensureChief(b: Band, m: Person[]): Person | null {
+    const cur = b.chiefId ? this.byId.get(b.chiefId) : undefined;
+    if (cur && cur.bandId === b.id) return cur;
+    let best: Person | null = null;
+    for (const p of m) if (p.sex === 0 && this.ageOf(p) >= 16 && (!best || p.born < best.born)) best = p;
+    const had = !!b.chiefId;
+    b.chiefId = best?.id ?? null;
+    if (!best) { b.scout = null; return null; }
+    if (had) {
+      this.emit('chief', 1, `${this.nameOf(best)} стана ${this.chiefTitle().toLowerCase()} на ${this.bandLabel(b)}.`,
+        `${this.nameOf(best)} е новият ${this.chiefTitle().toLowerCase()} на ${this.bandLabel(b)}.`, best.id, b.id);
+    }
+    return best;
+  }
+
+  chiefTitle(): string {
+    return CHIEF_TITLES[Math.min(this.s.era, CHIEF_TITLES.length - 1)];
+  }
+
+  /** the chief stays within two tiles of the camp, or walks ahead to a new place and calls the band after him */
+  private lead(b: Band, chief: Person, m: Person[]) {
+    if (b.scout) {
+      chief.task = 'scout';
+      // where he walked to so far (starts at the camp)
+      const sc = b.scout;
+      const px = sc.px ?? b.cx, py = sc.py ?? b.cy;
+      const dx = sc.x - px, dy = sc.y - py;
+      const d = Math.hypot(dx, dy);
+      if (d > 0.6) {
+        const v = Math.min(d, Math.max(6, d / 2)); // at most two months ahead of the band: he looks, then calls them
+        sc.px = px + (dx / d) * v;
+        sc.py = py + (dy / d) * v;
+        chief.x = sc.px;
+        chief.y = sc.py;
+        return;
+      }
+      // he is there and likes it: the camp, the banner and everyone follow
+      chief.x = sc.x;
+      chief.y = sc.y;
+      b.cx = sc.x;
+      b.cy = sc.y;
+      b.scout = null;
+      for (const p of m) if (p !== chief) p.task = 'travel';
+      return;
+    }
+    chief.task = 'lead';
+    for (let k = 0; k < 6; k++) {
+      const x = b.cx + this.rng.range(-2, 2), y = b.cy + this.rng.range(-2, 2);
+      if (this.reachable(b, Math.round(x), Math.round(y))) { chief.x = x; chief.y = y; return; }
+    }
+    chief.x = b.cx + this.rng.range(-0.3, 0.3);
+    chief.y = b.cy + this.rng.range(-0.3, 0.3);
+  }
+
   private moveCamp(b: Band, m: Person[], range: number) {
+    if (b.scout) return; // the chief is still looking
     let best = { x: b.cx, y: b.cy }, bestS = this.campScore(Math.round(b.cx), Math.round(b.cy), 4, b) * 1.05;
     for (let k = 0; k < 24; k++) {
       const x = Math.round(b.cx + this.rng.range(-range, range)), y = Math.round(b.cy + this.rng.range(-range, range));
@@ -918,6 +984,11 @@ export class Simulation {
       if (s > bestS) { bestS = s; best = { x, y }; }
     }
     if (best.x === b.cx && best.y === b.cy) return;
+    // the chief goes first to look at the place; without one the whole band just goes
+    if (b.chiefId && this.byId.get(b.chiefId)?.bandId === b.id) {
+      b.scout = best;
+      return;
+    }
     b.cx = best.x; b.cy = best.y;
     for (const p of m) p.task = 'travel';
   }
@@ -1104,6 +1175,8 @@ export class Simulation {
     return this.s.bands.map((b) => ({
       id: b.id, name: b.name, color: b.color, x: b.cx, y: b.cy, settled: b.settled, settlementName: b.settlementName,
       techs: b.techs.map((x) => TECH_BY_ID.get(x)?.name ?? x),
+      techIds: b.techs,
+      chief: this.chiefView(b),
       size: counts.get(b.id) ?? 0,
       food: Math.round(b.food),
       founded: Math.floor(yearOf(b.founded)),
@@ -1112,9 +1185,15 @@ export class Simulation {
     }));
   }
 
+  private chiefView(b: Band): BandView['chief'] {
+    const c = b.chiefId ? this.byId.get(b.chiefId) : undefined;
+    return c ? { id: c.id, name: this.nameOf(c), title: this.chiefTitle() } : null;
+  }
+
   personRows(): PersonRow[] {
+    const chiefs = new Set(this.s.bands.map((b) => b.chiefId));
     return this.s.people.map((p) => [
-      p.id, Math.round(p.x * 10), Math.round(p.y * 10), TASKS.indexOf(p.task), p.bandId, Math.floor(this.ageOf(p)), p.sex,
+      p.id, Math.round(p.x * 10), Math.round(p.y * 10), TASKS.indexOf(p.task), p.bandId, Math.floor(this.ageOf(p)), p.sex, chiefs.has(p.id) ? 1 : 0,
     ]);
   }
 
@@ -1144,6 +1223,7 @@ export class Simulation {
         mother: this.ref(p.motherId), father: this.ref(p.fatherId), partner: this.ref(p.partnerId),
         children: p.children.map((c) => ({ ...(this.ref(c) ?? { id: c, name: '?' }), alive: this.byId.has(c) })),
         deeds: p.deeds, generation: p.gen,
+        title: b && b.chiefId === p.id ? `${this.chiefTitle()} на ${b.settlementName ? `${b.settlementName}` : b.name.replace(/^Родът на /, 'рода на ')}` : null,
       };
     }
     const d = this.lookupDead(id);
@@ -1154,7 +1234,7 @@ export class Simulation {
       genes: geneView(d.genes as Record<GeneKey, number>),
       mother: this.ref(d.motherId), father: this.ref(d.fatherId), partner: this.ref(d.partnerId),
       children: d.children.map((c) => ({ ...(this.ref(c) ?? { id: c, name: '?' }), alive: this.byId.has(c) })),
-      deeds: d.deeds, generation: d.gen,
+      deeds: d.deeds, generation: d.gen, title: null,
     };
   }
 

@@ -189,6 +189,11 @@ group('sec_robot', 'R31 R32', 'prop', 5.5, 40)
 group('sec_stag', 'R33 R34', 'prop', 6.6, 48)
 group('sec_dragon', 'R41 R42', 'prop', 6.6, 48)
 group('sec_portal', 'R43 R44', 'prop', 6.6, 48)
+# chiefs (sheets S-V, 8 frames each): A young/old, B young/old; skipped until the sheets are cut
+for look, young, old in (('chiefA', 'S', 'T'), ('chiefB', 'U', 'V')):
+    for age, sheet in (('y', young), ('o', old)):
+        group(f'{look}_{age}_idle', ' '.join(f'{sheet}{r}{c}' for r in (1, 2) for c in (1, 2, 3, 4)), 'person', 11.5, 64)
+        group(f'{look}_{age}_walk', ' '.join(f'{sheet}{r}{c}' for r in (3, 4) for c in (1, 2, 3, 4)), 'person', 11.5, 64)
 # band symbols (white, tinted in game), same order as SYMBOLS in render.ts
 group('sym', 'J11 J12 J13 J14 J21 J22 J23 J24 J31 J32 J33 J34 J41 J42 J43 J44', 'symbol', 6, 64)
 
@@ -262,6 +267,8 @@ def split_cloth(img: Image.Image, head: float) -> tuple[Image.Image, Image.Image
 def main() -> int:
     items = []  # (name, image, ax, ay, s)
     for prefix, ids, kind, world, tex in GROUPS:
+        if not all(os.path.exists(os.path.join(CUT, f'{c}.png')) for c in ids):
+            continue  # sheet not made yet
         for k, cid in enumerate(ids):
             name = prefix if len(ids) == 1 else f'{prefix}{k}'
             src = Image.open(os.path.join(CUT, f'{cid}.png')).convert('RGBA')
@@ -295,7 +302,7 @@ def main() -> int:
                 items.append((name + '_t', top_only(img, ay * h), 0.5, ay, s))
                 continue
             if kind in ('person', 'cloth'):
-                base, cloth = split_cloth(img, head=0.48 if cid == 'I13' else 0.3 if kind == 'person' else 0)
+                base, cloth = split_cloth(img, head=0.48 if cid == 'I13' else 0.5 if cid[0] in 'STUV' else 0.3 if kind == 'person' else 0)
                 items.append((name, base, 0.5, ay, s))
                 items.append((name + '_c', cloth, 0.5, ay, s))
             else:

@@ -438,6 +438,7 @@ async function showPerson(id: number) {
     <div class="person-head"><div class="avatar ${d.sex ? 'f' : 'm'}">${d.sex ? '👩' : '👨'}</div>
       <div><h2>${esc(d.name)}</h2>
       <div class="muted">${alive ? `<span id="pAge">${d.age}</span> години · ${esc(d.bandName)}` : `${formatYear(d.bornYear)} – ${formatYear(d.diedYear!)}, ${esc(d.cause ?? '')} на ${d.age}`}</div>
+      ${d.title ? `<div class="title">${esc(d.title)}</div>` : ''}
       ${alive && d.task ? `<div>Сега ${esc(d.task)}</div>` : ''}<div class="muted">${d.generation}-о поколение</div></div></div>
     <div class="genes">${genes}</div>
     <dl class="family">
@@ -533,6 +534,7 @@ function showBand(b: BandView) {
   openCard(`
     <h2><span class="dot" style="background:#${b.color.toString(16).padStart(6, '0')}"></span> ${esc(b.settlementName ?? b.name)}</h2>
     <div class="muted">${b.settlementName ? `${esc(b.name)} · ` : ''}от ${formatYear(b.founded)} · ${b.settled ? 'уседнали' : 'скитат по земята'}</div>
+    ${b.chief ? `<div>${esc(b.chief.title)}: <a href="#" data-person="${b.chief.id}">${esc(b.chief.name)}</a></div>` : ''}
     <div class="kpis"><div><span>Хора</span><b>${b.size}</b></div><div><span>Деца</span><b>${kidsN}</b></div><div><span>Запаси</span><b>${b.food}</b></div></div>
     <h3>Какво правят сега</h3><ul class="deeds">${[...tasks].sort((a, c) => c[1] - a[1]).map(([t, n]) => `<li>${n} ${esc(t)}</li>`).join('')}</ul>
     <h3>Какво знаят</h3><div class="techs">${b.techs.map((t) => `<span class="pill">${esc(t)}</span>`).join('') || '<span class="muted">Още нищо</span>'}</div>

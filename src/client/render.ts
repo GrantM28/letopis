@@ -780,6 +780,8 @@ export class PersonSprite {
   task = 0;
   age = 20;
   female = false;
+  /** heads the band: own sprites with a smooth idle animation (sheets S and T) */
+  chief = false;
   pose = '';
   facing = 1;
   outline: Container | null = null;
@@ -802,6 +804,7 @@ export class PersonSprite {
     this.c.position.set(p.x, p.y);
     this.age = row[5];
     this.female = row[6] === 1;
+    this.chief = row[7] === 1;
     this.setPose(this.idlePose());
   }
 
@@ -867,6 +870,17 @@ export class PersonSprite {
     }
   }
 
+  /** the chief: young with a dark beard or none, old with a white beard (sheets S-V) */
+  private chiefPose(now: number, walking: boolean): string | null {
+    const look = hash(this.id, 41) < 0.5 ? 'chiefA' : 'chiefB';
+    const age = this.age >= 50 ? 'o' : 'y';
+    const base = `${look}_${age}_${walking ? 'walk' : 'idle'}`;
+    if (!this.r.atlas.has(`${base}0`)) return null;
+    // 8-frame loops: a slow, calm idle and a smooth walk
+    const f = Math.floor(now / (walking ? 110 : 220) + this.seed) % 8;
+    return `${base}${f}`;
+  }
+
   private walkPose(now: number): string | null {
     const f = Math.floor(now / 140 + this.seed) % 4;
     if (this.age < 12) return `${this.female ? 'girlwalk' : 'boywalk'}${f}`;
@@ -890,6 +904,7 @@ export class PersonSprite {
     this.cloth.tint = color;
     this.age = row[5];
     this.female = row[6] === 1;
+    this.chief = row[7] === 1;
     const s = this.age < 12 ? 0.75 + this.age * 0.02 : this.age > 60 ? 0.95 : 1;
     this.c.scale.set(this.facing * s, s);
     this.task = row[3];
@@ -916,7 +931,8 @@ export class PersonSprite {
     this.pos.x = x;
     this.pos.y = y;
     let bob = 0;
-    const walk = walking ? this.walkPose(now) : null;
+    const chiefPose = this.chief ? this.chiefPose(now, walking) : null;
+    const walk = chiefPose ?? (walking ? this.walkPose(now) : null);
     if (walk) {
       this.setPose(walk);
     } else {

@@ -142,3 +142,5 @@ h3 { font-family: var(--serif); font-weight: normal; color: var(--accent); margi
 .secrets li.found { color: var(--text); }
 .secrets li.found::marker { color: var(--accent); }
 .secrets li.found b { color: var(--accent-2); font-weight: 600; }
+
+.person-head .title { color: var(--accent); font-weight: 600; }
