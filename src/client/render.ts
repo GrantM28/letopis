@@ -79,6 +79,7 @@ export class Atlas {
 
   set(s: Sprite, name: string, mul = 1) {
     const f = this.frames[name];
+    if (!f) return; // a missing frame must never stop the drawing
     s.texture = this.tex[name];
     s.anchor.set(f.ax, f.ay);
     s.scale.set(f.s * mul);
@@ -1099,7 +1100,11 @@ export class PersonSprite {
       const sp = ch as Sprite;
       const k = j >> 1;
       const a = (k / 8) * Math.PI * 2;
-      this.r.atlas.set(sp, j & 1 ? this.pose + '_c' : this.pose);
+      // the newer sheets have no separate clothes: their outline is the body alone
+      const name = j & 1 ? this.pose + '_c' : this.pose;
+      sp.visible = this.r.atlas.has(name);
+      if (!sp.visible) return;
+      this.r.atlas.set(sp, name);
       sp.tint = 0xff2a2a;
       sp.position.set(Math.cos(a) * d, Math.sin(a) * d);
     });

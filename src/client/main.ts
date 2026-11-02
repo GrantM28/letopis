@@ -705,6 +705,10 @@ $('#sideHandle').onclick = toggleSide;
 // ---------- frame loop ----------
 
 app.ticker.add((t) => {
+  // one bad frame must not freeze the page: Pixi stops its ticker on an error
+  try { frameStep(t); } catch (e) { console.error(e); }
+});
+function frameStep(t: { deltaMS: number; deltaTime: number }) {
   const now = performance.now();
   tourStep(now);
   followStep();
@@ -720,7 +724,7 @@ app.ticker.add((t) => {
   if (app.ticker.maxFPS !== fps) app.ticker.maxFPS = fps;
   const left = Math.max(0, tickMs - (now - lastTickAt));
   ($('#tickBar') as HTMLElement).style.width = `${100 - (left / tickMs) * 100}%`;
-});
+}
 
 // ---------- start ----------
 
