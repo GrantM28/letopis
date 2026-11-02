@@ -130,6 +130,8 @@ export interface ChronicleEntry {
   bandId?: number;
   /** names in the text that lead somewhere: a person (p) or a band (b) */
   refs?: ChronicleRef[];
+  /** the same entry in English (entries written before v1.15 have none) */
+  en?: { text: string; kids?: string };
 }
 
 export interface ChronicleRef { n: string; p?: number; b?: number }
@@ -214,7 +216,11 @@ export interface FamilyTree {
   fatherLine: TreeNode[];
 }
 
-export function formatYear(year: number): string {
+export function formatYear(year: number, lang: 'bg' | 'en' = 'bg'): string {
+  if (lang === 'en') {
+    const e = Math.abs(Math.round(year)).toLocaleString('en-US');
+    return year < 0 ? `${e} BC` : `AD ${e}`;
+  }
   const y = Math.abs(Math.round(year));
   const s = y.toLocaleString('bg-BG').replace(/ /g, ' ');
   return year < 0 ? `${s} г. пр.н.е.` : `${s} г.`;

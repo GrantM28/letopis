@@ -4,6 +4,7 @@ import {
 import { Simplex } from '../shared/noise';
 import { Fauna } from './animals';
 import { SECRET_KINDS, SecretSpot, secretSpots } from '../shared/secrets';
+import { B, VILLAGE } from './lang';
 import { Rng } from '../shared/rng';
 import { CONIFERS, TREE_KINDS } from '../shared/trees';
 import { BandView, Biome, PersonRow, TASKS, WorldInfo, b64decode, isWater, RIVER_WATER } from '../shared/types';
@@ -78,6 +79,7 @@ export class Atlas {
 
   set(s: Sprite, name: string, mul = 1) {
     const f = this.frames[name];
+    if (!f) return; // a missing frame must never stop the drawing
     s.texture = this.tex[name];
     s.anchor.set(f.ax, f.ay);
     s.scale.set(f.s * mul);
@@ -1098,7 +1100,11 @@ export class PersonSprite {
       const sp = ch as Sprite;
       const k = j >> 1;
       const a = (k / 8) * Math.PI * 2;
-      this.r.atlas.set(sp, j & 1 ? this.pose + '_c' : this.pose);
+      // the newer sheets have no separate clothes: their outline is the body alone
+      const name = j & 1 ? this.pose + '_c' : this.pose;
+      sp.visible = this.r.atlas.has(name);
+      if (!sp.visible) return;
+      this.r.atlas.set(sp, name);
       sp.tint = 0xff2a2a;
       sp.position.set(Math.cos(a) * d, Math.sin(a) * d);
     });
@@ -1352,7 +1358,7 @@ export class CampSprite {
     this.c.position.set(p.x, p.y);
     this.glow.position.set(p.x, p.y - 4);
     this.glow.visible = b.hasFire || b.dwelling === 'house';
-    this.label.text = b.settlementName ? `${b.settlementName} (${b.size})` : `${b.name.replace('Родът на ', '')} (${b.size})`;
+    this.label.text = b.settlementName ? `${VILLAGE(b.settlementName)} (${b.size})` : `${B(b.name).replace(/^(Родът на|Clan of the) /, '')} (${b.size})`;
     this.label.style.fontSize = kids ? 16 : 12;
     this.bannerCloth.tint = b.color;
     this.tag.position.set(p.x, p.y - 30);

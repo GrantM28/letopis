@@ -1,81 +1,100 @@
-# Летопис
+<p align="center"><img src="art/social-preview.png" alt="Letopis"></p>
 
-Idle симулация на цивилизация, която живее сама на сървъра. Хора с български имена тръгват от каменната епоха
-и сами откриват огъня, сечивата, земеделието и така нататък. Никой не натиска нищо. Отваряш браузъра, когато ти
-скимне, и виждаш докъде са стигнали.
+<h1 align="center">Letopis</h1>
 
-- Измислен свят с релеф, реки, гори, планини, сезони и сняг.
-- Всеки човек има име, родители, деца, черти (сила, ум, любопитство, общителност, здраве, дълголетие), които се наследяват с малки мутации.
-- Родове бродят, разделят се, срещат се, учат се един от друг и понякога изчезват заедно със знанията си.
-- Летопис на български, с отделен детски режим. Войните (от етап 3) ще са без насилие на екрана.
-- „Докато те нямаше“: при отваряне показва най-важното, случило се от последното ти посещение.
-- Режим „Разходка“: камерата сама обикаля света и спира там, където става нещо интересно. Добре стои на телевизор.
+<p align="center"><i>An idle civilization that lives on its own server. You just watch it grow.</i></p>
 
-## Темпо
+Letopis (Bulgarian for *chronicle*) is a self-hosted idle simulation. A few families start in the Stone Age
+and, with nobody pressing a button, discover fire, tools, farming and everything after. Open the page whenever
+you like and see how far they got. The whole game runs in the browser; the world keeps living on the server
+while nobody is watching.
 
-Около 3 месеца реално време от каменната епоха до днешния ден, после светът продължава със същото темпо.
-Каменната епоха е най-бърза (една година за около 3 минути), модерните векове са най-бавни (една година за около 1,5 часа).
-Невидим „режисьор“ леко нагласява шанса за открития, ако светът изостава или бърза спрямо графика.
+## Features
 
-## Пускане на Unraid
+- A generated world with relief, rivers, forests, mountains, seasons and snow, drawn in a cozy isometric pixel-art style.
+- Every person has a name, parents, children and traits (strength, wit, curiosity, sociability, health, longevity) that are inherited with small mutations.
+- Clans wander, split, meet, learn from each other, settle into villages and sometimes die out together with their knowledge.
+- Trees grow and get cut for fires and huts; a clan moves on when the wood around its camp is gone.
+- A living chronicle of everything that happens, with clickable people and clans, family trees back to the first humans and a list of first discoveries.
+- English and Bulgarian, switchable at any time with the language button.
+- Kids mode with bigger letters and simpler explanations.
+- "While you were away": the highlights since your last visit.
+- Tour mode: the camera wanders the world by itself and stops where something happens. Nice on a TV.
+- 100 tiny secrets hidden around every world.
 
-1. Docker → Add Container → Template: постави съдържанието на `unraid/letopis.xml` или попълни ръчно:
-   - Repository: `ghcr.io/leppermesiah/letopis:latest`
-   - Port: `2222` → `2222`
-   - Path: `/data` → `/mnt/user/appdata/letopis`
-2. Отвори `http://<unraid-ip>:2222/`.
+## Pace
 
-Светът се записва на всеки 2 минути и при спиране на контейнера. След рестарт продължава оттам, докъдето е стигнал.
-Ако човечеството измре, светът се архивира в `/data/archive/` и след минута започва нов.
+About three months of real time take the world from the Stone Age to the present day; after that it keeps going at the same pace.
+The Stone Age is the fastest (a year in about 3 minutes), the modern centuries the slowest (a year in about 1.5 hours).
+Each discovery has a target date, and its chance rises or falls when the world runs ahead of or behind history.
 
-Ако GHCR пакетът е private, или го направи public от GitHub → Packages → letopis → Package settings, или влез на Unraid с `docker login ghcr.io`.
+## Running it
 
-## Тестов канал (dev)
+### Docker
 
-Всяко качване в клона `dev` прави образ `ghcr.io/leppermesiah/letopis:dev`. На Unraid той върви като отделен
-контейнер **letopis-dev** (шаблон `unraid/letopis-dev.xml`, порт 2223, данни в `/mnt/user/appdata/letopis-dev`,
-светът е 20 пъти по-бърз). Watchtower (`nickfedor/watchtower`, с аргумент `letopis-dev`) го обновява до минута
-след всяко качване. Страницата сама се презарежда, когато сървърът е с по-нова версия.
-Когато нещо е готово, се прави PR от `dev` към `main` и чак тогава стига до истинския свят на 2222.
+```sh
+docker run -d --name letopis -p 2222:2222 -v /path/to/letopis-data:/data --restart unless-stopped ghcr.io/leppermesiah/letopis:latest
+```
 
-Версията горе вляво (`ver. 1.01`) идва от `version` в `package.json`: `1.1.0` се показва като `1.01`.
-Малка промяна вдига второто число (`1.02`), голяма вдига първото и нулира второто (`2.00`).
+Then open `http://<host>:2222/`.
 
-## Локално
+### Unraid
+
+Docker → Add Container → Template, and use [`unraid/letopis.xml`](unraid/letopis.xml), or fill in by hand:
+
+- Repository: `ghcr.io/leppermesiah/letopis:latest`
+- Port: `2222` → `2222`
+- Path: `/data` → `/mnt/user/appdata/letopis`
+
+The world is saved every 2 minutes and when the container stops, and continues where it left off after a restart.
+If humanity dies out, the world is archived in `/data/archive/` and a new one begins a minute later.
+
+### Settings (environment)
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `LETOPIS_PORT` | `2222` | web port |
+| `LETOPIS_DATA` | `/data` | where the world, the chronicle (SQLite) and the archive live |
+| `LETOPIS_SPEED` | `1` | time multiplier, only for testing |
+| `LETOPIS_SEED` | random | seed of the first world |
+| `TZ` | `Europe/Sofia` | time zone |
+
+## Building from source
+
+Requires Node.js 22.
 
 ```sh
 npm ci
-npm run dev   # x200 скорост, данни в ./data, http://localhost:2222
+npm run dev     # runs at x200 speed with data in ./data, http://localhost:2222
+npm run build   # production build into dist/
 ```
 
-Настройки (env): `LETOPIS_PORT` (2222), `LETOPIS_DATA` (/data), `LETOPIS_SPEED` (1, само за тест), `LETOPIS_SEED` (случайно).
+### Graphics
 
-## Графика
-
-Спрайтовете са генерирани с ChatGPT по промптовете в [art/PROMPTS.md](art/PROMPTS.md). Листовете са в `art/sheets/`.
-Ако смениш или добавиш лист, пусни (нужни са Python, Pillow и NumPy):
+The sprites are generated from the prompts in [art/PROMPTS.md](art/PROMPTS.md); the sheets live in `art/sheets/`.
+After changing or adding a sheet (needs Python, Pillow and NumPy):
 
 ```sh
-python3 -I tools/slice_sprites.py   # реже листовете на отделни спрайтове в art/cut/ и чисти ореолите
-python3 -I tools/build_atlas.py     # сглобява public/sprites/atlas.png и atlas.json
+python3 -I tools/slice_sprites.py   # cuts the sheets into single sprites in art/cut/ and cleans the halos
+python3 -I tools/build_atlas.py     # builds public/sprites/atlas*.png and atlas.json
 ```
 
-Готовият атлас е в git, така че за компилиране на играта Python не е нужен.
+The finished atlas is in git, so Python is not needed to build the game.
 
 ## API
 
 `/api/health`, `/api/world`, `/api/snapshot`, `/api/chronicle?before=&after=&min=&limit=`, `/api/since?after=`,
-`/api/person/:id`, `/api/heroes`, `/api/stats`, `/api/worlds`, WebSocket `/ws`.
-`/api/health` е удобен за сензор в Home Assistant по-късно.
+`/api/person/:id`, `/api/tree/:id`, `/api/band/:id`, `/api/heroes`, `/api/discoveries`, `/api/stats`, `/api/worlds`, WebSocket `/ws`.
+`/api/health` works well as a sensor for Home Assistant or any uptime monitor.
 
-## Етапи
+## Roadmap
 
-1. **Свят и хора** (този): терен, хора, родове, каменна епоха до първите села, изометричен изглед, летопис.
-2. Селища и откритията до желязната епоха, родословно дърво, по-богати села.
-3. Държави, търговия, войни без насилие, болести, бедствия, графики, личности.
-4. Средновековие до модерността, шейдъри, сезони, портрети, още детски обяснения.
-5. Космосът и колонии на други светове.
+1. **World and people** (now): terrain, people, clans, the Stone Age up to the first villages, isometric view, chronicle.
+2. Settlements and discoveries up to the Iron Age, richer villages.
+3. States, trade, wars without on-screen violence, diseases, disasters.
+4. Middle Ages to modern times, portraits, more for kids.
+5. Space and colonies on other worlds.
 
-## Източници
+## Credits
 
-Всичко заето отвън, с автор и лиценз, е в [CREDITS.md](CREDITS.md).
+Everything taken from outside, with its author and license, is listed in [CREDITS.md](CREDITS.md).
