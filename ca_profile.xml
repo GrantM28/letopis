@@ -1,0 +1,6 @@
+<?xml version="1.0"?>
+<CommunityApplications>
+  <Profile>Letopis is a self-hosted idle civilization simulation by leppermesiah. A Stone Age tribe grows into a civilization on its own server while you watch in the browser. English and Bulgarian. Questions and bug reports go to GitHub issues.</Profile>
+  <Icon>https://raw.githubusercontent.com/leppermesiah/letopis/main/public/icon-512.png</Icon>
+  <WebPage>https://github.com/leppermesiah/letopis</WebPage>
+</CommunityApplications>
