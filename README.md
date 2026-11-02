@@ -42,7 +42,8 @@ Then open `http://<host>:2222/`.
 
 ### Unraid
 
-Docker → Add Container → Template, and use [`templates/letopis.xml`](templates/letopis.xml), or fill in by hand:
+Install **Letopis** from the **Apps** tab (Community Applications). The template lives in
+[leppermesiah/unraid-templates](https://github.com/leppermesiah/unraid-templates). To add it by hand instead:
 
 - Repository: `ghcr.io/leppermesiah/letopis:latest`
 - Port: `2222` → `2222`
