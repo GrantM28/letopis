@@ -189,7 +189,7 @@ group('sec_robot', 'R31 R32', 'prop', 5.5, 40)
 group('sec_stag', 'R33 R34', 'prop', 6.6, 48)
 group('sec_dragon', 'R41 R42', 'prop', 6.6, 48)
 group('sec_portal', 'R43 R44', 'prop', 6.6, 48)
-# chiefs (sheets S-V, 8 frames each): A young/old, B young/old; skipped until the sheets are cut
+# chiefs (sheets S-V, 8 frames each): A young/old, B young/old; their cream fur is kept as drawn (no band tint)
 for look, young, old in (('chiefA', 'S', 'T'), ('chiefB', 'U', 'V')):
     for age, sheet in (('y', young), ('o', old)):
         group(f'{look}_{age}_idle', ' '.join(f'{sheet}{r}{c}' for r in (1, 2) for c in (1, 2, 3, 4)), 'person', 11.5, 64)
@@ -302,7 +302,7 @@ def main() -> int:
                 items.append((name + '_t', top_only(img, ay * h), 0.5, ay, s))
                 continue
             if kind in ('person', 'cloth'):
-                base, cloth = split_cloth(img, head=0.48 if cid == 'I13' else 0.5 if cid[0] in 'STUV' else 0.3 if kind == 'person' else 0)
+                base, cloth = split_cloth(img, head=0.48 if cid == 'I13' else 1.0 if cid[0] in 'STUV' else 0.3 if kind == 'person' else 0)
                 items.append((name, base, 0.5, ay, s))
                 items.append((name + '_c', cloth, 0.5, ay, s))
             else:
