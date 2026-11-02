@@ -81,6 +81,7 @@ function flush() {
 
 // ---------- the endless loop ----------
 
+const CHRONICLE_YEARS = 100;
 let lastSave = Date.now();
 let pendingEvents: TickMessage['events'] = [];
 
@@ -91,6 +92,8 @@ function tick() {
     pendingEvents = sim.events;
     flush();
     sim.events = [];
+    // a short chronicle: the last 100 years, plus the great discoveries and moments for ever
+    if (sim.s.tick % 12 === 6) store.prune(sim.s.worldId, Math.floor(sim.year) - CHRONICLE_YEARS);
     if (sim.s.tick % 12 === 0) {
       store.addStat(sim.s.worldId, {
         tick: sim.s.tick, year: Math.floor(sim.year), population: sim.s.people.length, bands: sim.s.bands.length,

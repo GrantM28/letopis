@@ -782,6 +782,32 @@ export class WorldRenderer {
     for (const [id, p] of this.people) if (!seen.has(id)) { p.destroy(); this.people.delete(id); }
   }
 
+  /** the night: a dark veil with clear light 2 tiles around every fire, fading out by 3.5 tiles */
+  private drawNight(dark: number) {
+    const g = this.nightOverlay;
+    g.clear();
+    if (dark <= 0.005) return;
+    const W = this.app.screen.width, H = this.app.screen.height;
+    const z = this.world.scale.x;
+    const fires: { x: number; y: number }[] = [];
+    for (const c of this.camps.values()) {
+      if (!c.hasFire) continue;
+      const p = this.tileTop(c.tx, c.ty);
+      const x = this.world.x + p.x * z, y = this.world.y + p.y * z;
+      if (x > -200 * z && y > -120 * z && x < W + 200 * z && y < H + 120 * z) fires.push({ x, y });
+    }
+    // rings of veil, each with a slightly bigger hole: together they make a soft edge
+    const steps = fires.length ? 7 : 1;
+    const a = 1 - Math.pow(1 - dark, 1 / steps);
+    // one tile is TW wide and TH tall on screen; a circle of r tiles is an ellipse
+    const rx = (TW / 2) * Math.SQRT2 * z, ry = (TH / 2) * Math.SQRT2 * z;
+    for (let k = 0; k < steps; k++) {
+      g.rect(0, 0, W, H).fill({ color: 0x050a1c, alpha: a });
+      const r = 2 + (1.5 * (k + 1)) / steps;
+      for (const f of fires) g.ellipse(f.x, f.y, r * rx, r * ry).cut();
+    }
+  }
+
   /** called every frame */
   frame(dt: number, nowMs: number) {
     // zoomed far out the whole map is on screen: everything stands still (only the snow still comes and goes)
@@ -810,9 +836,9 @@ export class WorldRenderer {
     // a day lasts 8 real minutes, just for the mood
     const day = (nowMs / (8 * 60 * 1000)) % 1;
     const sun = Math.cos(day * Math.PI * 2); // 1 noon, -1 midnight
-    const dark = this.night ? Math.max(0, Math.min(0.55, -sun * 0.7 + 0.05)) : 0;
-    this.nightOverlay.clear().rect(0, 0, this.app.screen.width, this.app.screen.height).fill({ color: 0x0a1030, alpha: dark });
-    this.glowLayer.alpha = Math.min(1, dark * 2.2);
+    const dark = this.night ? Math.max(0, Math.min(0.82, -sun * 1.0 + 0.05)) : 0;
+    this.drawNight(dark);
+    this.glowLayer.alpha = Math.min(0.45, dark * 0.55);
     const zoom = this.world.scale.x;
     // draw only the chunks on screen
     const vx = -this.world.x / zoom, vy = -this.world.y / zoom;

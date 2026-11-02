@@ -15,6 +15,7 @@ export class Store {
         text TEXT, kids TEXT, person INTEGER, band INTEGER, PRIMARY KEY (world, id)
       );
       CREATE INDEX IF NOT EXISTS chronicle_imp ON chronicle (world, importance, id);
+      CREATE INDEX IF NOT EXISTS chronicle_year ON chronicle (world, year);
       CREATE TABLE IF NOT EXISTS dead (world TEXT NOT NULL, id INTEGER NOT NULL, json TEXT, PRIMARY KEY (world, id));
       CREATE TABLE IF NOT EXISTS stats (
         world TEXT NOT NULL, tick INTEGER, year INTEGER, population INTEGER, bands INTEGER, era INTEGER, techs INTEGER,
@@ -28,7 +29,14 @@ export class Store {
     if (!cols.some((c) => c.name === 'refs')) this.db.exec('ALTER TABLE chronicle ADD COLUMN refs TEXT');
   }
 
-  addGoneBands(world: string, gone: GoneBand[]) {
+  /** the chronicle keeps only the last `years` years; the great moments (importance 3) and found secrets stay forever */
+  prune(world: string, beforeYear: number): number {
+    const r = this.db.prepare("DELETE FROM chronicle WHERE world = ? AND year < ? AND importance < 3 AND kind NOT IN ('secret', 'end')")
+      .run(world, beforeYear) as { changes: number | bigint };
+    return Number(r.changes);
+  }
+
+    addGoneBands(world: string, gone: GoneBand[]) {
     if (!gone.length) return;
     const st = this.db.prepare('INSERT OR REPLACE INTO gone_bands VALUES (?,?,?)');
     for (const g of gone) st.run(world, g.id, JSON.stringify(g));
