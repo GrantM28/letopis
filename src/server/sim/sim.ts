@@ -3,6 +3,7 @@ import {
   BandView, ChronicleEntry, PersonDetail, PersonRow, TASKS, TASK_NAMES, Task, TimeInfo, TreeNode, FamilyTree, b64encode, formatYear, isWater, Biome, RIVER_WATER,
 } from '../../shared/types';
 import { Terrain, generateTerrain, findStart, idx, inBounds, W, H, setWorldSize, OLD_SIZE, NEW_SIZE } from './world';
+import { SECRET_COUNT, SECRET_KINDS } from '../../shared/secrets';
 import { FEMALE, MALE, bandColor, bandName, fixBandName, familyFrom, nickname, placeName } from './names';
 import { ERAS, TECHS, TECH_BY_ID, Tech, eraOf } from './tech';
 
@@ -59,6 +60,8 @@ export interface SimState {
   seed: number;
   /** map side in tiles; missing in worlds saved before maps grew (192) */
   size?: number;
+  /** secrets (easter eggs) found by the people watching, by number */
+  secrets?: number[];
   tick: number;
   rng: [number, number, number, number];
   nextPersonId: number;
@@ -1188,6 +1191,18 @@ export class Simulation {
       return out;
     };
     return { root, motherLine: line('motherId'), fatherLine: line('fatherId') };
+  }
+
+  /** someone watching found secret k: the first find goes into the chronicle */
+  findSecret(k: number): { first: boolean; found: number } | null {
+    if (!Number.isInteger(k) || k < 0 || k >= SECRET_COUNT) return null;
+    const list = (this.s.secrets ??= []);
+    if (list.includes(k)) return { first: false, found: list.length };
+    list.push(k);
+    const kind = SECRET_KINDS[k % SECRET_KINDS.length];
+    this.emit('secret', 2, `Някой, който гледа отгоре, забеляза ${kind.name}. Намерени тайни: ${list.length} от ${SECRET_COUNT}.`,
+      `Ура! Някой намери ${kind.name}! Тайни: ${list.length} от ${SECRET_COUNT}.`);
+    return { first: true, found: list.length };
   }
 
   /** notable living people: discoverers, leaders, the oldest */

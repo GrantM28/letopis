@@ -3,6 +3,7 @@ import {
 } from 'pixi.js';
 import { Simplex } from '../shared/noise';
 import { Fauna } from './animals';
+import { SECRET_KINDS, SecretSpot, secretSpots } from '../shared/secrets';
 import { Rng } from '../shared/rng';
 import { BandView, Biome, PersonRow, TASKS, WorldInfo, b64decode, isWater, RIVER_WATER } from '../shared/types';
 
@@ -166,6 +167,8 @@ export class WorldRenderer {
   selectedId: number | null = null;
   camps = new Map<number, CampSprite>();
   fauna = new Fauna(this);
+  /** the 100 hidden secrets: tiny, half see-through, buried by snow in winter */
+  secrets: { spot: SecretSpot; s: Sprite; i: number; found: boolean }[] = [];
   tex!: Record<string, Texture>;
   time = 0;
   month = 0;
@@ -558,6 +561,50 @@ export class WorldRenderer {
     return this.temp[yi * this.info.w + xi] / 255;
   }
 
+  setSecrets(found: number[]) {
+    for (const x of this.secrets) x.s.destroy();
+    const have = new Set(found);
+    this.secrets = secretSpots(this.info.seed, this.info.w, this.info.h, this.biome, this.river).map((spot) => {
+      const s = this.atlas.sprite(`sec_${SECRET_KINDS[spot.kind].id}0`);
+      const p = this.tileTop(spot.x, spot.y);
+      s.position.set(p.x, p.y);
+      s.zIndex = p.y;
+      s.eventMode = 'none';
+      s.visible = false;
+      this.peopleLayer.addChild(s);
+      return { spot, s, i: Math.round(spot.y) * this.info.w + Math.round(spot.x), found: have.has(spot.k) };
+    });
+  }
+
+  markSecret(k: number) {
+    const x = this.secrets.find((q) => q.spot.k === k);
+    if (x) x.found = true;
+  }
+
+  /** a secret under the click (world coordinates), if one shows there */
+  pickSecret(wx: number, wy: number): SecretSpot | null {
+    for (const x of this.secrets) {
+      if (!x.s.visible || x.s.alpha < 0.25) continue;
+      if (Math.hypot(x.s.x - wx, x.s.y - 2.5 - wy) < 4.5) return x.spot;
+    }
+    return null;
+  }
+
+  private secretFrame(nowMs: number, zoom: number, winter: number) {
+    for (const x of this.secrets) {
+      const on = zoom > 0.75 && this.explored[x.i] === 1;
+      x.s.visible = on;
+      if (!on) continue;
+      // snow covers them on cold ground, the same way it covers the tiles
+      const t = this.temp[x.i] / 255;
+      const snow = t < 0.33 ? Math.min(1, winter * 1.2) : t < 0.5 && winter >= 1 ? 0.7 : 0;
+      x.s.alpha = (x.found ? 0.95 : 0.6) * (1 - snow * 0.97);
+      const id = SECRET_KINDS[x.spot.kind].id;
+      const f = Math.floor(nowMs / 1600 + x.spot.k * 0.37) % 2;
+      this.atlas.set(x.s, `sec_${id}${f}`);
+    }
+  }
+
   /** dry land people can walk on (water and wide rivers block them) */
   walkable(x: number, y: number): boolean {
     if (x < 0 || y < 0 || x >= this.info.w || y >= this.info.h) return false;
@@ -701,6 +748,7 @@ export class WorldRenderer {
     for (const p of this.people.values()) p.frame(nowMs);
     for (const c of this.camps.values()) c.frame(nowMs, zoom);
     this.fauna.frame(performance.now(), Math.min(0.1, dt / 60));
+    this.secretFrame(nowMs, zoom, winter);
   }
 }
 

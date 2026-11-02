@@ -3,6 +3,7 @@ import { Atlas, WorldRenderer, iso, TW, TH } from './render';
 import {
   BandView, ChronicleEntry, FamilyTree, MONTHS, TreeNode, PersonDetail, PersonRow, SnapshotMessage, TASKS, TASK_NAMES, TickMessage, WorldInfo, b64decode, formatYear,
 } from '../shared/types';
+import { SECRET_COUNT, SECRET_KINDS, SecretSpot } from '../shared/secrets';
 
 // ---------- small helpers ----------
 
@@ -150,6 +151,8 @@ function pick(sx: number, sy: number) {
     }
   }
   if (best !== null) return showPerson(best);
+  const secret = r.pickSecret(wx, wy);
+  if (secret) return showSecret(secret);
   // a click on the map next to nobody closes the person card
   if (r.selectedId !== null) return closeCard();
   let bestBand: BandView | null = null, bb = 40;
@@ -250,7 +253,7 @@ function evText(e: ChronicleEntry): string {
 function eventHtml(e: ChronicleEntry): string {
   const icon: Record<string, string> = {
     discovery: '💡', rediscovery: '🔁', settle: '🏘️', colony: '🏘️', split: '🚶', death: '🕯️', twins: '👶', hunt: '🦣',
-    winter: '❄️', drought: '☀️', extinct: '🌑', lost: '📜', meet: '🤝', learn: '📚', era: '⭐', milestone: '👥', genesis: '🌅', merge: '🔗', marriage: '💞', end: '🌑',
+    winter: '❄️', secret: '✨', drought: '☀️', extinct: '🌑', lost: '📜', meet: '🤝', learn: '📚', era: '⭐', milestone: '👥', genesis: '🌅', merge: '🔗', marriage: '💞', end: '🌑',
   };
   return `<li class="ev imp${e.importance}" data-person="${e.personId ?? ''}" data-band="${e.bandId ?? ''}">
     <span class="ev-icon">${icon[e.kind] ?? '•'}</span>
@@ -459,6 +462,16 @@ function followStep() {
   card.style.transform = `translate3d(${cardPos.x.toFixed(1)}px, ${cardPos.y.toFixed(1)}px, 0)`;
 }
 
+async function showSecret(spot: SecretSpot) {
+  const kind = SECRET_KINDS[spot.kind];
+  const res = await fetch(`/api/secret/${spot.k}`, { method: 'POST' }).then((x) => x.json()).catch(() => null) as { first: boolean; found: number } | null;
+  r.markSecret(spot.k);
+  openCard(`
+    <h2>✨ ${esc(kind.name[0].toUpperCase() + kind.name.slice(1))}</h2>
+    <p>${esc(kind.text)}</p>
+    <div class="muted">${res ? `${res.first ? 'Ти си първият, който я откри!' : 'Някой вече я е открил преди теб.'} Намерени тайни: ${res.found} от ${SECRET_COUNT}.` : ''}</div>`);
+}
+
 /** family tree: three generations of ancestors, and the straight lines back to the first people */
 async function showTree(id: number) {
   const t = await api<FamilyTree>(`/api/tree/${id}`).catch(() => null);
@@ -596,6 +609,7 @@ const info = await api<WorldInfo>('/api/world');
 worldId = info.worldId;
 const seenBefore = store<number>(`letopis.seen.${worldId}`, 0);
 r.setWorld(info);
+api<{ found: number[] }>('/api/secrets').then((s) => r.setSecrets(s.found)).catch(() => r.setSecrets([]));
 const snap = await api<SnapshotMessage>('/api/snapshot');
 onSnapshot(snap);
 const recent = await api<ChronicleEntry[]>('/api/chronicle?limit=120');
