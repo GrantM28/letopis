@@ -1196,7 +1196,12 @@ export class Simulation {
     if (!this.campable(c) || t.height[c] > 0.62) return -1;
     // a new camp must be reachable: across water only with boats
     if (!this.reachable(self, x, y)) return -1;
-    for (const o of this.s.bands) if (o.id !== self.id && Math.hypot(o.cx - x, o.cy - y) < 7) return -1;
+    for (const o of this.s.bands) {
+      if (o.id === self.id) continue;
+      if (Math.hypot(o.cx - x, o.cy - y) < 7) return -1;
+      // a place another chief is already walking to is taken
+      if (o.scout && Math.hypot(o.scout.x - x, o.scout.y - y) < 7) return -1;
+    }
     // a new camp needs wood: at least five big trees close by
     const big = this.treesNear(x, y, 4, BIG);
     if (big < 5) return -1;
@@ -1249,6 +1254,14 @@ export class Simulation {
         sc.py = py + (dy / d) * v;
         chief.x = sc.px;
         chief.y = sc.py;
+        return;
+      }
+      // someone else got there first: he gives up and walks back
+      if (this.s.bands.some((o) => o.id !== b.id && Math.hypot(o.cx - sc.x, o.cy - sc.y) < 5)) {
+        b.scout = null;
+        chief.x = b.cx;
+        chief.y = b.cy;
+        chief.task = 'lead';
         return;
       }
       // he is there and likes it: the camp, the banner and everyone follow

@@ -1,6 +1,6 @@
 import http from 'node:http';
 import { createReadStream, existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs';
-import { gunzipSync, gzipSync } from 'node:zlib';
+import { createGzip, gunzipSync, gzipSync } from 'node:zlib';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer, WebSocket } from 'ws';
@@ -225,19 +225,25 @@ const server = http.createServer((req, res) => {
     let file = path.normalize(path.join(PUBLIC, p === '/' ? 'index.html' : p));
     if (!file.startsWith(PUBLIC) || !existsSync(file) || statSync(file).isDirectory()) file = path.join(PUBLIC, 'index.html');
     const fresh = file.endsWith('index.html') || file.endsWith('version.json');
+    // text (the game script, the atlas list) goes compressed: a few times smaller over a slow line
+    const ext = path.extname(file);
+    const zip = ['.js', '.css', '.json', '.html', '.svg', '.map', '.webmanifest'].includes(ext) && /\bgzip\b/.test(String(req.headers['accept-encoding'] ?? ''));
     res.writeHead(200, {
-      'content-type': MIME[path.extname(file)] ?? 'application/octet-stream',
+      'content-type': MIME[ext] ?? 'application/octet-stream',
       // the page and its version must always be fresh; the rest carries ?v=<build>
       'cache-control': fresh ? 'no-cache' : 'public, max-age=86400',
+      ...(zip ? { 'content-encoding': 'gzip', vary: 'accept-encoding' } : {}),
     });
-    createReadStream(file).pipe(res);
+    if (zip) createReadStream(file).pipe(createGzip({ level: 6 })).pipe(res);
+    else createReadStream(file).pipe(res);
   } catch (e) {
     log('HTTP грешка', e);
     json(res, { error: 'вътрешна грешка' }, 500);
   }
 });
 
-const wss = new WebSocketServer({ server, path: '/ws' });
+// every tick carries all the people: compressed it is about a fifth of the size
+const wss = new WebSocketServer({ server, path: '/ws', perMessageDeflate: { threshold: 4096, zlibDeflateOptions: { level: 3 } } });
 const clients = new Set<WebSocket>();
 wss.on('connection', (ws) => {
   clients.add(ws);
