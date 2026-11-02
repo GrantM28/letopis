@@ -874,7 +874,8 @@ export class WorldRenderer {
     // spread around the fire, the same spot every night for the same person
     const a = hash(r[0], 5) * Math.PI * 2, rr = 0.6 + hash(r[0], 9) * 1.3;
     let nx = c.tx + Math.cos(a) * rr, ny = c.ty + Math.sin(a) * rr;
-    if (!this.walkable(Math.round(nx), Math.round(ny))) { nx = c.tx + (hash(r[0], 2) - 0.5) * 0.6; ny = c.ty + (hash(r[0], 4) - 0.5) * 0.6; }
+    const L0 = this.levelAt(c.tx, c.ty);
+    if (!this.walkable(Math.round(nx), Math.round(ny)) || Math.abs(this.levelAt(nx, ny) - L0) > 1) { nx = c.tx + (hash(r[0], 2) - 0.5) * 0.6; ny = c.ty + (hash(r[0], 4) - 0.5) * 0.6; }
     const out = [...r] as PersonRow;
     out[1] = Math.round(nx * 10);
     out[2] = Math.round(ny * 10);
@@ -964,13 +965,13 @@ export class WorldRenderer {
   }
 
   /** what a person is doing right now, when the night changes it (null: the day's task) */
-  nightTask(id: number): string | null {
+  nightTask(id: number, task?: number): string | null {
     const p = this.people.get(id);
     if (!this.nightNow) return null;
     const role = p?.role;
     if (role === 'guard') return 'пази селото';
     if (role === 'bodyguard') return 'пази водача';
-    if (p && TASKS[p.task] === 'scout') return null;
+    if (TASKS[task ?? p?.task ?? 0] === 'scout') return null;
     return 'спи';
   }
 

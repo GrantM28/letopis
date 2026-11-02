@@ -622,7 +622,7 @@ function showBand(b: BandView) {
   const kidsN = members.filter((p) => p[5] < 12).length;
   const tasks = new Map<string, number>();
   for (const p of members) {
-    const t = TASK(TASK_NAMES[TASKS[p[3]]]);
+    const t = TASK(r.nightTask(p[0], p[3]) ?? TASK_NAMES[TASKS[p[3]]]);
     tasks.set(t, (tasks.get(t) ?? 0) + 1);
   }
   openCard(`
