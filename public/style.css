@@ -113,3 +113,20 @@ h3 { font-family: var(--serif); font-weight: normal; color: var(--accent); margi
 }
 
 .brand .build { display: block; font-family: var(--sans, system-ui, sans-serif); font-size: 10px; color: var(--muted); letter-spacing: 0.02em; margin-top: 2px; }
+
+/* family tree */
+.card.wide { width: min(860px, calc(100vw - 32px)); }
+.tree-btn { margin-top: 12px; }
+.tree { overflow-x: auto; margin: 14px 0; padding-bottom: 6px; }
+.tn { display: flex; align-items: center; gap: 10px; }
+.tpar { display: flex; flex-direction: column; gap: 6px; padding-left: 10px; border-left: 1px solid var(--line); }
+.tbox { min-width: 150px; max-width: 190px; padding: 6px 9px; border-radius: 9px; background: rgba(127, 178, 217, 0.13); border: 1px solid rgba(127, 178, 217, 0.35); cursor: pointer; line-height: 1.25; }
+.tbox.f { background: rgba(224, 168, 79, 0.13); border-color: rgba(224, 168, 79, 0.4); }
+.tbox.dead { opacity: 0.75; }
+.tbox.empty { cursor: default; color: var(--muted); background: transparent; border-style: dashed; border-color: var(--line); font-size: 13px; }
+.tbox b { display: block; font-weight: 600; font-size: 13.5px; }
+.tbox small { color: var(--muted); font-size: 12px; }
+.tbox:not(.empty):hover { border-color: var(--accent-2); }
+.tline { margin-top: 8px; }
+.tline summary { cursor: pointer; color: var(--accent-2); }
+.tline ol { max-height: 260px; overflow-y: auto; margin: 8px 0 0; padding-left: 28px; font-size: 14px; }

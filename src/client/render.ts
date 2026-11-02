@@ -2,6 +2,7 @@ import {
   AlphaFilter, Application, BlurFilter, Container, Filter, GlProgram, Graphics, ImageSource, Rectangle, Sprite, Text, Texture,
 } from 'pixi.js';
 import { Simplex } from '../shared/noise';
+import { Fauna } from './animals';
 import { Rng } from '../shared/rng';
 import { BandView, Biome, PersonRow, TASKS, WorldInfo, b64decode, isWater, RIVER_WATER } from '../shared/types';
 
@@ -164,6 +165,7 @@ export class WorldRenderer {
   people = new Map<number, PersonSprite>();
   selectedId: number | null = null;
   camps = new Map<number, CampSprite>();
+  fauna = new Fauna(this);
   tex!: Record<string, Texture>;
   time = 0;
   month = 0;
@@ -576,6 +578,7 @@ export class WorldRenderer {
     }
     for (const [id, c] of this.camps) if (!seen.has(id)) { c.destroy(); this.camps.delete(id); }
     if (this.info) this.updateCleared();
+    this.fauna.updateBands(bands);
   }
 
   /** red outline around the chosen person (null clears it) */
@@ -639,6 +642,7 @@ export class WorldRenderer {
     this.labelLayer.alpha = 1;
     for (const p of this.people.values()) p.frame(nowMs);
     for (const c of this.camps.values()) c.frame(nowMs, zoom);
+    this.fauna.frame(performance.now(), Math.min(0.1, dt / 60));
   }
 }
 

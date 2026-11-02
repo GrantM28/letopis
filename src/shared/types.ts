@@ -155,6 +155,25 @@ export interface PersonDetail {
   generation: number;
 }
 
+/** one person in the family tree */
+export interface TreeNode {
+  id: number;
+  name: string;
+  sex: 0 | 1;
+  bornYear: number;
+  diedYear: number | null;
+  generation: number;
+  mother?: TreeNode | null;
+  father?: TreeNode | null;
+}
+
+export interface FamilyTree {
+  root: TreeNode;
+  /** mother's mother's ... line and father's father's ... line up to the first people, nearest first */
+  motherLine: TreeNode[];
+  fatherLine: TreeNode[];
+}
+
 export function formatYear(year: number): string {
   const y = Math.abs(Math.round(year));
   const s = y.toLocaleString('bg-BG').replace(/ /g, ' ');

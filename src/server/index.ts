@@ -170,6 +170,10 @@ const server = http.createServer((req, res) => {
     if (p === '/api/heroes') return json(res, sim.heroes());
     if (p === '/api/stats') return json(res, store.stats(world));
     if (p === '/api/worlds') return json(res, store.worlds());
+    if (p.startsWith('/api/tree/')) {
+      const t = sim.familyTree(Number(p.split('/').pop()));
+      return t ? json(res, t) : json(res, { error: 'няма такъв човек' }, 404);
+    }
     if (p.startsWith('/api/person/')) {
       const d = sim.personDetail(Number(p.split('/').pop()));
       return d ? json(res, d) : json(res, { error: 'няма такъв човек' }, 404);

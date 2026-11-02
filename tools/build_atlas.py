@@ -134,6 +134,52 @@ group('kidfish', 'L23', 'person', 8, 56)
 group('kidpuppy', 'L24', 'person', 8, 56)
 group('boywalk', 'L31 L32 L33 L34', 'person', 8, 56)
 group('girlwalk', 'L41 L42 L43 L44', 'person', 8, 56)
+# animals (kind 'animal': world size is the width, anchor at the hooves); frame 0 stands, 1 walks
+group('mammoth', 'M11 M12', 'animal', 24, 120)
+group('rhino', 'M13 M14', 'animal', 20, 104)
+group('cavebear', 'M21 M22', 'animal', 16, 88)
+group('megaloceros', 'M23 M24', 'animal', 18, 96)
+group('aurochs', 'M31 M32', 'animal', 18, 96)
+group('bison', 'M33 M34', 'animal', 18, 96)
+group('wildhorse', 'M41 M42', 'animal', 14, 80)
+group('reindeer', 'M43 M44', 'animal', 14, 80)
+group('reddeer', 'N11 N12', 'animal', 14, 80)
+group('boar', 'N13 N14', 'animal', 12, 72)
+group('wolf', 'N21 N22', 'animal', 11, 64)
+group('bear', 'N23 N24', 'animal', 15, 88)
+group('fox', 'N31 N32', 'animal', 9, 56)
+group('lynx', 'N33 N34', 'animal', 9, 56)
+group('hare', 'N41 N42', 'animal', 6, 40)
+group('beaver', 'N43 N44', 'animal', 7, 48)
+# birds and water: eagle, owl and crow have two flight frames; duck, swan and fish sit on the water
+group('eagle', 'O11 O12', 'animal', 12, 72)
+group('stork', 'O13 O14', 'animal', 7, 48)
+group('heron', 'O21 O22', 'animal', 7, 48)
+group('duck', 'O23 O24', 'animal', 6, 40)
+group('swan', 'O31 O32', 'animal', 8, 48)
+group('owl', 'O33', 'animal', 5, 32)
+group('owlfly', 'O34', 'animal', 9, 56)
+group('crow', 'O41', 'animal', 5, 32)
+group('crowfly', 'O42', 'animal', 8, 48)
+group('fish', 'O43 O44', 'animal', 7, 48)
+# farm animals
+group('dog', 'P11 P12', 'animal', 8, 48)
+group('goat', 'P13 P14', 'animal', 8, 48)
+group('sheep', 'P21 P22', 'animal', 8, 48)
+group('cow', 'P23 P24', 'animal', 13, 72)
+group('pig', 'P31 P32', 'animal', 9, 56)
+group('horse', 'P33 P34', 'animal', 13, 72)
+group('hen', 'P41 P42', 'animal', 4, 32)
+group('donkey', 'P43 P44', 'animal', 10, 56)
+# south and desert
+group('lion', 'Q11 Q12', 'animal', 13, 72)
+group('camel', 'Q13 Q14', 'animal', 15, 80)
+group('elephant', 'Q21 Q22', 'animal', 22, 112)
+group('gazelle', 'Q23 Q24', 'animal', 9, 56)
+group('ostrich', 'Q31 Q32', 'animal', 9, 56)
+group('croc', 'Q33 Q34', 'animal', 14, 80)
+group('monkey', 'Q41 Q42', 'animal', 6, 40)
+group('cat', 'Q43 Q44', 'animal', 5, 32)
 # band symbols (white, tinted in game), same order as SYMBOLS in render.ts
 group('sym', 'J11 J12 J13 J14 J21 J22 J23 J24 J31 J32 J33 J34 J41 J42 J43 J44', 'symbol', 6, 64)
 
@@ -226,6 +272,8 @@ def main() -> int:
                 ay = 0.97
             elif kind == 'symbol':
                 ay = 0.5
+            elif kind == 'animal':
+                ay = 0.96
             else:
                 # foot of a prop: the middle of its grass patch, about 8% of the width above the bottom
                 ay = max(0.5, 1 - 0.08 * w0 / h0)

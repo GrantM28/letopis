@@ -1,6 +1,6 @@
 import { Rng } from '../../shared/rng';
 import {
-  BandView, ChronicleEntry, PersonDetail, PersonRow, TASKS, TASK_NAMES, Task, TimeInfo, b64encode, formatYear, isWater, Biome, RIVER_WATER,
+  BandView, ChronicleEntry, PersonDetail, PersonRow, TASKS, TASK_NAMES, Task, TimeInfo, TreeNode, FamilyTree, b64encode, formatYear, isWater, Biome, RIVER_WATER,
 } from '../../shared/types';
 import { Terrain, generateTerrain, findStart, idx, inBounds, W, H, setWorldSize, OLD_SIZE, NEW_SIZE } from './world';
 import { FEMALE, MALE, bandColor, bandName, fixBandName, familyFrom, nickname, placeName } from './names';
@@ -1099,6 +1099,41 @@ export class Simulation {
       children: d.children.map((c) => ({ ...(this.ref(c) ?? { id: c, name: '?' }), alive: this.byId.has(c) })),
       deeds: d.deeds, generation: d.gen,
     };
+  }
+
+  /** a person alive or dead, with the ids of the parents */
+  private kin(id: number | null): (TreeNode & { motherId: number | null; fatherId: number | null }) | null {
+    if (!id) return null;
+    const p = this.byId.get(id);
+    if (p) return { id, name: this.nameOf(p), sex: p.sex, bornYear: Math.floor(yearOf(p.born)), diedYear: null, generation: p.gen, motherId: p.motherId, fatherId: p.fatherId };
+    const d = this.lookupDead(id);
+    if (!d) return null;
+    return { id, name: d.name, sex: d.sex, bornYear: Math.floor(yearOf(d.born)), diedYear: Math.floor(yearOf(d.died)), generation: d.gen, motherId: d.motherId, fatherId: d.fatherId };
+  }
+
+  /** ancestors `depth` generations up, plus the straight mother and father lines back to the first people */
+  familyTree(id: number, depth = 3): FamilyTree | null {
+    const up = (nid: number | null, left: number): TreeNode | null => {
+      const k = this.kin(nid);
+      if (!k) return null;
+      const { motherId, fatherId, ...node } = k;
+      if (left > 0) { node.mother = up(motherId, left - 1); node.father = up(fatherId, left - 1); }
+      return node;
+    };
+    const root = up(id, depth);
+    if (!root) return null;
+    const line = (side: 'motherId' | 'fatherId'): TreeNode[] => {
+      const out: TreeNode[] = [];
+      let k = this.kin(id);
+      for (let n = 0; k && n < 5000; n++) {
+        k = this.kin(k[side]);
+        if (!k) break;
+        const { motherId: _m, fatherId: _f, ...node } = k;
+        out.push(node);
+      }
+      return out;
+    };
+    return { root, motherLine: line('motherId'), fatherLine: line('fatherId') };
   }
 
   /** notable living people: discoverers, leaders, the oldest */
