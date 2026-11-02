@@ -7,9 +7,15 @@ import { SECRET_COUNT, SECRET_HEROES, SECRET_KINDS, SecretFind } from '../../sha
 import { FEMALE, MALE, bandColor, bandName, fixBandName, familyFrom, nickname, placeName } from './names';
 import { ERAS, TECHS, TECH_BY_ID, Tech, eraOf } from './tech';
 import { BIG, startStage, treeKinds } from '../../shared/trees';
+import { findRoad } from './roads';
 import { BEAST_EN, ERAS_EN, FEATURE_EN, SECRET_HEROES_EN, SECRET_KINDS_EN, TECH_EN, bandEn, bandLabelEn, causeEn, chiefEn, deedEn, personEn, translit } from '../../shared/i18n';
 
 export const START_YEAR = -12000;
+/** what a new age brings, written in the chronicle when the first band reaches it: [bg, en] */
+const ERA_WHY: Record<number, [string, string]> = {
+  1: ['Хората вече не само търсят храна, а я отглеждат.', 'People no longer only search for food, they grow it.'],
+  2: ['Медта и калаят се сливат в метал, по-твърд от камъка. Селата растат в градове.', 'Copper and tin melt into a metal harder than stone. Villages grow into towns.'],
+};
 /** chance per band and month for an idea whose time has come */
 const GLOBAL_DISCOVERY = 0.0003;
 const GENE_KEYS = ['str', 'int', 'cur', 'soc', 'hea', 'lon'] as const;
@@ -96,6 +102,10 @@ export interface SimState {
   firsts?: { tech: string; pid: number; name: string; band: string; year: number }[];
   /** size of every tree, one byte per tile (0 none .. 4 big); missing before v1.11 */
   trees?: string;
+  /** road on every tile (0 none, 1 dirt, 2 paved); missing before v1.20 */
+  roads?: string;
+  /** village pairs joined by a road, as 'a-b:level' */
+  roadPairs?: string[];
 }
 
 export interface DeadRecord {
@@ -132,6 +142,9 @@ export class Simulation {
   trees: Uint8Array = new Uint8Array(0);
   /** trees that changed this month, as [tile, stage, tile, stage, ...] for the viewers */
   treeChanges: number[] = [];
+  roads: Uint8Array = new Uint8Array(0);
+  /** roads built this month, as [tile, level, ...] for the viewers */
+  roadChanges: number[] = [];
   events: ChronicleEntry[] = [];
   deadQueue: DeadRecord[] = [];
   goneQueue: GoneBand[] = [];
@@ -153,6 +166,8 @@ export class Simulation {
       const ex = Buffer.from(state.explored, 'base64');
       for (let i = 0; i < this.t.explored.length; i++) this.t.explored[i] = (ex[i >> 3] >> (i & 7)) & 1;
       this.initTrees(state.trees);
+      this.roads = state.roads ? new Uint8Array(Buffer.from(state.roads, 'base64')) : new Uint8Array(W * H);
+      if (this.roads.length !== W * H) this.roads = new Uint8Array(W * H);
       this.dryCamps();
     } else {
       const sd = seed ?? Math.floor(Math.random() * 2 ** 31);
@@ -160,6 +175,7 @@ export class Simulation {
       this.t = generateTerrain(sd);
       this.regions = this.landRegions();
       this.initTrees();
+      this.roads = new Uint8Array(W * H);
       this.rng = new Rng(sd ^ 0x5bd1e995);
       this.s = {
         version: 1,
@@ -189,6 +205,7 @@ export class Simulation {
     }
     this.reindex();
     this.treeChanges = [];
+    this.roadChanges = [];
   }
 
   /** dry land you can walk on: no sea, lake or river wide enough to be drawn as water */
@@ -258,6 +275,50 @@ export class Simulation {
   }
 
   /** trees of at least `min` size within R tiles */
+  // ---------- roads ----------
+
+  roadsB64(): string {
+    return b64encode(this.roads);
+  }
+
+  private setRoad(i: number, lvl: number) {
+    if (this.roads[i] >= lvl) return;
+    this.roads[i] = lvl;
+    this.roadChanges.push(i, lvl);
+    if (this.trees[i]) this.setTree(i, 0);
+  }
+
+  /** once a year villages with carts beat a road to their neighbours; towns with walls pave theirs */
+  private buildRoads() {
+    const towns = this.s.bands.filter((b) => b.settled);
+    if (towns.length < 2) return;
+    const pairs = new Map<string, number>();
+    for (const e of this.s.roadPairs ?? []) {
+      const [k, l] = e.split(':');
+      pairs.set(k, Number(l));
+    }
+    const alive = new Set(towns.map((b) => b.id));
+    let built = 0;
+    for (const a of this.rng.shuffle([...towns])) {
+      if (built >= 12) break;
+      if (!this.hasTech(a, 'wheel')) continue;
+      const near = towns.filter((o) => o !== a && dist(a, o) < 36).sort((p, q) => dist(a, p) - dist(a, q)).slice(0, 2);
+      for (const o of near) {
+        const key = a.id < o.id ? `${a.id}-${o.id}` : `${o.id}-${a.id}`;
+        const lvl = this.hasTech(a, 'walls') && this.hasTech(o, 'walls') ? 2 : 1;
+        if ((pairs.get(key) ?? 0) >= lvl) continue;
+        const ia = idx(Math.round(a.cx), Math.round(a.cy)), io = idx(Math.round(o.cx), Math.round(o.cy));
+        const path = findRoad(this.t, this.roads, ia, io);
+        pairs.set(key, path ? lvl : 9); // 9: no way there, do not try again
+        built++;
+        if (!path) continue;
+        for (const i of path) this.setRoad(i, lvl);
+      }
+    }
+    // pairs of villages that are gone are forgotten (their roads stay)
+    this.s.roadPairs = [...pairs].filter(([k]) => k.split('-').every((id) => alive.has(Number(id)))).map(([k, l]) => `${k}:${l}`);
+  }
+
   treesNear(x: number, y: number, R: number, min: number): number {
     const cx = Math.round(x), cy = Math.round(y);
     let n = 0;
@@ -282,7 +343,7 @@ export class Simulation {
       if (!kinds[i]) continue;
       const st = trees[i];
       if (st === 0) {
-        if (this.rng.next() < seed && !blocked.has(i)) this.setTree(i, 1);
+        if (this.rng.next() < seed && !blocked.has(i) && !this.roads[i]) this.setTree(i, 1);
       } else if (st < BIG && this.rng.next() < grow) this.setTree(i, st + 1);
     }
   }
@@ -615,6 +676,7 @@ export class Simulation {
     if (this.month === 3) this.pairing(members);
     this.bandDynamics(members);
     this.contact();
+    if (this.month === 6) this.buildRoads();
     if (this.s.tick % 6 === 0) this.explore();
     this.randomEvents(members);
     this.checkEra();
@@ -646,9 +708,10 @@ export class Simulation {
 
   private work(b: Band, m: Person[]) {
     const t = this.t;
-    const tool = this.hasTech(b, 'stone_tools') ? 1.25 : 1;
+    const tool = this.hasTech(b, 'bronze') ? 1.5 : this.hasTech(b, 'copper') ? 1.35 : this.hasTech(b, 'stone_tools') ? 1.25 : 1;
     const fire = this.hasTech(b, 'fire') ? 1.1 : 1;
-    const R = b.settled ? 4 : 6;
+    // carts bring food from farther away
+    const R = b.settled ? (this.hasTech(b, 'wheel') ? 5 : 4) : 6;
     const season = this.seasonFactor(b);
     const workers: Person[] = [];
     let need = 0;
@@ -700,13 +763,14 @@ export class Simulation {
           if (this.hasTech(b, 'spear')) mult *= 1.3;
           if (this.hasTech(b, 'bow')) mult *= 1.25;
           if (this.hasTech(b, 'dog')) mult *= 1.15;
+          if (this.hasTech(b, 'horse')) mult *= 1.15;
           huntWant += mult * (0.6 + season * 0.4);
           if (this.rng.chance(this.hasTech(b, 'spear') ? 0.0002 : 0.0004)) this.die(p, 'загина на лов', m);
           break;
         }
-        case 'fish': got = 1.4 * skill * (this.hasTech(b, 'boats') ? 1.3 : 1) * (0.7 + season * 0.3); break;
+        case 'fish': got = 1.4 * skill * (this.hasTech(b, 'boats') ? 1.3 : 1) * (this.hasTech(b, 'sailing') ? 1.25 : 1) * (0.7 + season * 0.3); break;
         case 'farm': {
-          farmWant += 2.4 * this.farmSeason() * skill * tool;
+          farmWant += 2.4 * this.farmSeason() * skill * tool * (this.hasTech(b, 'plough') ? 1.35 : 1) * (this.hasTech(b, 'calendar') ? 1.1 : 1);
           break;
         }
         case 'herd': got = 1.7 * skill; break;
@@ -729,7 +793,9 @@ export class Simulation {
     // the chief still brings food like everyone else, but he is seen by the camp (or out scouting)
     if (chief) this.lead(b, chief, m);
     prod += (this.harvest(t.plants, b, R, gatherWant, 0.07) + this.harvest(t.game, b, R + 2, huntWant, 0.045)) * craftBonus * fire;
-    if (farmWant > 0) prod += Math.min(farmWant, this.arable(b) * 1.0 * this.farmSeason()) * craftBonus;
+    // the plough turns more land into fields, the calendar sows it at the right time
+    const land = (this.hasTech(b, 'plough') ? 1.4 : 1) * (this.hasTech(b, 'calendar') ? 1.1 : 1);
+    if (farmWant > 0) prod += Math.min(farmWant, this.arable(b) * land * this.farmSeason()) * craftBonus;
     const spoil = this.hasTech(b, 'pottery') ? 0.05 : this.hasTech(b, 'grinding') ? 0.08 : 0.12;
     b.food = Math.max(0, b.food * (1 - spoil) + prod - need);
     // how well fed the band has been lately (smoothed over about a year)
@@ -813,6 +879,8 @@ export class Simulation {
         case 'wildHerd': if (t.wildHerd[i]) return true; break;
         case 'fish': if (t.fish[i] > 0) return true; break;
         case 'forest': if (t.biome[i] === Biome.Forest || t.biome[i] === Biome.Taiga) return true; break;
+        // copper and tin show in the rocks of hills and mountains
+        case 'ore': if (t.biome[i] === Biome.Hills || t.biome[i] === Biome.Mountain) return true; break;
       }
     }
     return false;
@@ -840,7 +908,8 @@ export class Simulation {
       const again = seen ? 1.6 : 1;
       // a first discovery happens somewhere in the world: many bands do not make it come sooner
       const world = seen ? 1 : Math.min(1, 4 / this.s.bands.length);
-      const chance = world * GLOBAL_DISCOVERY * Math.sqrt(tech.base / 0.0025) * this.techPace(tech) * again * crowd * Math.pow(g * 2, 2);
+      const written = this.hasTech(b, 'writing') ? 1.15 : 1;
+      const chance = written * world * GLOBAL_DISCOVERY * Math.sqrt(tech.base / 0.0025) * this.techPace(tech) * again * crowd * Math.pow(g * 2, 2);
       if (!this.rng.chance(chance)) continue;
       this.addTech(b, tech.id);
       const first = !this.s.discovered.includes(tech.id);
@@ -1081,7 +1150,8 @@ export class Simulation {
         if (noWood || starving) this.moveCamp(b, m, noWood ? 22 : 16);
       }
       // split: rare, a band has to grow big first
-      const limit = b.settled ? 140 : 40 + Math.round(avg(m, (p) => p.genes.soc) * 20);
+      // a walled town holds more people before some leave to found a new village
+      const limit = b.settled ? (this.hasTech(b, 'walls') ? 210 : 140) : 40 + Math.round(avg(m, (p) => p.genes.soc) * 20);
       // too many mouths for this land: some leave to find their own
       const crowded = !b.settled && m.length >= 24 && (b.fed ?? 1) < 1.05 && this.rng.chance(0.012);
       if (m.length > limit || crowded) this.split(b, m, members);
@@ -1286,7 +1356,15 @@ export class Simulation {
       for (let j = i + 1; j < bands.length; j++) {
         const a = bands[i], b = bands[j];
         const d = dist(a, b);
-        if (d > 16) continue;
+        // horses and carts bring far neighbours together
+        const reach = this.hasTech(a, 'horse') || this.hasTech(b, 'horse') ? 24 : 16;
+        if (d > reach) continue;
+        // traders even out a good and a bad harvest between neighbours
+        if (this.hasTech(a, 'trade') && this.hasTech(b, 'trade')) {
+          const give = (a.food - b.food) * 0.05;
+          a.food -= give;
+          b.food += give;
+        }
         if (!a.met.includes(b.id)) {
           a.met.push(b.id);
           b.met.push(a.id);
@@ -1297,7 +1375,8 @@ export class Simulation {
         }
         // knowledge travels between neighbours
         const sa = this.techSets.get(a.id)!, sb = this.techSets.get(b.id)!;
-        const share = 0.012 * (this.hasTech(a, 'cave_art') || this.hasTech(b, 'cave_art') ? 1.6 : 1);
+        const share = 0.012 * (this.hasTech(a, 'cave_art') || this.hasTech(b, 'cave_art') ? 1.6 : 1)
+          * (this.hasTech(a, 'writing') || this.hasTech(b, 'writing') ? 1.5 : 1);
         for (const tech of a.techs) if (!sb.has(tech) && this.canUse(b, tech) && this.rng.chance(share)) {
           this.addTech(b, tech);
           this.emit('learn', 1, `${this.bandLabel(b, true)} научи „${TECH_BY_ID.get(tech)!.name}“ от ${this.bandLabel(a)}.`, undefined, undefined, b.id, this.bRefs(a),
@@ -1387,8 +1466,9 @@ export class Simulation {
     for (const b of this.s.bands) era = Math.max(era, eraOf(this.techSets.get(b.id)!));
     if (era > this.s.era) {
       this.s.era = era;
-      this.emit('era', 3, `Започва ${ERAS[era].name}. Хората вече не само търсят храна, а я отглеждат.`, `Нова епоха: ${ERAS[era].name}!`, undefined, undefined, [],
-        [`The ${ERAS_EN[era]} begins. People no longer only search for food, they grow it.`, `A new age: the ${ERAS_EN[era]}!`]);
+      const why = ERA_WHY[era] ?? ['', ''];
+      this.emit('era', 3, `Започва ${ERAS[era].name}.${why[0] ? ` ${why[0]}` : ''}`, `Нова епоха: ${ERAS[era].name}!`, undefined, undefined, [],
+        [`The ${ERAS_EN[era]} begins.${why[1] ? ` ${why[1]}` : ''}`, `A new age: the ${ERAS_EN[era]}!`]);
     }
   }
 
@@ -1551,6 +1631,7 @@ export class Simulation {
     this.s.game = Array.from(this.t.game, (v) => Math.round(v * 100));
     this.s.explored = this.exploredB64();
     this.s.trees = Buffer.from(this.trees).toString('base64');
+    this.s.roads = Buffer.from(this.roads).toString('base64');
     return this.s;
   }
 

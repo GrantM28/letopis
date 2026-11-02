@@ -239,6 +239,24 @@ group('goatpen', 'AF41', 'thing', 0.08, 0)
 group('quern2', 'AF42', 'thing', 0.05, 0)
 group('oven', 'AF43', 'thing', 0.055, 0)
 group('bricks', 'AF44', 'thing', 0.06, 0)
+# bronze age (AG props, AH town); skipped until the sheets exist
+for cid, name, w in (('AG11', 'ore', 0.045), ('AG12', 'mine', 0.07), ('AG13', 'furnace', 0.055), ('AG14', 'mould', 0.045),
+                     ('AG21', 'anvil', 0.045), ('AG22', 'toolrack', 0.05), ('AG23', 'potwheel', 0.045), ('AG24', 'loom', 0.05),
+                     ('AG31', 'ploughox', 0.075), ('AG32', 'cart', 0.06), ('AG33', 'cartfull', 0.06), ('AG34', 'horsepost', 0.06),
+                     ('AG41', 'sailboat', 0.07), ('AG42', 'tablets', 0.045), ('AG43', 'granary2', 0.06), ('AG44', 'stall', 0.06),
+                     ('AH21', 'wall', 0.075), ('AH22', 'wallc', 0.075), ('AH23', 'gate', 0.085), ('AH24', 'tower', 0.075),
+                     ('AH41', 'well2', 0.05), ('AH42', 'market', 0.08), ('AH43', 'road', 0.07), ('AH44', 'statue', 0.06)):
+    group(name, cid, 'thing', w, 0)
+group('townb', cells('AH', (1,)), 'thing', 0.08, 0)   # 0..3: foundation, walls, upper floor, done
+group('templeb', cells('AH', (3,)), 'thing', 0.09, 0)  # 0..3: platform, steps, columns, done
+group('smith', cells('AI', (1,)), 'pose', PEOPLE_WPP, 0)
+group('plougher', cells('AI', (2,)), 'pose', PEOPLE_WPP, 0)
+group('wheelpot', cells('AI', (3,)), 'pose', PEOPLE_WPP, 0)
+group('weaver', cells('AI', (4,)), 'pose', PEOPLE_WPP, 0)
+group('trader', cells('AJ', (1,)), 'pose', PEOPLE_WPP, 0)
+group('scribe', cells('AJ', (2,)), 'pose', PEOPLE_WPP, 0)
+group('rider', cells('AJ', (3,)), 'pose', PEOPLE_WPP, 0)
+group('sailer', cells('AJ', (4,)), 'pose', PEOPLE_WPP, 0)
 # band symbols (white, tinted in game), same order as SYMBOLS in render.ts
 group('sym', 'J11 J12 J13 J14 J21 J22 J23 J24 J31 J32 J33 J34 J41 J42 J43 J44', 'symbol', 6, 64)
 
@@ -289,13 +307,13 @@ def top_only(img: Image.Image, cy: float) -> Image.Image:
     return Image.fromarray(out.astype(np.uint8))
 
 
-def split_cloth(img: Image.Image, head: float) -> tuple[Image.Image, Image.Image]:
+def split_cloth(img: Image.Image, head: float, bright: float = 0.45) -> tuple[Image.Image, Image.Image]:
     """Light grey/white cloth -> separate grey layer; the rest stays in the base."""
     a = np.array(img).astype(np.float32)
     rgb = a[..., :3] / 255
     mx, mn = rgb.max(-1), rgb.min(-1)
     sat = np.where(mx > 0, (mx - mn) / np.maximum(mx, 1e-6), 0)
-    cloth = (sat < 0.2) & (mx > 0.45) & (a[..., 3] > 0)
+    cloth = (sat < 0.2) & (mx > bright) & (a[..., 3] > 0)
     cloth[: int(a.shape[0] * head)] = False
     base = a.copy()
     base[cloth, 3] = 0
@@ -330,6 +348,67 @@ def split_fur(img: Image.Image, head: float) -> tuple[Image.Image, Image.Image]:
     c[..., 0] = c[..., 1] = c[..., 2] = gr
     c[..., 3] = np.where(fur, a[..., 3], 0)
     return Image.fromarray(base.astype(np.uint8)), Image.fromarray(c.astype(np.uint8))
+
+
+# roads (sheets AK dirt, AL paved): only the road is kept, as an overlay on any ground.
+# mask bits: 1 = -x (upper-left edge), 2 = -y (upper-right), 4 = +x (lower-right), 8 = +y (lower-left)
+ROAD_SHEETS = (('AK', 1), ('AL', 2))
+ROAD_CELLS = {5: '11', 10: '12', 15: '13', 4: '14', 6: '22', 9: '24', 14: '31', 13: '32', 8: '41', 1: '42', 2: '43'}
+ROAD_ENDS = {1: '42', 2: '43', 4: '14', 8: '41'}
+
+
+def road_overlay(img: Image.Image, cy: float) -> Image.Image:
+    t = np.array(top_only(img, cy)).astype(np.float32)
+    rgb = t[..., :3] / 255
+    r, g, b = rgb[..., 0], rgb[..., 1], rgb[..., 2]
+    mx, mn = rgb.max(-1), rgb.min(-1)
+    d = np.maximum(mx - mn, 1e-6)
+    sat = np.where(mx > 0, (mx - mn) / np.maximum(mx, 1e-6), 0)
+    hue = np.where(mx == r, ((g - b) / d) % 6, np.where(mx == g, (b - r) / d + 2, (r - g) / d + 4)) * 60
+    grass = (hue > 62) & (hue < 170) & (sat > 0.2)
+    road = (t[..., 3] > 200) & ~grass
+    m = Image.fromarray((road * 255).astype(np.uint8))
+    m = m.filter(ImageFilter.MinFilter(5)).filter(ImageFilter.MaxFilter(5))  # flowers and pebbles out
+    m = m.filter(ImageFilter.GaussianBlur(0.8))
+    out = t.copy()
+    out[..., 3] = np.minimum(np.array(m).astype(np.float32), t[..., 3])
+    out[out[..., 3] == 0, :3] = 0
+    return Image.fromarray(out.astype(np.uint8))
+
+
+def road_frames() -> list:
+    items = []
+    for sheet, lvl in ROAD_SHEETS:
+        if not all(os.path.exists(os.path.join(CUT, f'{sheet}{c}.png')) for c in list(ROAD_CELLS.values()) + ['44']):
+            continue
+        over = {}
+        geo = None
+        for key, c in list(ROAD_CELLS.items()) + [('bridge', '44')]:
+            src = Image.open(os.path.join(CUT, f'{sheet}{c}.png')).convert('RGBA')
+            a = np.array(src)
+            w0, h0 = src.size
+            h = max(1, round(h0 * 128 / w0))
+            img = resize(src, 128, h)
+            ay = corner_y(a) / h0
+            over[key] = (road_overlay(img, ay * h), ay)
+            if geo is None:
+                geo = (ay, (TW + 3) / 128, h)
+        ay, s, h = geo
+        for mask in range(1, 16):
+            if mask in over:
+                im, a_y = over[mask]
+                items.append((f'road{lvl}_{mask}', im, 0.5, a_y, s))
+                continue
+            # no drawn tile for this shape: the dead ends of its edges meet in the middle
+            im = Image.new('RGBA', (128, h), (0, 0, 0, 0))
+            for bit in (1, 2, 4, 8):
+                if mask & bit:
+                    e = over[bit][0]
+                    im.alpha_composite(e.crop((0, 0, 128, h)) if e.size[1] >= h else e, (0, 0))
+            items.append((f'road{lvl}_{mask}', im, 0.5, ay, s))
+        im, a_y = over['bridge']
+        items.append((f'bridge{lvl}', im, 0.5, a_y, s))
+    return items
 
 
 def main() -> int:
@@ -389,12 +468,21 @@ def main() -> int:
                 items.append((name, base, 0.5, ay, s))
                 items.append((name + '_c', cloth, 0.5, ay, s))
                 continue
+            if kind == 'pose' and cid[:2] in ('AI', 'AJ'):
+                # bronze age linen: only the bright cloth is tinted (grey anvils and stones stay)
+                head = {'AI3': 0.35, 'AJ2': 0.35, 'AJ4': 0.0}.get(cid[:3], 0.28)
+                base, cloth = split_cloth(img, head, 0.66)
+                items.append((name, base, 0.5, ay, s))
+                items.append((name + '_c', cloth, 0.5, ay, s))
+                continue
             if kind in ('person', 'cloth'):
                 base, cloth = split_cloth(img, head=0.48 if cid == 'I13' else 1.0 if (cid[0] in 'STUV' and cid[1].isdigit()) else 0.3 if kind == 'person' else 0)
                 items.append((name, base, 0.5, ay, s))
                 items.append((name + '_c', cloth, 0.5, ay, s))
             else:
                 items.append((name, img, 0.5, ay, s))
+
+    items += road_frames()
 
     # shelf packing, tallest first; a new page (atlas1.png, ...) when one is full.
     # The first page keeps the sheets it always had, so the order of GROUPS decides what goes where.

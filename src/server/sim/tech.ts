@@ -1,6 +1,6 @@
 // Discoveries. Each one is found by a real person in a real band, and can spread or be forgotten.
 
-export type Need = 'flint' | 'clay' | 'grain' | 'wildHerd' | 'fish' | 'forest' | null;
+export type Need = 'flint' | 'clay' | 'grain' | 'wildHerd' | 'fish' | 'forest' | 'ore' | null;
 
 export interface Tech {
   id: string;
@@ -86,12 +86,45 @@ export const TECHS: Tech[] = [
   { id: 'boats', name: 'Лодка от дънер', era: 1, target: -9400, prereq: ['stone_tools', 'fishing'], need: 'fish', base: 0.0015, gene: 'cur',
     text: '{name} от {band} издълба лодка от дънер. Реките вече не са граница.',
     kids: '{name} направи лодка и тръгна по реката!' },
+  // copper age: the last steps of the farmers before bronze
+  { id: 'copper', name: 'Мед', era: 1, target: -4500, prereq: ['fire', 'pottery'], need: 'ore', base: 0.002, gene: 'cur',
+    text: '{name} от {band} забеляза, че зелен камък в жарта на грънчарската пещ пуска червен блестящ метал. Първите медни игли и шила.',
+    kids: '{name} разтопи зелен камък в огъня и от него потече червен метал: мед!' },
+  { id: 'plough', name: 'Рало', era: 1, target: -4000, prereq: ['agriculture', 'herding'], need: null, base: 0.0025, gene: 'int',
+    text: '{name} от {band} впрегна вол в остър дървен кол. Една нива се изорава за ден, а не за седмица.',
+    kids: '{name} накара вола да тегли ралото. Сега нивите стават много по-големи!' },
+  { id: 'wheel', name: 'Колело', era: 1, target: -3500, prereq: ['agriculture', 'pottery'], need: null, base: 0.0015, gene: 'int',
+    text: '{name} от {band} сложи дървен диск на ос. Първата каруца носи товар, какъвто трима души не биха вдигнали.',
+    kids: '{name} измисли колелото! Каруцата вози тежки неща вместо хората.' },
+  // gateway to the Bronze Age
+  { id: 'bronze', name: 'Бронз', era: 2, target: -3300, prereq: ['copper'], need: 'ore', base: 0.002, gene: 'int',
+    text: '{name} от {band} смеси мед с калай и получи метал, по-твърд от всеки камък. Започва нова епоха.',
+    kids: '{name} смеси два метала и стана бронз: твърд и златист!' },
+  { id: 'sailing', name: 'Платно', era: 2, target: -3100, prereq: ['boats', 'weaving'], need: 'fish', base: 0.0015, gene: 'cur',
+    text: '{name} от {band} опъна тъкано платно на лодката. Вятърът я носи по-далеч, отколкото гребците стигат.',
+    kids: '{name} сложи платно на лодката и вятърът я забута!' },
+  { id: 'writing', name: 'Писменост', era: 2, target: -3000, prereq: ['pottery', 'mudbrick'], need: null, base: 0.001, gene: 'int',
+    text: '{name} от {band} издълба знаци в мокра глина, за да запомни колко жито има в хамбара. Първото писмо.',
+    kids: '{name} нарисува знаци в глината, които другите могат да прочетат. Това е писането!' },
+  { id: 'trade', name: 'Търговия', era: 2, target: -2800, prereq: ['wheel'], need: null, base: 0.002, gene: 'soc',
+    text: '{name} от {band} натовари каруца с гърнета и се върна с кремък, сол и мед. Съседите вече си помагат.',
+    kids: '{name} размени гърнета за сол със съседите. И двамата останаха доволни!' },
+  { id: 'walls', name: 'Крепостни стени', era: 2, target: -2600, prereq: ['mudbrick', 'bronze'], need: null, base: 0.002, gene: 'str',
+    text: '{Band} издигна каменни стени около къщите. {name} поведе строежа. Селото става град.',
+    kids: '{name} построи висока стена около селото. Сега то е истински град!' },
+  { id: 'calendar', name: 'Календар', era: 2, target: -2400, prereq: ['writing', 'agriculture'], need: null, base: 0.0015, gene: 'int',
+    text: '{name} от {band} преброи дните от едно пълнолуние до друго и записа кога да се сее. Реколтата вече не закъснява.',
+    kids: '{name} разбра кога точно да се сеят семената, като гледа луната и звездите.' },
+  { id: 'horse', name: 'Опитомен кон', era: 2, target: -2000, prereq: ['herding', 'wheel'], need: 'wildHerd', base: 0.0015, gene: 'soc',
+    text: '{name} от {band} опитоми див кон и го впрегна в каруцата. Пътят до съседите стана три пъти по-кратък.',
+    kids: '{name} се сприятели с кон и сега яздят заедно!' },
 ];
 
 export const TECH_BY_ID = new Map(TECHS.map((t) => [t.id, t]));
 
 /** Era of a set of known techs: the highest era with a defining tech known. */
 export function eraOf(techs: Set<string>): number {
+  if (techs.has('bronze')) return 2;
   if (techs.has('agriculture')) return 1;
   return 0;
 }

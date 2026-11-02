@@ -123,12 +123,24 @@ export const TECH_EN: Record<string, { name: string; text: string; kids: string 
   weaving: { name: 'Weaving', text: '{name} of {band} spun flax into thread and wove it into cloth.', kids: '{name} wove the first cloth. Clothes become soft and light.' },
   mudbrick: { name: 'Mud Houses', text: 'In {band}, {name} raised the first house of wattle and daub. The village starts to feel like home.', kids: '{name} built a real house of clay!' },
   boats: { name: 'Dugout Canoe', text: '{name} of {band} carved a canoe from a log. Rivers are no longer a border.', kids: '{name} made a boat and set off down the river!' },
+  copper: { name: 'Copper', text: '{name} of {band} noticed that a green stone in the glow of the pottery kiln gives off a shiny red metal. The first copper needles and awls.', kids: '{name} melted a green stone in the fire and red metal flowed out of it: copper!' },
+  plough: { name: 'Plough', text: '{name} of {band} yoked an ox to a sharp wooden stake. A field is ploughed in a day instead of a week.', kids: '{name} got the ox to pull the plough. Now the fields can be much bigger!' },
+  wheel: { name: 'Wheel', text: '{name} of {band} put a wooden disc on an axle. The first cart carries a load three people could not lift.', kids: '{name} invented the wheel! The cart carries heavy things instead of people.' },
+  bronze: { name: 'Bronze', text: '{name} of {band} mixed copper with tin and got a metal harder than any stone. A new age begins.', kids: '{name} mixed two metals and made bronze: hard and golden!' },
+  sailing: { name: 'Sail', text: '{name} of {band} stretched woven cloth on a boat. The wind carries it farther than rowers can reach.', kids: '{name} put a sail on the boat and the wind pushed it along!' },
+  writing: { name: 'Writing', text: '{name} of {band} pressed signs into wet clay to remember how much grain is in the granary. The first writing.', kids: '{name} drew signs in the clay that others can read. That is writing!' },
+  trade: { name: 'Trade', text: '{name} of {band} loaded a cart with pots and came back with flint, salt and copper. Neighbours now help each other.', kids: '{name} swapped pots for salt with the neighbours. Everyone was happy!' },
+  walls: { name: 'City Walls', text: '{Band} raised stone walls around its houses. {name} led the work. The village becomes a town.', kids: '{name} built a tall wall around the village. Now it is a real town!' },
+  calendar: { name: 'Calendar', text: '{name} of {band} counted the days from one full moon to the next and wrote down when to sow. The harvest is no longer late.', kids: '{name} found out exactly when to sow the seeds by watching the moon and the stars.' },
+  horse: { name: 'Tamed Horse', text: '{name} of {band} tamed a wild horse and hitched it to the cart. The road to the neighbours became three times shorter.', kids: '{name} made friends with a horse and now they ride together!' },
 };
 const TECH_BG: Record<string, string> = {
   Огън: 'fire', 'Каменни сечива': 'stone_tools', 'Познание за билките': 'herb_lore', 'Погребални обреди': 'burial', Копие: 'spear',
   'Облекло от кожи': 'clothing', 'Скални рисунки': 'cave_art', Риболов: 'fishing', Шатри: 'shelter', 'Лък и стрели': 'bow',
   'Опитомено куче': 'dog', 'Мелене на зърно': 'grinding', Земеделие: 'agriculture', Керамика: 'pottery', Скотовъдство: 'herding',
   Тъкане: 'weaving', 'Глинени къщи': 'mudbrick', 'Лодка от дънер': 'boats',
+  Мед: 'copper', Рало: 'plough', Колело: 'wheel', Бронз: 'bronze', Платно: 'sailing', Писменост: 'writing', Търговия: 'trade',
+  'Крепостни стени': 'walls', Календар: 'calendar', 'Опитомен кон': 'horse',
 };
 /** every discovery the game knows, in the order history found them: [id, Bulgarian name, era] */
 export const TECH_LIST: [string, string, number][] = [
@@ -136,7 +148,9 @@ export const TECH_LIST: [string, string, number][] = [
   ['herb_lore', 'Познание за билките', 0], ['clothing', 'Облекло от кожи', 0], ['cave_art', 'Скални рисунки', 0], ['shelter', 'Шатри', 0],
   ['fishing', 'Риболов', 0], ['dog', 'Опитомено куче', 0], ['bow', 'Лък и стрели', 0], ['boats', 'Лодка от дънер', 1],
   ['grinding', 'Мелене на зърно', 1], ['pottery', 'Керамика', 1], ['herding', 'Скотовъдство', 1], ['agriculture', 'Земеделие', 1],
-  ['weaving', 'Тъкане', 1], ['mudbrick', 'Глинени къщи', 1],
+  ['weaving', 'Тъкане', 1], ['mudbrick', 'Глинени къщи', 1], ['copper', 'Мед', 1], ['plough', 'Рало', 1], ['wheel', 'Колело', 1],
+  ['bronze', 'Бронз', 2], ['sailing', 'Платно', 2], ['writing', 'Писменост', 2], ['trade', 'Търговия', 2], ['walls', 'Крепостни стени', 2],
+  ['calendar', 'Календар', 2], ['horse', 'Опитомен кон', 2],
 ];
 
 /** a tech by its Bulgarian name (what the server sends) */

@@ -147,6 +147,13 @@ export class WorldRenderer {
   waterLayer = new Container();
   snowLayer = new Container();
   objLayer = new Container();
+  /** roads, drawn over the ground (inside the terrain layer) */
+  roadLayer = new Container();
+  roads = new Uint8Array(0);
+  roadSprites = new Map<number, Sprite>();
+  roadVersion = 0;
+  /** what every band knows (tech ids), for the work people show */
+  bandTech = new Map<number, Set<string>>();
   fogLayer = new Container();
   campLayer = new Container();
   peopleLayer = new Container();
@@ -263,6 +270,10 @@ export class WorldRenderer {
     this.fogReady = false;
     this.seasonKey = '';
     this.buildTerrain();
+    this.roads = new Uint8Array(info.w * info.h);
+    this.roadSprites.clear();
+    this.roadLayer = new Container();
+    this.terrainLayer.addChild(this.roadLayer);
     this.setupWaterFilter();
   }
 
@@ -510,6 +521,63 @@ export class WorldRenderer {
     return !!this.explored[i] && this.treeStage[i] === 0 && !this.cleared.has(i);
   }
 
+  /** all the roads at once (snapshot) */
+  setRoads(b64: string) {
+    if (!this.info) return;
+    const r = b64decode(b64);
+    if (r.length !== this.roads.length) return;
+    const ch: number[] = [];
+    for (let i = 0; i < r.length; i++) if (r[i] !== this.roads[i]) ch.push(i, r[i]);
+    this.updateRoads(ch);
+  }
+
+  /** roads built since the last tick: [tile, level, ...]; the tile and its neighbours are redrawn */
+  updateRoads(ch: number[]) {
+    if (!this.info || !ch.length) return;
+    const { w, h } = this.info;
+    const redo = new Set<number>();
+    for (let k = 0; k + 1 < ch.length; k += 2) {
+      const i = ch[k];
+      this.roads[i] = ch[k + 1];
+      redo.add(i);
+      const x = i % w, y = (i - x) / w;
+      if (x > 0) redo.add(i - 1);
+      if (x < w - 1) redo.add(i + 1);
+      if (y > 0) redo.add(i - w);
+      if (y < h - 1) redo.add(i + w);
+    }
+    for (const i of redo) this.drawRoad(i);
+    // bushes and stones do not stand on a road
+    for (const list of this.objChunks.values()) for (const o of list) if (o.kind === 'other' && !o.isStump && this.roads[o.i]) o.s.visible = false;
+    // keep the road sprites in drawing order (back to front)
+    this.roadLayer.children.sort((a, b) => a.y - b.y);
+    this.roadVersion++;
+  }
+
+  private drawRoad(i: number) {
+    const { w } = this.info;
+    const lvl = this.roads[i];
+    const old = this.roadSprites.get(i);
+    if (!lvl) { if (old) { old.destroy(); this.roadSprites.delete(i); } return; }
+    const x = i % w, y = (i - x) / w;
+    const has = (xx: number, yy: number) => xx >= 0 && yy >= 0 && xx < w && yy < this.info.h && this.roads[yy * w + xx] > 0;
+    // 1 upper-left (-x), 2 upper-right (-y), 4 lower-right (+x), 8 lower-left (+y)
+    const mask = (has(x - 1, y) ? 1 : 0) | (has(x, y - 1) ? 2 : 0) | (has(x + 1, y) ? 4 : 0) | (has(x, y + 1) ? 8 : 0);
+    let name = `road${lvl}_${mask || 5}`;
+    let flip = false;
+    if (this.isRiver(i)) {
+      name = `bridge${lvl}`;
+      flip = (mask & 10) === 0; // the drawn bridge goes along y; along x it is mirrored
+    }
+    if (!this.atlas.has(name)) return;
+    const s = old ?? this.atlas.sprite(name);
+    if (old) this.atlas.set(s, name);
+    if (flip) s.scale.x = -Math.abs(s.scale.x);
+    const p = iso(x, y);
+    s.position.set(p.x, p.y - this.level[i] * ELEV + TH / 2);
+    if (!old) { this.roadLayer.addChild(s); this.roadSprites.set(i, s); }
+  }
+
   /** all the trees at once (snapshot), base64 bytes 0..4 */
   setTrees(b64: string) {
     if (!this.info) return;
@@ -755,8 +823,10 @@ export class WorldRenderer {
 
   updateBands(bands: BandView[], kids: boolean) {
     const seen = new Set<number>();
+    this.bandTech.clear();
     for (const b of bands) {
       seen.add(b.id);
+      this.bandTech.set(b.id, new Set(b.techIds));
       let c = this.camps.get(b.id);
       if (!c) {
         c = new CampSprite(this, b);
@@ -958,7 +1028,7 @@ export class WorldRenderer {
     // far away: one picture of the map, only the camps and their names stay live
     const far = zoom <= 0.4 && !!this.info;
     if (far) {
-      this.updateFar(`${this.seasonKey}|${this.snowCold.alpha.toFixed(2)}|${this.snowCool.alpha}`, nowMs);
+      this.updateFar(`${this.seasonKey}|${this.snowCold.alpha.toFixed(2)}|${this.snowCool.alpha}|${this.roadVersion}`, nowMs);
       for (const l of [this.waterLayer, this.terrainLayer, this.snowLayer, this.objLayer, this.fogLayer, this.peopleLayer, this.glowLayer]) l.visible = false;
       this.farLayer.visible = true;
       for (const c of this.camps.values()) c.scaleTag(zoom);
@@ -1019,6 +1089,7 @@ export class PersonSprite {
   dur = 1;
   seed: number;
   task = 0;
+  band = 0;
   age = 20;
   female = false;
   /** heads the band: own sprites with a smooth idle animation (sheets S and T) */
@@ -1157,7 +1228,15 @@ export class PersonSprite {
       return A.has(name) ? name : null;
     };
     const task = TASKS[this.task];
-    if (walking) return task === 'chop' ? loop('carry', 8, 110) : null;
+    const knows = (id: string) => this.r.bandTech.get(this.band)?.has(id) ?? false;
+    const man = !this.female && this.age >= 16 && this.age < 56;
+    if (walking) {
+      if (task === 'chop') return loop('carry', 8, 110);
+      // bronze age: some men ride, some take a cart to the neighbours
+      if (man && knows('horse') && hash(this.id, 53) < 0.2) return loop('rider', 4, 160);
+      if (man && knows('trade') && hash(this.id, 51) < 0.2) return loop('trader', 4, 170);
+      return null;
+    }
     if (this.r.nightNow && task !== 'scout') {
       if (this.role === 'guard') return loop('guard', 4, 900);
       if (this.age < 12) return loop('sleepK', 2, 1500);
@@ -1172,7 +1251,14 @@ export class PersonSprite {
       case 'hunt': return this.age < 56 ? loop('throw', 4, 320) : null;
       case 'gather': return this.female && this.age < 56 ? loop('pick', 4, 340) : null;
       case 'fish': return !this.female ? loop('spearfish', 4, 340) : null;
-      case 'craft': return !this.female ? loop('knap', 4, 300) : null;
+      case 'craft':
+        if (!this.female) {
+          if (knows('writing') && hash(this.id, 57) < 0.25) return loop('scribe', 4, 600);
+          return (knows('bronze') ? loop('smith', 4, 260) : null) ?? loop('knap', 4, 300);
+        }
+        if (knows('wheel') && hash(this.id, 55) < 0.5) return loop('wheelpot', 4, 420);
+        return knows('weaving') && knows('agriculture') ? loop('weaver', 4, 380) : null;
+      case 'farm': return man && knows('plough') ? loop('plougher', 4, 260) : null;
       default: return null;
     }
   }
@@ -1205,6 +1291,7 @@ export class PersonSprite {
     const s = this.age < 12 ? 0.75 + this.age * 0.02 : this.age > 60 ? 0.95 : 1;
     this.c.scale.set(this.facing * s, s);
     this.task = row[3];
+    this.band = row[4];
     if (Math.abs(this.to.x - this.from.x) > 1) this.facing = this.to.x < this.from.x ? -1 : 1;
   }
 
@@ -1280,6 +1367,24 @@ const PROPS: [string, string, boolean | null][] = [
   ['agriculture', 'haystack', true],
   ['mudbrick', 'well', true],
   ['weaving', 'basket', null],
+  // bronze age (shown once the AG/AH sheets are in the atlas)
+  ['copper', 'ore', null],
+  ['copper', 'furnace', true],
+  ['bronze', 'anvil', true],
+  ['bronze', 'toolrack', null],
+  ['wheel', 'potwheel', true],
+  ['weaving', 'loom', true],
+  ['plough', 'ploughox', true],
+  ['wheel', 'cart', null],
+  ['trade', 'cartfull', true],
+  ['horse', 'horsepost', null],
+  ['sailing', 'sailboat', null],
+  ['writing', 'tablets', true],
+  ['trade', 'stall', true],
+  ['walls', 'tower', true],
+  ['walls', 'gate', true],
+  ['trade', 'market', true],
+  ['calendar', 'statue', true],
 ];
 
 export class CampSprite {
@@ -1373,13 +1478,17 @@ export class CampSprite {
     }
     this.updateFields(b);
     const n = Math.max(1, Math.min(10, Math.round(b.size / (b.dwelling === 'house' ? 6 : 5))));
-    const techs = new Set(b.techs);
-    const props = PROPS.filter(([tech, sp, settled]) => techs.has(tech) && (settled === null || settled === b.settled) && this.r.atlas.has(sp)).map(([, s]) => s);
+    const techs = new Set(b.techIds ?? b.techs);
+    let props = PROPS.filter(([tech, sp, settled]) => techs.has(tech) && (settled === null || settled === b.settled) && this.r.atlas.has(sp)).map(([, s]) => s);
+    // a big village keeps only its newest things around it (later techs are later in the list)
+    if (props.length > 12) props = props.slice(-12);
+    // walls make a village a town: stone houses, and a temple once it keeps a calendar
+    const town = b.dwelling === 'house' && techs.has('walls') && this.r.atlas.has('townb3');
     const cold = this.r.tempAt(b.x, b.y) < 0.35;
-    const key = `${b.dwelling}:${n}:${b.settled}:${cold}:${props.join(',')}`;
+    const key = `${b.dwelling}${town ? 'T' : ''}:${n}:${b.settled}:${cold}:${props.join(',')}`;
     if (key === this.key) return;
     // homes added since last time are built in four steps; the first look at a camp shows it finished
-    const sameKind = this.key.split(':')[0] === b.dwelling && this.key !== '';
+    const sameKind = this.key.split(':')[0] === `${b.dwelling}${town ? 'T' : ''}` && this.key !== '';
     const builtBefore = sameKind ? this.homeCount : n;
     this.homeCount = n;
     this.key = key;
@@ -1395,7 +1504,9 @@ export class CampSprite {
         case 'none': name = 'furbed'; break;
         case 'tent': name = cold && h < 0.5 ? 'bonehut' : h < 0.2 ? 'leanto' : `tent${k % 2}`; break;
         case 'hut': name = A.has('hutb3') ? 'hutb3' : 'roundhut'; break;
-        default: name = k % 3 === 2 ? 'longhouse' : A.has('houseb3') ? 'houseb3' : 'house';
+        default:
+          if (town) name = k === 0 && techs.has('calendar') && A.has('templeb3') ? 'templeb3' : 'townb3';
+          else name = k % 3 === 2 ? 'longhouse' : A.has('houseb3') ? 'houseb3' : 'house';
       }
       const a = (k / n) * Math.PI * 2 + 0.6;
       const rad = (b.dwelling === 'house' ? 26 : 19) + (k % 2) * 7;
@@ -1404,7 +1515,7 @@ export class CampSprite {
       s.position.set(Math.cos(a) * rad, Math.sin(a) * rad * 0.5 + 2);
       s.zIndex = s.y;
       this.homes.addChild(s);
-      if (k >= builtBefore && (name === 'hutb3' || name === 'houseb3')) {
+      if (k >= builtBefore && /^(hut|house|town|temple)b3$/.test(name)) {
         this.building.push({ s, base: name.slice(0, -1), t0: Date.now(), flip: s.scale.x < 0 });
         A.set(s, `${name.slice(0, -1)}0`);
         if (h < 0.5) s.scale.x *= -1;
@@ -1425,7 +1536,7 @@ export class CampSprite {
   /** farmed tiles around a village: soil in spring, wheat in summer, stubble after the harvest */
   private updateFields(b: BandView) {
     const m = this.r.month;
-    const count = b.settled && b.techs.includes('agriculture') ? Math.min(10, 2 + Math.floor(b.size / 10)) : 0;
+    const count = b.settled && (b.techIds ?? b.techs).includes('agriculture') ? Math.min(10, 2 + Math.floor(b.size / 10)) : 0;
     // ploughed in early spring, sprouts, tall wheat in summer, stubble and sheaves after the harvest
     const stage = m >= 2 && m <= 3 ? 0 : m <= 5 && m >= 4 ? 1 : m >= 6 && m <= 8 ? 2 : m >= 9 && m <= 10 ? 3 : 0;
     const bx = Math.round(b.x), by = Math.round(b.y);

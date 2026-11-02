@@ -160,6 +160,8 @@ export interface TickMessage {
   explored?: string; // base64 bitset, only when changed
   /** trees that grew or were cut: [tile, stage, tile, stage, ...] */
   trees?: number[];
+  /** roads built: [tile, level, ...] (1 dirt, 2 paved) */
+  roads?: number[];
   population: number;
 }
 
@@ -171,6 +173,8 @@ export interface SnapshotMessage {
   explored: string;
   /** size of every tree, one byte per tile (0 none .. 4 big), base64 */
   trees: string;
+  /** base64, one byte per tile: 0 none, 1 dirt road, 2 paved */
+  roads?: string;
   population: number;
   totalBorn: number;
   totalDied: number;

@@ -200,6 +200,7 @@ function onSnapshot(m: SnapshotMessage) {
   bands = m.bands;
   people = m.people;
   if (m.trees) r.setTrees(m.trees);
+  if (m.roads) r.setRoads(m.roads);
   r.setExplored(b64decode(m.explored));
   r.updateBands(bands, kids);
   r.updatePeople(people, bandColors(), 400);
@@ -214,6 +215,7 @@ function onTick(m: TickMessage) {
   people = m.people;
   if (m.explored) r.setExplored(b64decode(m.explored));
   if (m.trees) r.updateTrees(m.trees);
+  if (m.roads) r.updateRoads(m.roads);
   r.updateBands(bands, kids);
   r.updatePeople(people, bandColors(), m.time.tickMs);
   applyTime(m.time, m.population);
