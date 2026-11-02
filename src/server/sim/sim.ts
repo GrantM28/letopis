@@ -55,6 +55,9 @@ export interface Band {
   met: number[]; // bands already met
   /** the head of the band: always the oldest man */
   chiefId?: number | null;
+  /** who founded the band and which band they left (none for the first bands) */
+  founder?: { id: number; name: string } | null;
+  from?: { id: number; name: string } | null;
   /** wood the band still needs to cut (one unit = one young tree) */
   wood?: number;
   /** nomads: the chief went ahead to look at a new place; the band follows when he gets there */
@@ -88,6 +91,8 @@ export interface SimState {
   plants: number[]; // terrain resource state (rounded)
   game: number[];
   explored: string; // base64
+  /** first discoveries ever: what, who, when (from v1.14) */
+  firsts?: { tech: string; pid: number; name: string; band: string; year: number }[];
   /** size of every tree, one byte per tile (0 none .. 4 big); missing before v1.11 */
   trees?: string;
 }
@@ -282,7 +287,8 @@ export class Simulation {
   }
 
   /** the band cuts what it needs for fires, tools and shelters: the nearest trees go first */
-  private chop(b: Band, n: number) {
+  private chop(b: Band, members: Person[]) {
+    const n = members.length;
     const m = this.month;
     const winter = m === 11 || m <= 1 ? 2 : m === 2 || m === 10 ? 1.4 : 1;
     const fire = this.hasTech(b, 'fire') ? 1.4 : 1;
@@ -298,10 +304,25 @@ export class Simulation {
         const d = (x - cx) ** 2 + (y - cy) ** 2 + this.rng.next() * 6;
         if (d < bestD && d <= R * R + 6) { bestD = d; best = i; }
       }
-      if (best < 0) { b.wood = Math.min(b.wood, 3); return; }
+      if (best < 0) { b.wood = Math.min(b.wood, 3); break; }
       b.wood -= this.trees[best] - 1;
       this.setTree(best, 0);
     }
+    // a woodcutter is seen at work by the nearest tree (or carrying the log home)
+    let near = -1, nd = Infinity;
+    for (let y = cy - R; y <= cy + R; y++) for (let x = cx - R; x <= cx + R; x++) {
+      if (!inBounds(x, y) || this.trees[idx(x, y)] < 2) continue;
+      const d = (x - cx) ** 2 + (y - cy) ** 2;
+      if (d < nd) { nd = d; near = idx(x, y); }
+    }
+    if (near < 0) return;
+    const men = members.filter((p) => p.sex === 0 && (p.task === 'gather' || p.task === 'hunt') && p.id !== b.chiefId);
+    if (!men.length) return;
+    const p = men[b.id % men.length];
+    p.task = 'chop';
+    // stand at the side of the trunk, not inside it
+    p.x = (near % W) + 0.45;
+    p.y = Math.floor(near / W) + 0.2;
   }
 
   treesB64(): string {
@@ -569,7 +590,7 @@ export class Simulation {
       const m = members.get(b.id)!;
       if (m.length === 0) continue;
       this.work(b, m);
-      this.chop(b, m.length);
+      this.chop(b, m);
       this.discover(b, m);
     }
     this.lifeAndDeath(members);
@@ -809,6 +830,9 @@ export class Simulation {
       const fill = (s: string) => s.replace('{name}', name).replace('{band}', this.bandLabel(b)).replace('{Band}', this.bandLabel(b, true));
       if (first) {
         this.s.discovered.push(tech.id);
+        if (!(this.s.firsts ??= []).some((f) => f.tech === tech.id)) {
+          this.s.firsts.push({ tech: tech.id, pid: p.id, name, band: this.bandLabel(b, true), year: Math.floor(this.year) });
+        }
         p.deeds.push(`Откри „${tech.name}“ (${formatYear(this.year)})`);
         this.emit('discovery', 3, fill(tech.text), fill(tech.kids), p.id, b.id);
       } else {
@@ -1038,14 +1062,14 @@ export class Simulation {
       foundedYear: Math.floor(yearOf(b.founded)), endedYear: Math.floor(this.year),
       end: into ? this.bandLabel(into, true) : 'extinct',
       techs: b.techs.map((x) => TECH_BY_ID.get(x)?.name ?? x),
+      founder: b.founder ?? null, from: b.from ?? null,
     });
     const gone = this.bRefs(b);
     const i = this.s.bands.indexOf(b);
     if (i >= 0) this.s.bands.splice(i, 1);
     this.bandById.delete(b.id);
     this.techSets.delete(b.id);
-    // the name is free again for a future band
-    this.s.usedBands = this.s.usedBands.filter((n) => n !== b.name);
+    // a name is never given twice in one world, even after the band is gone
     if (!merged) {
       this.emit('extinct', 2, `${this.bandLabel(b, true)} угасна. Няма кой да запали огъня на тяхното място.`, `${this.bandLabel(b, true)} изчезна. Няма останали хора от този род.`, undefined, b.id, gone);
     }
@@ -1092,7 +1116,7 @@ export class Simulation {
     const had = !!b.chiefId;
     b.chiefId = best?.id ?? null;
     if (!best) { b.scout = null; return null; }
-    if (had) {
+    if (had && b.settled) { // nomad bands change elders too often to write each one down
       this.emit('chief', 1, `${this.nameOf(best)} стана ${this.chiefTitle().toLowerCase()} на ${this.bandLabel(b)}.`,
         `${this.nameOf(best)} е новият ${this.chiefTitle().toLowerCase()} на ${this.bandLabel(b)}.`, best.id, b.id);
     }
@@ -1192,6 +1216,8 @@ export class Simulation {
     if (!best) return;
     const nb = this.newBand(best.x, best.y, undefined, b.techs);
     nb.chiefId = leader.id;
+    nb.founder = { id: leader.id, name: this.nameOf(leader) };
+    nb.from = { id: b.id, name: this.bandLabel(b, true) };
     this.clearAround(nb.cx, nb.cy, 1);
     nb.food = b.food * 0.35;
     b.food *= 0.65;
@@ -1205,14 +1231,8 @@ export class Simulation {
     }
     members.set(nb.id, newList);
     leader.deeds.push(`Основа ${nb.name} и стана негов ${this.chiefTitle().toLowerCase()} (${formatYear(this.year)})`);
-    if (b.settled && this.hasTech(b, 'agriculture')) {
-      this.settleNew(nb);
-      this.emit('colony', 2, `Създаде се ново село ${nb.settlementName} от ${this.nameOf(leader)}.`,
-        `${this.nameOf(leader)} основа новото село ${nb.settlementName}!`, leader.id, nb.id, this.bRefs(b));
-    } else {
-      this.emit('split', 2, `Създаде се нов род „${nb.name}“ от ${this.nameOf(leader)}.`,
-        `${this.nameOf(leader)} основа нов род: ${nb.name}!`, leader.id, nb.id);
-    }
+    // no chronicle line: the band's card tells who founded it and where they came from
+    if (b.settled && this.hasTech(b, 'agriculture')) this.settleNew(nb);
   }
 
   private settleNew(b: Band) {
@@ -1348,6 +1368,8 @@ export class Simulation {
       techs: b.techs.map((x) => TECH_BY_ID.get(x)?.name ?? x),
       techIds: b.techs,
       chief: this.chiefView(b),
+      founder: b.founder ?? null,
+      from: b.from ?? null,
       size: counts.get(b.id) ?? 0,
       food: Math.round(b.food),
       founded: Math.floor(yearOf(b.founded)),

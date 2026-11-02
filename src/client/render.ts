@@ -29,7 +29,7 @@ function pick<T>(list: T[], n: number): T {
 
 // ---------- sprite atlas (made by tools/build_atlas.py from the AI sheets in art/) ----------
 
-interface Frame { x: number; y: number; w: number; h: number; ax: number; ay: number; s: number }
+interface Frame { x: number; y: number; w: number; h: number; ax: number; ay: number; s: number; p?: number }
 
 export class Atlas {
   tex: Record<string, Texture> = {};
@@ -38,24 +38,25 @@ export class Atlas {
   static async load(base: string, version = ''): Promise<Atlas> {
     const a = new Atlas();
     const v = version ? `?v=${version}` : '';
-    const [meta, blob] = await Promise.all([
-      fetch(`${base}/atlas.json${v}`).then((r) => r.json()),
-      fetch(`${base}/atlas.png${v}`).then((r) => r.blob()),
-    ]);
-    // WebGL ignores its premultiply flag for ImageBitmaps, so premultiply here and tell Pixi it is done;
-    // otherwise half-transparent edges are drawn too bright (light halos around every sprite)
-    const bitmap = await createImageBitmap(blob, { premultiplyAlpha: 'premultiply' });
-    const source = new ImageSource({
-      resource: bitmap,
-      alphaMode: 'premultiplied-alpha',
-      autoGenerateMipmaps: true,
-      scaleMode: 'linear',
-      mipmapFilter: 'linear',
-      maxAnisotropy: 4,
-    });
+    const meta = await fetch(`${base}/atlas.json${v}`).then((r) => r.json());
+    const files: string[] = meta.pages ? meta.pages.map((p: { file: string }) => p.file) : ['atlas.png'];
+    const sources = await Promise.all(files.map(async (file) => {
+      const blob = await fetch(`${base}/${file}${v}`).then((r) => r.blob());
+      // WebGL ignores its premultiply flag for ImageBitmaps, so premultiply here and tell Pixi it is done;
+      // otherwise half-transparent edges are drawn too bright (light halos around every sprite)
+      const bitmap = await createImageBitmap(blob, { premultiplyAlpha: 'premultiply' });
+      return new ImageSource({
+        resource: bitmap,
+        alphaMode: 'premultiplied-alpha',
+        autoGenerateMipmaps: true,
+        scaleMode: 'linear',
+        mipmapFilter: 'linear',
+        maxAnisotropy: 4,
+      });
+    }));
     a.frames = meta.frames;
     for (const [name, f] of Object.entries(a.frames)) {
-      a.tex[name] = new Texture({ source, frame: new Rectangle(f.x, f.y, f.w, f.h) });
+      a.tex[name] = new Texture({ source: sources[f.p ?? 0], frame: new Rectangle(f.x, f.y, f.w, f.h) });
     }
     return a;
   }
@@ -134,7 +135,7 @@ void main(void) {
 
 type ObjKind = 'tree' | 'other';
 /** tk: kind of tree (TREE_KINDS) for the trees the simulation grows */
-interface WorldObject { s: Sprite; i: number; kind: ObjKind; base: string; n: number; size: number; flip: number; tk?: number }
+interface WorldObject { s: Sprite; i: number; kind: ObjKind; base: string; n: number; size: number; flip: number; tk?: number; stump?: WorldObject; isStump?: boolean }
 
 export class WorldRenderer {
   app: Application;
@@ -192,6 +193,8 @@ export class WorldRenderer {
   night = true;
   /** zoomed out to half or less: no animations */
   still = false;
+  /** it is night right now (updated every frame) */
+  nightNow = false;
 
   constructor(app: Application, atlas: Atlas) {
     this.app = app;
@@ -426,6 +429,17 @@ export class WorldRenderer {
         o.tk = tk;
         o.s.visible = false;
         this.treeObjs.set(i, o);
+        // the stump left when the tree is cut (old and grey, or fresh with chips)
+        const kind = TREE_KINDS[tk];
+        const sk = kind === 'birch' ? 'birch' : kind === 'oakOld' ? 'old' : CONIFERS.has(tk) ? 'pine' : 'oak';
+        const sn = `stump_${sk}${hash(x + 2, y + 13) < 0.5 ? 0 : 1}`;
+        if (this.atlas.has(sn)) {
+          add(sn, 'other', ox, oy);
+          const st = list[list.length - 1];
+          st.isStump = true;
+          st.s.visible = false;
+          o.stump = st;
+        }
       }
       return;
     }
@@ -487,6 +501,11 @@ export class WorldRenderer {
     this.atlas.set(o.s, this.treeName(o), o.size);
     o.s.scale.x *= o.flip;
     o.s.visible = !!this.explored[o.i] && this.treeStage[o.i] > 0;
+    if (o.stump) o.stump.s.visible = this.stumpVisible(o.i);
+  }
+
+  private stumpVisible(i: number): boolean {
+    return !!this.explored[i] && this.treeStage[i] === 0 && !this.cleared.has(i);
   }
 
   /** all the trees at once (snapshot), base64 bytes 0..4 */
@@ -555,7 +574,7 @@ export class WorldRenderer {
 
   private refreshObjects(chunk: number) {
     for (const o of this.objChunks.get(chunk) ?? []) {
-      o.s.visible = !!this.explored[o.i] && (o.tk ? this.treeStage[o.i] > 0 : !this.cleared.has(o.i));
+      o.s.visible = o.isStump ? this.stumpVisible(o.i) : !!this.explored[o.i] && (o.tk ? this.treeStage[o.i] > 0 : !this.cleared.has(o.i));
     }
   }
 
@@ -793,6 +812,25 @@ export class WorldRenderer {
       p.target(r, bandColors.get(r[4]) ?? 0xffffff, tickMs);
     }
     for (const [id, p] of this.people) if (!seen.has(id)) { p.destroy(); this.people.delete(id); }
+    this.assignRoles(rows);
+  }
+
+  /** in every band: one man keeps watch at night; an old man of 70+ tells stories and one child listens */
+  private assignRoles(rows: PersonRow[]) {
+    const guard = new Map<number, number>(), teller = new Map<number, number>(), listener = new Map<number, number>();
+    for (const r of rows) {
+      const [id, , , task, band, age, sex, chief] = r;
+      if (TASKS[task] === 'scout') continue;
+      if (sex === 0 && !chief && age >= 18 && age < 50 && (!guard.has(band) || id < guard.get(band)!)) guard.set(band, id);
+      if (sex === 0 && age >= 70 && !teller.has(band)) teller.set(band, id);
+      if (age >= 4 && age < 12 && (!listener.has(band) || id < listener.get(band)!)) listener.set(band, id);
+    }
+    for (const r of rows) {
+      const p = this.people.get(r[0]);
+      if (!p) continue;
+      const b = r[4];
+      p.role = guard.get(b) === r[0] ? 'guard' : teller.get(b) === r[0] ? 'teller' : teller.has(b) && listener.get(b) === r[0] ? 'listener' : null;
+    }
   }
 
   /** the night: a dark veil with clear light 2 tiles around every fire, fading out by 3.5 tiles.
@@ -869,7 +907,7 @@ export class WorldRenderer {
     this.fogLayer.filters = null;
     this.fogLayer.alpha = 0.9;
     const tex = this.app.renderer.generateTexture({ target: this.world, frame, resolution: res, clearColor: [0, 0, 0, 0] });
-    this.fogLayer.filters = fogFilters;
+    this.fogLayer.filters = fogFilters as Filter[];
     this.fogLayer.alpha = 1;
     hide.forEach((l, k) => { l.visible = was[k]; });
     this.world.position.set(save.x, save.y);
@@ -911,6 +949,7 @@ export class WorldRenderer {
     const day = (nowMs / (8 * 60 * 1000)) % 1;
     const sun = Math.cos(day * Math.PI * 2); // 1 noon, -1 midnight
     const dark = this.night ? Math.max(0, Math.min(0.82, -sun * 1.0 + 0.05)) : 0;
+    this.nightNow = sun < -0.25;
     this.drawNight(dark, nowMs);
     this.glowLayer.alpha = Math.min(0.45, dark * 0.55);
     const zoom = this.world.scale.x;
@@ -986,6 +1025,8 @@ export class PersonSprite {
   facing = 1;
   outline: Container | null = null;
   star: Sprite | null = null;
+  /** set by the renderer: the night guard of the band, the old storyteller, or the child listening to him */
+  role: 'guard' | 'teller' | 'listener' | null = null;
 
   constructor(r: WorldRenderer, row: PersonRow) {
     this.r = r;
@@ -1029,7 +1070,10 @@ export class PersonSprite {
     if (name === this.pose) return;
     this.pose = name;
     this.r.atlas.set(this.body, name);
-    this.r.atlas.set(this.cloth, name + '_c');
+    // the newer animation sheets keep their own fur colours: no band-coloured clothes on top
+    const cloth = this.r.atlas.has(name + '_c');
+    this.cloth.visible = cloth;
+    if (cloth) this.r.atlas.set(this.cloth, name + '_c');
     this.updateOutline();
     if (this.star) this.star.position.set(3.2, -Math.abs(this.body.height) - 1.5);
   }
@@ -1099,6 +1143,34 @@ export class PersonSprite {
     return `${base}${f}`;
   }
 
+  /** animated work, sleep and story poses (sheets AB-AE); null = the usual sprites */
+  private actionPose(now: number, walking: boolean, arrived: boolean): string | null {
+    const A = this.r.atlas;
+    const loop = (base: string, n: number, ms: number) => {
+      const name = `${base}${Math.floor(now / ms + this.seed) % n}`;
+      return A.has(name) ? name : null;
+    };
+    const task = TASKS[this.task];
+    if (walking) return task === 'chop' ? loop('carry', 8, 110) : null;
+    if (this.r.nightNow && task !== 'scout') {
+      if (this.role === 'guard') return loop('guard', 4, 900);
+      if (this.age < 12) return loop('sleepK', 2, 1500);
+      if (hash(this.id, 77) < 0.22) return loop(this.female ? 'sitF' : 'sitM', 2, 1700);
+      return loop(this.female ? 'sleepF' : 'sleepM', 2, 1500);
+    }
+    if (this.role === 'teller') return loop('tell', 8, 240);
+    if (this.role === 'listener') return loop('listen', 8, 240);
+    if (!arrived) return null;
+    switch (task) {
+      case 'chop': return loop('chop', 8, 120);
+      case 'hunt': return this.age < 56 ? loop('throw', 4, 320) : null;
+      case 'gather': return this.female && this.age < 56 ? loop('pick', 4, 340) : null;
+      case 'fish': return !this.female ? loop('spearfish', 4, 340) : null;
+      case 'craft': return !this.female ? loop('knap', 4, 300) : null;
+      default: return null;
+    }
+  }
+
   private walkPose(now: number): string | null {
     const f = Math.floor(now / 140 + this.seed) % 4;
     if (this.age < 12) return `${this.female ? 'girlwalk' : 'boywalk'}${f}`;
@@ -1151,16 +1223,17 @@ export class PersonSprite {
     this.pos.y = y;
     let bob = 0;
     const chiefPose = this.chief ? this.chiefPose(now, walking) : null;
-    const walk = chiefPose ?? (walking ? this.walkPose(now) : null);
+    const special = chiefPose ? null : this.actionPose(now, walking, k >= 1);
+    const walk = chiefPose ?? special ?? (walking ? this.walkPose(now) : null);
     if (walk) {
       this.setPose(walk);
     } else {
       this.setPose(this.idlePose());
       if (walking) bob = -Math.abs(Math.sin(now / 110 + this.seed)) * 1.2;
     }
-    // small idle movement so the camp feels alive
+    // small idle movement so the camp feels alive (not while sleeping, sitting or working in place)
     const task = TASKS[this.task];
-    if (k >= 1 && task !== 'rest') {
+    if (k >= 1 && task !== 'rest' && !special) {
       const a = now / 1400 + this.seed;
       const amp = task === 'child' ? 4 : 1.5;
       x += Math.sin(a) * amp;
@@ -1181,14 +1254,20 @@ export class PersonSprite {
 const PROPS: [string, string, boolean | null][] = [
   // [tech, sprite, settled only (true) / camps only (false) / both (null)]
   ['fire', 'logpile', null],
+  ['fire', 'chopblock', false],
+  ['fire', 'woodstack', true],
   ['clothing', 'hiderack', false],
   ['cave_art', 'totem', null],
   ['burial', 'cairn', false],
   ['burial', 'shrine', true],
   ['pottery', 'pots', null],
-  ['grinding', 'quern', null],
+  ['grinding', 'quern', false],
+  ['grinding', 'quern2', true],
   ['pottery', 'kiln', true],
-  ['herding', 'pen', null],
+  ['pottery', 'oven', true],
+  ['herding', 'pen', false],
+  ['herding', 'goatpen', true],
+  ['mudbrick', 'bricks', true],
   ['fishing', 'fishtrap', null],
   ['boats', 'canoe', null],
   ['agriculture', 'granary', true],
@@ -1221,6 +1300,8 @@ export class CampSprite {
   settled = false;
   hasFire = false;
   fireFrame = -1;
+  homeCount = 0;
+  building: { s: Sprite; base: string; t0: number; flip: boolean }[] = [];
 
   constructor(r: WorldRenderer, b: BandView) {
     this.r = r;
@@ -1287,12 +1368,17 @@ export class CampSprite {
     this.updateFields(b);
     const n = Math.max(1, Math.min(10, Math.round(b.size / (b.dwelling === 'house' ? 6 : 5))));
     const techs = new Set(b.techs);
-    const props = PROPS.filter(([tech, , settled]) => techs.has(tech) && (settled === null || settled === b.settled)).map(([, s]) => s);
+    const props = PROPS.filter(([tech, sp, settled]) => techs.has(tech) && (settled === null || settled === b.settled) && this.r.atlas.has(sp)).map(([, s]) => s);
     const cold = this.r.tempAt(b.x, b.y) < 0.35;
     const key = `${b.dwelling}:${n}:${b.settled}:${cold}:${props.join(',')}`;
     if (key === this.key) return;
+    // homes added since last time are built in four steps; the first look at a camp shows it finished
+    const sameKind = this.key.split(':')[0] === b.dwelling && this.key !== '';
+    const builtBefore = sameKind ? this.homeCount : n;
+    this.homeCount = n;
     this.key = key;
     const A = this.r.atlas;
+    this.building = [];
     for (const ch of [...this.homes.children]) {
       if (ch !== this.hearth && ch !== this.banner) ch.destroy();
     }
@@ -1302,8 +1388,8 @@ export class CampSprite {
       switch (b.dwelling) {
         case 'none': name = 'furbed'; break;
         case 'tent': name = cold && h < 0.5 ? 'bonehut' : h < 0.2 ? 'leanto' : `tent${k % 2}`; break;
-        case 'hut': name = 'roundhut'; break;
-        default: name = k % 3 === 2 ? 'longhouse' : 'house';
+        case 'hut': name = A.has('hutb3') ? 'hutb3' : 'roundhut'; break;
+        default: name = k % 3 === 2 ? 'longhouse' : A.has('houseb3') ? 'houseb3' : 'house';
       }
       const a = (k / n) * Math.PI * 2 + 0.6;
       const rad = (b.dwelling === 'house' ? 26 : 19) + (k % 2) * 7;
@@ -1312,6 +1398,11 @@ export class CampSprite {
       s.position.set(Math.cos(a) * rad, Math.sin(a) * rad * 0.5 + 2);
       s.zIndex = s.y;
       this.homes.addChild(s);
+      if (k >= builtBefore && (name === 'hutb3' || name === 'houseb3')) {
+        this.building.push({ s, base: name.slice(0, -1), t0: Date.now(), flip: s.scale.x < 0 });
+        A.set(s, `${name.slice(0, -1)}0`);
+        if (h < 0.5) s.scale.x *= -1;
+      }
     }
     // camp props in an outer ring
     props.forEach((name, k) => {
@@ -1329,7 +1420,8 @@ export class CampSprite {
   private updateFields(b: BandView) {
     const m = this.r.month;
     const count = b.settled && b.techs.includes('agriculture') ? Math.min(10, 2 + Math.floor(b.size / 10)) : 0;
-    const stage = m >= 5 && m <= 7 ? 'wheat' : m >= 2 && m <= 4 ? 'sprout' : 'soil';
+    // ploughed in early spring, sprouts, tall wheat in summer, stubble and sheaves after the harvest
+    const stage = m >= 2 && m <= 3 ? 0 : m <= 5 && m >= 4 ? 1 : m >= 6 && m <= 8 ? 2 : m >= 9 && m <= 10 ? 3 : 0;
     const bx = Math.round(b.x), by = Math.round(b.y);
     const fkey = `${bx}:${by}:${count}:${stage}`;
     if (fkey === this.fieldKey) return;
@@ -1344,7 +1436,8 @@ export class CampSprite {
       const x = bx + dx, y = by + dy;
       if (!this.r.landAt(x, y)) continue;
       const h = hash(x, y + 101);
-      const name = stage === 'wheat' ? `wheat${Math.floor(h * 4)}` : stage === 'sprout' ? `soil${2 + Math.floor(h * 2)}` : `soil${Math.floor(h * 2)}`;
+      const name = this.r.atlas.has(`field${stage}_t`) ? `field${stage}`
+        : stage === 2 ? `wheat${Math.floor(h * 4)}` : stage === 1 ? `soil${2 + Math.floor(h * 2)}` : `soil${Math.floor(h * 2)}`;
       const s = A.sprite(name + '_t');
       const p = this.r.tileTop(x, y);
       s.position.set(p.x - this.pos.x, p.y - this.pos.y);
@@ -1356,6 +1449,16 @@ export class CampSprite {
   }
 
   frame(now: number, zoom: number) {
+    // homes going up: stakes, walls, roof frame, finished (about 15 s for each step)
+    if (this.building.length) {
+      this.building = this.building.filter((bd) => {
+        if (bd.s.destroyed) return false;
+        const st = Math.min(3, Math.floor((now - bd.t0) / 15000));
+        this.r.atlas.set(bd.s, `${bd.base}${st}`);
+        if (bd.flip) bd.s.scale.x *= -1;
+        return st < 3;
+      });
+    }
     const frameNo = this.hasFire ? 1 + (Math.floor(now / 130 + this.id * 7) % 3) : 0;
     if (frameNo !== this.fireFrame) {
       this.fireFrame = frameNo;

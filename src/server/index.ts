@@ -6,7 +6,8 @@ import { fileURLToPath } from 'node:url';
 import { WebSocketServer, WebSocket } from 'ws';
 import { Simulation, SimState } from './sim/sim';
 import { Store } from './db';
-import { SnapshotMessage, TickMessage, WorldInfo, b64encode } from '../shared/types';
+import { Discovery, SnapshotMessage, TickMessage, WorldInfo, b64encode } from '../shared/types';
+import { TECHS } from './sim/tech';
 
 const PORT = Number(process.env.LETOPIS_PORT ?? 2222);
 const DATA = path.resolve(process.env.LETOPIS_DATA ?? '/data');
@@ -152,6 +153,27 @@ function json(res: http.ServerResponse, data: unknown, status = 200) {
   res.end(body);
 }
 
+/** every first discovery: what, who and when; old worlds are read back from the chronicle text */
+function discoveries(): Discovery[] {
+  const out: Discovery[] = [];
+  const firsts = sim.s.firsts ?? [];
+  const rows = firsts.length < TECHS.length ? store.discoveryRows(sim.s.worldId) : [];
+  for (const tech of TECHS) {
+    const f = firsts.find((x) => x.tech === tech.id);
+    if (f) { out.push({ tech: tech.id, name: tech.name, pid: f.pid, who: f.name, band: f.band, year: f.year }); continue; }
+    const esc = (t: string) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const re = new RegExp('^' + esc(tech.text).replace(esc('{name}'), '(.+?)').replace(esc('{band}'), '(.+?)').replace(esc('{Band}'), '(.+?)') + '$');
+    for (const r of rows) {
+      const m = r.text.match(re);
+      if (!m) continue;
+      const nameFirst = tech.text.indexOf('{name}') < tech.text.search(/\{[Bb]and\}/) || !/\{[Bb]and\}/.test(tech.text);
+      out.push({ tech: tech.id, name: tech.name, pid: r.person, who: nameFirst ? m[1] : m[2] ?? m[1], band: nameFirst ? m[2] ?? '' : m[1], year: r.year });
+      break;
+    }
+  }
+  return out.sort((a, b) => a.year - b.year);
+}
+
 function snapshot(): SnapshotMessage {
   return {
     t: 'snapshot', time: sim.timeInfo(SPEED), bands: sim.bandViews(), people: sim.personRows(), explored: sim.exploredB64(), trees: sim.treesB64(),
@@ -185,6 +207,7 @@ const server = http.createServer((req, res) => {
       const t = sim.familyTree(Number(p.split('/').pop()));
       return t ? json(res, t) : json(res, { error: 'няма такъв човек' }, 404);
     }
+    if (p === '/api/discoveries') return json(res, discoveries());
     if (p.startsWith('/api/band/')) {
       const id = Number(p.split('/').pop());
       const live = sim.bandViews().find((b) => b.id === id);

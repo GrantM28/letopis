@@ -51,8 +51,12 @@ body.side-hidden .side { transform: translateX(calc(100% + 12px)); }
 .side-handle:hover { color: var(--accent); }
 body.side-hidden .side-handle span { display: inline-block; transform: scaleX(-1); }
 body.side-hidden .top { right: 12px; }
-.tabs { display: flex; border-bottom: 1px solid var(--line); }
-.tab { flex: 1; font: inherit; background: none; border: 0; color: var(--muted); padding: 12px 2px; font-size: 14px; white-space: nowrap; cursor: pointer; border-bottom: 2px solid transparent; }
+.tabs { display: flex; flex-wrap: wrap; border-bottom: 1px solid var(--line); }
+.tab { flex: 1 0 auto; font: inherit; background: none; border: 0; color: var(--muted); padding: 10px 6px; font-size: 13px; white-space: nowrap; cursor: pointer; border-bottom: 2px solid transparent; }
+.discoveries { list-style: none; margin: 0; padding: 0; }
+.discoveries li { padding: 8px 2px; border-bottom: 1px solid var(--line); }
+.discoveries li.todo { color: var(--muted); }
+.discoveries .yr { color: var(--accent); }
 .tab[aria-selected='true'] { color: var(--text); border-bottom-color: var(--accent); }
 .side-body { overflow-y: auto; padding: 10px 14px; flex: 1; }
 .chk { display: flex; gap: 8px; align-items: center; color: var(--muted); margin: 4px 0 10px; }

@@ -41,7 +41,7 @@ export function isWater(b: number): boolean {
   return b === Biome.DeepWater || b === Biome.Water || b === Biome.Lake;
 }
 
-export type Task = 'rest' | 'gather' | 'hunt' | 'fish' | 'craft' | 'farm' | 'herd' | 'build' | 'child' | 'elder' | 'travel' | 'lead' | 'scout';
+export type Task = 'rest' | 'gather' | 'hunt' | 'fish' | 'craft' | 'farm' | 'herd' | 'build' | 'child' | 'elder' | 'travel' | 'lead' | 'scout' | 'chop';
 
 export const TASK_NAMES: Record<Task, string> = {
   rest: 'почива',
@@ -57,6 +57,7 @@ export const TASK_NAMES: Record<Task, string> = {
   travel: 'пътува',
   lead: 'води рода',
   scout: 'търси ново място за лагера',
+  chop: 'сече дърва',
 };
 
 /** the head of a band or a village, by era: always the oldest man */
@@ -101,6 +102,9 @@ export interface BandView {
   techIds: string[];
   /** the head of the band: name and title */
   chief: { id: number; name: string; title: string } | null;
+  /** who founded the band and which band they came from (null for the first bands) */
+  founder?: { id: number; name: string } | null;
+  from?: { id: number; name: string } | null;
   size: number;
   food: number;
   founded: number; // year
@@ -111,7 +115,7 @@ export interface BandView {
 /** compact person: [id, x*10, y*10, taskIndex, bandId, ageYears, sex(0 m,1 f), chief(1) or not(0)] */
 export type PersonRow = [number, number, number, number, number, number, number, number];
 
-export const TASKS: Task[] = ['rest', 'gather', 'hunt', 'fish', 'craft', 'farm', 'herd', 'build', 'child', 'elder', 'travel', 'lead', 'scout'];
+export const TASKS: Task[] = ['rest', 'gather', 'hunt', 'fish', 'craft', 'farm', 'herd', 'build', 'child', 'elder', 'travel', 'lead', 'scout', 'chop'];
 
 export interface ChronicleEntry {
   id: number;
@@ -141,6 +145,8 @@ export interface GoneBand {
   /** 'extinct' or the name of the band it joined */
   end: string;
   techs: string[];
+  founder?: { id: number; name: string } | null;
+  from?: { id: number; name: string } | null;
 }
 
 export interface TickMessage {
@@ -229,3 +235,6 @@ export function b64decode(s: string): Uint8Array {
   for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
   return out;
 }
+
+/** a first discovery ever */
+export interface Discovery { tech: string; name: string; pid: number | null; who: string; band: string; year: number }

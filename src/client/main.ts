@@ -1,7 +1,7 @@
 import { Application } from 'pixi.js';
 import { Atlas, WorldRenderer, iso, TW, TH } from './render';
 import {
-  BandView, ChronicleEntry, FamilyTree, GoneBand, MONTHS, TreeNode, PersonDetail, PersonRow, SnapshotMessage, TASKS, TASK_NAMES, TickMessage, WorldInfo, b64decode, formatYear,
+  BandView, ChronicleEntry, Discovery, FamilyTree, GoneBand, MONTHS, TreeNode, PersonDetail, PersonRow, SnapshotMessage, TASKS, TASK_NAMES, TickMessage, WorldInfo, b64decode, formatYear,
 } from '../shared/types';
 import { SECRET_COUNT, SECRET_HEROES, SECRET_KINDS, SecretFind, SecretSpot } from '../shared/secrets';
 
@@ -80,6 +80,8 @@ function lookAt(x: number, y: number, zoom?: number, instant = false) {
 }
 
 let dragging = false, moved = 0, last = { x: 0, y: 0 };
+/** four more 1.4x steps in than before (4): close enough to see faces */
+const MAX_ZOOM = 4 * 1.4 ** 4;
 const pointers = new Map<number, { x: number; y: number }>();
 let pinchDist = 0;
 /** after a pinch the map stays put until every finger is up: the last finger must not drag it */
@@ -131,7 +133,7 @@ canvas.addEventListener('wheel', (e) => {
 /** zoom keeping the point under the cursor (or between the fingers) in place */
 function zoomBy(f: number, sx = app.screen.width / 2, sy = app.screen.height / 2) {
   const z0 = cam.zoom;
-  const z1 = Math.max(0.18, Math.min(4, z0 * f));
+  const z1 = Math.max(0.18, Math.min(MAX_ZOOM, z0 * f));
   const W = app.screen.width, H = app.screen.height;
   if (follow === null) {
     const wx = cam.x + (sx - W / 2) / z0, wy = cam.y + (sy - H / 2) / z0;
@@ -140,7 +142,7 @@ function zoomBy(f: number, sx = app.screen.width / 2, sy = app.screen.height / 2
   }
   cam.zoom = cam.tz = z1;
 }
-$('#zoomIn').onclick = () => { cam.tz = Math.min(4, cam.tz * 1.4); };
+$('#zoomIn').onclick = () => { cam.tz = Math.min(MAX_ZOOM, cam.tz * 1.4); };
 $('#zoomOut').onclick = () => { cam.tz = Math.max(0.18, cam.tz / 1.4); };
 
 function pick(sx: number, sy: number) {
@@ -330,6 +332,8 @@ function toast(e: ChronicleEntry) {
 // ---------- side panel ----------
 
 let activeTab = store('letopis.tab', 'chronicle');
+/** how many discoveries the game knows so far (stone age and the first farmers) */
+const ALL_TECHS = 18;
 
 function renderSide() {
   document.querySelectorAll<HTMLButtonElement>('.tab').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === activeTab)));
@@ -340,6 +344,15 @@ function renderSide() {
       <button id="more" class="btn ghost">По-стари записи</button>`;
     $('#onlyBig').onchange = (e) => { onlyBig = (e.target as HTMLInputElement).checked; save('letopis.onlyBig', onlyBig); renderSide(); };
     $('#more').onclick = loadOlder;
+  } else if (activeTab === 'discoveries') {
+    body.innerHTML = '<p class="muted">Зареждам...</p>';
+    api<Discovery[]>('/api/discoveries').then((ds) => {
+      if (activeTab !== 'discoveries') return;
+      const known = new Set(ds.map((d) => d.tech));
+      body.innerHTML = `<p class="muted">Всяко знание, открито за първи път в този свят: от кого и кога.</p>
+        <ul class="discoveries">${ds.map((d) => `<li><b>${esc(d.name)}</b> - открито от ${d.pid ? `<a href="#" class="ref" data-person="${d.pid}">${esc(d.who)}</a>` : esc(d.who)}${d.band ? ` <span class="muted">(${esc(d.band)})</span>` : ''} през <span class="yr">${formatYear(d.year)}</span></li>`).join('')}
+        ${ALL_TECHS > known.size ? `<li class="todo">Още ${ALL_TECHS - known.size} знания чакат да бъдат открити в тази епоха.</li>` : ''}</ul>`;
+    });
   } else if (activeTab === 'bands') {
     const sorted = [...bands].sort((a, b) => b.size - a.size);
     body.innerHTML = `<ul class="bands">${sorted.map((b) => `
@@ -440,6 +453,14 @@ function openRef(el: HTMLElement) {
   }
 }
 
+/** "Основан от X, дошъл от Y" for a band card; the first bands came with the world */
+function originHtml(founder?: { id: number; name: string } | null, from?: { id: number; name: string } | null): string {
+  if (!founder && !from) return '<div class="muted">Един от първите родове на света.</div>';
+  const who = founder ? `<a href="#" data-person="${founder.id}">${esc(founder.name)}</a>` : 'неизвестен';
+  const src = from ? ` · дошли от <a href="#" data-band="${from.id}">${esc(from.name)}</a>` : '';
+  return `<div>Основан от ${who}${src}</div>`;
+}
+
 async function showGoneBand(id: number) {
   const r2 = await api<{ live?: BandView; gone?: GoneBand }>(`/api/band/${id}`).catch(() => null);
   if (r2?.live) { const b = r2.live; stopTour(); lookAt(b.x, b.y, 1.6); showBand(b); return; }
@@ -448,6 +469,7 @@ async function showGoneBand(id: number) {
   openCard(`
     <h2><span class="dot" style="background:#${g.color.toString(16).padStart(6, '0')}"></span> ${esc(g.settlementName ?? g.name)}</h2>
     <div class="muted">${g.settlementName ? `${esc(g.name)} · ` : ''}${formatYear(g.foundedYear)} – ${formatYear(g.endedYear)}</div>
+    ${originHtml(g.founder, g.from)}
     <p>${g.end === 'extinct' ? 'Този род угасна. Няма останали хора от него.' : `Последните от този род се присъединиха към ${esc(g.end.replace(/^Родът/, 'рода').replace(/^Селото/, 'селото'))}.`}</p>
     <h3>Какво знаеха</h3><div class="techs">${g.techs.map((t) => `<span class="pill">${esc(t)}</span>`).join('') || '<span class="muted">Нищо</span>'}</div>`);
 }
@@ -587,6 +609,7 @@ function showBand(b: BandView) {
     <h2><span class="dot" style="background:#${b.color.toString(16).padStart(6, '0')}"></span> ${esc(b.settlementName ?? b.name)}</h2>
     <div class="muted">${b.settlementName ? `${esc(b.name)} · ` : ''}от ${formatYear(b.founded)} · ${b.settled ? 'уседнали' : 'скитат по земята'}</div>
     ${b.chief ? `<div>${esc(b.chief.title)}: <a href="#" data-person="${b.chief.id}">${esc(b.chief.name)}</a></div>` : ''}
+    ${originHtml(b.founder, b.from)}
     <div class="kpis"><div><span>Хора</span><b>${b.size}</b></div><div><span>Деца</span><b>${kidsN}</b></div><div><span>Запаси</span><b>${b.food}</b></div></div>
     <h3>Какво правят сега</h3><ul class="deeds">${[...tasks].sort((a, c) => c[1] - a[1]).map(([t, n]) => `<li>${n} ${esc(t)}</li>`).join('')}</ul>
     <h3>Какво знаят</h3><div class="techs">${b.techs.map((t) => `<span class="pill">${esc(t)}</span>`).join('') || '<span class="muted">Още нищо</span>'}</div>

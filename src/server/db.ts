@@ -27,6 +27,8 @@ export class Store {
     // v1.11: names in the chronicle link to people and bands
     const cols = this.db.prepare('PRAGMA table_info(chronicle)').all() as { name: string }[];
     if (!cols.some((c) => c.name === 'refs')) this.db.exec('ALTER TABLE chronicle ADD COLUMN refs TEXT');
+    // v1.14: new bands are no longer written in the chronicle (their card says who founded them)
+    this.db.exec("DELETE FROM chronicle WHERE kind IN ('split', 'colony')");
   }
 
   /** the chronicle keeps only the last `years` years; the great moments (importance 3) and found secrets stay forever */
@@ -36,7 +38,13 @@ export class Store {
     return Number(r.changes);
   }
 
-    addGoneBands(world: string, gone: GoneBand[]) {
+    /** first discoveries as the chronicle wrote them (for worlds older than the discoveries list) */
+  discoveryRows(world: string): { text: string; year: number; person: number | null }[] {
+    return this.db.prepare("SELECT text, year, person FROM chronicle WHERE world = ? AND kind = 'discovery' ORDER BY id")
+      .all(world) as { text: string; year: number; person: number | null }[];
+  }
+
+  addGoneBands(world: string, gone: GoneBand[]) {
     if (!gone.length) return;
     const st = this.db.prepare('INSERT OR REPLACE INTO gone_bands VALUES (?,?,?)');
     for (const g of gone) st.run(world, g.id, JSON.stringify(g));
