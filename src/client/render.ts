@@ -12,6 +12,7 @@ import { BandView, Biome, PersonRow, TASKS, WorldInfo, b64decode, isWater, RIVER
 export const TW = 32; // tile width
 export const TH = 16; // tile height
 export const ELEV = 5;
+type Role = 'guard' | 'bodyguard' | 'teller' | 'listener';
 /** most people of one band drawn on the map */
 const PER_BAND = 36; // pixels per height level
 const CHUNK = 16;
@@ -894,15 +895,25 @@ export class WorldRenderer {
       if (!l) byBand.set(r[4], (l = []));
       l.push(r);
     }
+    const roles = this.roles(rows, byBand);
     const shown: PersonRow[] = [];
     for (const l of byBand.values()) {
       if (l.length <= PER_BAND) { shown.push(...l); continue; }
-      const rank = (r: PersonRow) => (r[7] === 1 || r[0] === this.selectedId ? -1 : hash(r[0], 99));
+      const rank = (r: PersonRow) => (r[7] === 1 || r[0] === this.selectedId || roles.has(r[0]) ? -1 : hash(r[0], 99));
       l.sort((a, b) => rank(a) - rank(b));
       shown.push(...l.slice(0, PER_BAND));
     }
     for (const r0 of shown) {
-      const r = night ? this.nightRow(r0) : r0;
+      let r = night ? this.nightRow(r0) : r0;
+      // the bodyguard keeps close to the chief while he looks for a new place
+      if (roles.get(r0[0]) === 'bodyguard') {
+        const chief = byBand.get(r0[4])?.find((q) => q[7] === 1);
+        if (chief) {
+          r = [...r] as PersonRow;
+          r[1] = chief[1] + 6;
+          r[2] = chief[2] + 4;
+        }
+      }
       seen.add(r[0]);
       let p = this.people.get(r[0]);
       if (!p) {
@@ -913,25 +924,56 @@ export class WorldRenderer {
       p.target(r, bandColors.get(r[4]) ?? 0xffffff, tickMs);
     }
     for (const [id, p] of this.people) if (!seen.has(id)) { p.destroy(); this.people.delete(id); }
-    this.assignRoles(rows);
+    for (const [id, p] of this.people) p.role = roles.get(id) ?? null;
   }
 
-  /** in every band: one man keeps watch at night; an old man of 70+ tells stories and one child listens */
-  private assignRoles(rows: PersonRow[]) {
-    const guard = new Map<number, number>(), teller = new Map<number, number>(), listener = new Map<number, number>();
-    for (const r of rows) {
-      const [id, , , task, band, age, sex, chief] = r;
-      if (TASKS[task] === 'scout') continue;
-      if (sex === 0 && !chief && age >= 18 && age < 50 && (!guard.has(band) || id < guard.get(band)!)) guard.set(band, id);
-      if (sex === 0 && age >= 70 && !teller.has(band)) teller.set(band, id);
-      if (age >= 4 && age < 12 && (!listener.has(band) || id < listener.get(band)!)) listener.set(band, id);
+  /** who does what beyond the day's work: two guards in every band (one walks with the chief when he scouts),
+   *  an old man of 70+ who tells stories and the child who listens */
+  private roles(rows: PersonRow[], byBand: Map<number, PersonRow[]>): Map<number, Role> {
+    const out = new Map<number, Role>();
+    for (const l of byBand.values()) {
+      const chief = l.find((r) => r[7] === 1);
+      const scouting = !!chief && TASKS[chief[3]] === 'scout';
+      const men = l.filter((r) => r[6] === 0 && r[7] !== 1 && r[5] >= 18 && r[5] < 50 && TASKS[r[3]] !== 'scout').sort((a, b) => a[0] - b[0]);
+      const n = l.length >= 8 ? 2 : 1;
+      men.slice(0, n).forEach((r, k) => out.set(r[0], scouting && n === 2 && k === 1 ? 'bodyguard' : 'guard'));
+      const teller = l.find((r) => r[6] === 0 && r[5] >= 70 && TASKS[r[3]] !== 'scout');
+      if (teller) {
+        out.set(teller[0], 'teller');
+        const kid = l.filter((r) => r[5] >= 4 && r[5] < 12).sort((a, b) => a[0] - b[0])[0];
+        if (kid) out.set(kid[0], 'listener');
+      }
     }
-    for (const r of rows) {
-      const p = this.people.get(r[0]);
-      if (!p) continue;
-      const b = r[4];
-      p.role = guard.get(b) === r[0] ? 'guard' : teller.get(b) === r[0] ? 'teller' : teller.has(b) && listener.get(b) === r[0] ? 'listener' : null;
+    void rows;
+    return out;
+  }
+
+  /** a point of a guard's night round (screen), or null where the camp has no room for it */
+  patrolPoint(band: number, now: number, id: number): { x: number; y: number; face: number } | null {
+    const c = this.camps.get(band);
+    if (!c) return null;
+    const dir = hash(id, 3) < 0.5 ? 1 : -1;
+    const a = dir * now / 14000 + hash(id, 7) * Math.PI * 2;
+    for (const R of [1.8, 1.3, 0.9]) {
+      const tx = c.tx + Math.cos(a) * R, ty = c.ty + Math.sin(a) * R;
+      if (!this.walkable(Math.round(tx), Math.round(ty))) continue;
+      const p = this.tileTop(tx, ty);
+      // screen direction of the walk: along the circle
+      const d = iso(-Math.sin(a) * dir, Math.cos(a) * dir);
+      return { x: p.x, y: p.y, face: d.x < 0 ? -1 : 1 };
     }
+    return null;
+  }
+
+  /** what a person is doing right now, when the night changes it (null: the day's task) */
+  nightTask(id: number): string | null {
+    const p = this.people.get(id);
+    if (!this.nightNow) return null;
+    const role = p?.role;
+    if (role === 'guard') return 'пази селото';
+    if (role === 'bodyguard') return 'пази водача';
+    if (p && TASKS[p.task] === 'scout') return null;
+    return 'спи';
   }
 
   /** the night: a dark veil with clear light 2 tiles around every fire, fading out by 3.5 tiles.
@@ -1137,7 +1179,7 @@ export class PersonSprite {
   outline: Container | null = null;
   star: Sprite | null = null;
   /** set by the renderer: the night guard of the band, the old storyteller, or the child listening to him */
-  role: 'guard' | 'teller' | 'listener' | null = null;
+  role: Role | null = null;
 
   constructor(r: WorldRenderer, row: PersonRow) {
     this.r = r;
@@ -1276,11 +1318,17 @@ export class PersonSprite {
       return null;
     }
     if (this.r.nightNow && task !== 'scout') {
-      if (this.role === 'guard') return loop('guard', 4, 900);
-      if (this.age < 12) return loop('sleepK', 2, 1500);
-      if (hash(this.id, 77) < 0.22) return loop(this.female ? 'sitF' : 'sitM', 2, 1700);
+      // everybody sleeps; the guards walk around the fire (see frame) and the bodyguard stands by the chief
+      if (this.role === 'guard' || this.role === 'bodyguard') return (A.has(`${this.guardKit()}idle0`) ? loop(`${this.guardKit()}idle`, 8, 450) : null) ?? loop('guard', 4, 900);
+      if (this.chief) {
+        const own = loop(`${hash(this.id, 41) < 0.5 ? 'chiefA' : 'chiefB'}_${this.age >= 50 ? 'o' : 'y'}_sleep`, 2, 1500);
+        if (own) return own;
+      }
+      if (this.age < 12) return loop(this.female ? 'sleepGirl' : 'sleepBoy', 2, 1500) ?? loop('sleepK', 2, 1500);
+      if (this.age > 55) return loop(this.female ? 'sleepOldF' : 'sleepOldM', 2, 1500) ?? loop(this.female ? 'sleepF' : 'sleepM', 2, 1500);
       return loop(this.female ? 'sleepF' : 'sleepM', 2, 1500);
     }
+    if ((this.role === 'guard' || this.role === 'bodyguard') && A.has(`${this.guardKit()}idle0`)) return loop(`${this.guardKit()}idle`, 8, 450);
     if (this.role === 'teller') return loop('tell', 8, 240);
     if (this.role === 'listener') return loop('listen', 8, 240);
     if (!arrived) return null;
@@ -1299,6 +1347,11 @@ export class PersonSprite {
       case 'farm': return man && knows('plough') ? loop('plougher', 4, 260) : null;
       default: return null;
     }
+  }
+
+  /** guards (and the bodyguard) wear the best gear of their time: bronze once the band knows it */
+  private guardKit(): string {
+    return this.r.bandTech.get(this.band)?.has('bronze') && this.r.atlas.has('bgwalk0') ? 'bg' : 'g';
   }
 
   private walkPose(now: number): string | null {
@@ -1349,13 +1402,26 @@ export class PersonSprite {
       if (Math.abs(b.x - a.x) > 1) this.facing = b.x < a.x ? -1 : 1;
     }
     const dist = total;
-    const walking = k < 0.95 && dist > 3;
+    // a guard on his night round: two tiles around the fire
+    const round = this.role === 'guard' && this.r.nightNow ? this.r.patrolPoint(this.band, now, this.id) : null;
+    if (round) {
+      x = round.x;
+      y = round.y;
+      this.facing = round.face;
+    }
+    const walking = !!round || (k < 0.95 && dist > 3);
     this.pos.x = x;
     this.pos.y = y;
     let bob = 0;
-    const chiefPose = this.chief ? this.chiefPose(now, walking) : null;
-    const special = chiefPose ? null : this.actionPose(now, walking, k >= 1);
-    const walk = chiefPose ?? special ?? (walking ? this.walkPose(now) : null);
+    const asleep = this.r.nightNow && TASKS[this.task] !== 'scout';
+    const chiefPose = this.chief && !asleep ? this.chiefPose(now, walking) : null;
+    const kit = this.guardKit();
+    const own = this.r.atlas.has(`${kit}walk0`);
+    // guards look like guards all day long once their sprites exist
+    const guardOn = (this.role === 'guard' || this.role === 'bodyguard') && own;
+    const guardWalk = round || (guardOn && walking) ? `${own ? `${kit}walk` : this.female ? 'womanwalk' : 'walk'}${Math.floor(now / 150 + this.seed) % (own ? 8 : 4)}` : null;
+    const special = chiefPose || guardWalk ? null : this.actionPose(now, walking, k >= 1);
+    const walk = guardWalk ?? chiefPose ?? special ?? (walking ? this.walkPose(now) : null);
     if (walk) {
       this.setPose(walk);
     } else {

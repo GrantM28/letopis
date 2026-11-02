@@ -523,6 +523,8 @@ async function showPerson(id: number) {
   const link = (p: { id: number; name: string } | null) => (p ? `<a href="#" data-person="${p.id}">${esc(P(p.name))}</a>` : `<span class="muted">${d.generation <= 1 ? T('от първите хора', 'one of the first people') : T('неизвестен', 'unknown')}</span>`);
   const genes = Object.entries(d.genes).map(([k, v]) => `<div class="gene"><span>${esc(GENE(k))}</span><div class="bar"><i style="width:${v}%"></i></div></div>`).join('');
   const alive = d.diedYear === null;
+  // someone at home (not drawn) steps out to be followed
+  if (alive && !r.people.has(id) && people.some((p) => p[0] === id)) r.select(id);
   const live = r.people.get(id);
   const beside = !!(live && alive) && window.innerWidth > 760;
   if (live && alive) { stopTour(); follow = id; r.select(id); cam.tz = Math.max(cam.tz, 2); }
@@ -531,7 +533,7 @@ async function showPerson(id: number) {
       <div><h2>${esc(P(d.name))}</h2>
       <div class="muted">${alive ? `<span id="pAge">${d.age}</span> ${T('години', 'years')} · ${esc(BL(d.bandName))}` : `${fmtYear(d.bornYear)} – ${fmtYear(d.diedYear!)}, ${esc(CAUSE(d.cause ?? ''))} ${T('на', 'at')} ${d.age}`}</div>
       ${d.title ? `<div class="title">${esc(TITLE(d.title))}</div>` : ''}
-      ${alive && d.task ? `<div>${T('Сега', 'Now')} ${esc(TASK(d.task))}</div>` : ''}<div class="muted">${T(`${d.generation}-о поколение`, `generation ${d.generation}`)}</div></div></div>
+      ${alive && d.task ? `<div>${T('Сега', 'Now')} ${esc(TASK(r.nightTask(id) ?? d.task))}</div>` : ''}<div class="muted">${T(`${d.generation}-о поколение`, `generation ${d.generation}`)}</div></div></div>
     <div class="genes">${genes}</div>
     <dl class="family">
       <dt>${T('Майка', 'Mother')}</dt><dd>${link(d.mother)}</dd><dt>${T('Баща', 'Father')}</dt><dd>${link(d.father)}</dd>

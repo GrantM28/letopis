@@ -176,12 +176,12 @@ export function chiefEn(bg: string): string {
 export const TASK_NAMES_EN: Record<string, string> = {
   rest: 'resting', gather: 'gathering fruit and roots', hunt: 'hunting', fish: 'fishing', craft: 'making tools', farm: 'tending the field',
   herd: 'herding the animals', build: 'building', child: 'playing', elder: 'telling stories', travel: 'travelling', lead: 'leading the clan',
-  scout: 'looking for a new camp', chop: 'chopping wood',
+  scout: 'looking for a new camp', chop: 'chopping wood', sleep: 'sleeping', guard: 'guarding the village', bodyguard: 'guarding the chief',
 };
 const TASK_BG: Record<string, string> = {
   почива: 'rest', 'събира плодове и корени': 'gather', ловува: 'hunt', 'лови риба': 'fish', 'прави сечива': 'craft', 'обработва нивата': 'farm',
   'пасе животните': 'herd', строи: 'build', играе: 'child', 'разказва истории': 'elder', пътува: 'travel', 'води рода': 'lead',
-  'търси ново място за лагера': 'scout', 'сече дърва': 'chop',
+  'търси ново място за лагера': 'scout', 'сече дърва': 'chop', спи: 'sleep', 'пази селото': 'guard', 'пази водача': 'bodyguard',
 };
 export function taskEn(bg: string): string {
   const k = TASK_BG[bg];
