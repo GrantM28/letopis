@@ -250,15 +250,15 @@ for cid, name, w in (('AG11', 'ore', 0.045), ('AG12', 'mine', 0.07), ('AG13', 'f
 group('townb', cells('AH', (1,)), 'thing', 0.08, 0)   # 0..3: foundation, walls, upper floor, done
 group('templeb', cells('AH', (3,)), 'thing', 0.09, 0)  # 0..3: platform, steps, columns, done
 group('trod', cells('AM', (1, 2, 3, 4)), 'tile', TW + 3, 128)  # trampled camp ground, 16 variants
-# village guards (AN stone age, AO bronze age): a little taller than the others (11.5)
-group('gwalk', cells('AN', (1, 2)), 'person', 12.6, 64)
-group('gidle', cells('AN', (3, 4)), 'person', 12.6, 64)
-group('bgwalk', cells('AO', (1, 2)), 'person', 12.6, 64)
-group('bgidle', cells('AO', (3, 4)), 'person', 12.6, 64)
+# village guards (AN stone age, AO bronze age): the spear reaches above the head; the man is ~10% taller than the others
+group('gwalk', cells('AN', (1, 2)), 'person', 13.6, 64)
+group('gidle', cells('AN', (3, 4)), 'person', 13.6, 64)
+group('bgwalk', cells('AO', (1, 2)), 'person', 13.6, 64)
+group('bgidle', cells('AO', (3, 4)), 'person', 13.6, 64)
 # sleepers that had no own sprites (AP): chiefs, old people, girls and boys
 for cid, name in (('AP11 AP12', 'chiefA_y_sleep'), ('AP13 AP14', 'chiefA_o_sleep'), ('AP21 AP22', 'chiefB_y_sleep'), ('AP23 AP24', 'chiefB_o_sleep'),
                   ('AP31 AP32', 'sleepOldM'), ('AP33 AP34', 'sleepOldF'), ('AP41 AP42', 'sleepGirl'), ('AP43 AP44', 'sleepBoy')):
-    group(name, cid, 'pose', PEOPLE_WPP, 0)
+    group(name, cid, 'pose', PEOPLE_WPP * 0.8, 0)  # drawn a bit bigger than the AC sleepers
 group('smith', cells('AI', (1,)), 'pose', PEOPLE_WPP, 0)
 group('plougher', cells('AI', (2,)), 'pose', PEOPLE_WPP, 0)
 group('wheelpot', cells('AI', (3,)), 'pose', PEOPLE_WPP, 0)
@@ -317,13 +317,13 @@ def top_only(img: Image.Image, cy: float) -> Image.Image:
     return Image.fromarray(out.astype(np.uint8))
 
 
-def split_cloth(img: Image.Image, head: float, bright: float = 0.45) -> tuple[Image.Image, Image.Image]:
+def split_cloth(img: Image.Image, head: float, bright: float = 0.45, satmax: float = 0.2) -> tuple[Image.Image, Image.Image]:
     """Light grey/white cloth -> separate grey layer; the rest stays in the base."""
     a = np.array(img).astype(np.float32)
     rgb = a[..., :3] / 255
     mx, mn = rgb.max(-1), rgb.min(-1)
     sat = np.where(mx > 0, (mx - mn) / np.maximum(mx, 1e-6), 0)
-    cloth = (sat < 0.2) & (mx > bright) & (a[..., 3] > 0)
+    cloth = (sat < satmax) & (mx > bright) & (a[..., 3] > 0)
     cloth[: int(a.shape[0] * head)] = False
     base = a.copy()
     base[cloth, 3] = 0
@@ -478,10 +478,16 @@ def main() -> int:
                 items.append((name, base, 0.5, ay, s))
                 items.append((name + '_c', cloth, 0.5, ay, s))
                 continue
-            if kind == 'pose' and cid[:2] in ('AI', 'AJ', 'AP'):
+            if kind == 'pose' and cid[:2] in ('AI', 'AJ'):
                 # bronze age linen: only the bright cloth is tinted (grey anvils and stones stay)
-                head = {'AI3': 0.35, 'AJ2': 0.35, 'AJ4': 0.0}.get(cid[:3], 0.0 if cid[:2] == 'AP' else 0.28)
+                head = {'AI3': 0.35, 'AJ2': 0.35, 'AJ4': 0.0}.get(cid[:3], 0.28)
                 base, cloth = split_cloth(img, head, 0.66)
+                items.append((name, base, 0.5, ay, s))
+                items.append((name + '_c', cloth, 0.5, ay, s))
+                continue
+            if kind == 'person' and cid[:2] in ('AN', 'AO'):
+                # guards: only the light tunic takes the clan colour, the grey wolf fur and the metal stay
+                base, cloth = split_fur(img, 0.3) if cid[:2] == 'AN' else split_cloth(img, 0.3, 0.72, 0.3)
                 items.append((name, base, 0.5, ay, s))
                 items.append((name + '_c', cloth, 0.5, ay, s))
                 continue
