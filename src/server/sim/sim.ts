@@ -681,7 +681,25 @@ export class Simulation {
     this.randomEvents(members);
     this.checkEra();
     this.milestones();
+    this.fixStrays();
     this.s.rng = this.rng.s;
+  }
+
+  /** a baby born the month its band merged or died out could be left with no band: it goes to its mother's, or the nearest */
+  private fixStrays() {
+    for (const p of this.s.people) {
+      if (this.bandById.has(p.bandId)) continue;
+      const mother = p.motherId ? this.byId.get(p.motherId) : undefined;
+      let to = mother ? this.bandById.get(mother.bandId) : undefined;
+      if (!to) {
+        let best = Infinity;
+        for (const b of this.s.bands) {
+          const d = Math.hypot(b.cx - p.x, b.cy - p.y);
+          if (d < best) { best = d; to = b; }
+        }
+      }
+      if (to) p.bandId = to.id;
+    }
   }
 
   private regrow() {
@@ -1634,7 +1652,7 @@ export class Simulation {
       .filter((p) => p.deeds.length > 0 || this.ageOf(p) > 60)
       .sort((a, b) => b.deeds.length - a.deeds.length || this.ageOf(b) - this.ageOf(a))
       .slice(0, 30)
-      .map((p) => ({ id: p.id, name: this.nameOf(p), age: Math.floor(this.ageOf(p)), band: this.bandLabel(this.bandById.get(p.bandId)!, true), deeds: p.deeds }));
+      .map((p) => ({ id: p.id, name: this.nameOf(p), age: Math.floor(this.ageOf(p)), band: this.bandById.has(p.bandId) ? this.bandLabel(this.bandById.get(p.bandId)!, true) : '', deeds: p.deeds }));
   }
 
   /** prepare state for saving */

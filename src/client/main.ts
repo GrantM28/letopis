@@ -380,6 +380,8 @@ function renderSide() {
       body.innerHTML = hs.length ? `<ul class="heroes">${hs.map((h) => `<li data-person="${h.id}"><b>${esc(P(h.name))}</b>
         <span class="muted">${h.age} ${T('г.', 'y')} · ${esc(BL(h.band))}</span>${h.deeds.length ? `<div>${h.deeds.map((x) => esc(DEED(x))).join('<br>')}</div>` : ''}</li>`).join('')}</ul>`
         : `<p class="muted">${T('Още никой не е направил нещо велико. Търпение.', 'Nobody has done anything great yet. Patience.')}</p>`;
+    }).catch(() => {
+      if (activeTab === 'heroes') body.innerHTML = `<p class="muted">${T('Не успях да заредя личностите. Опитай пак след малко.', 'Could not load the people. Try again in a moment.')}</p>`;
     });
   } else if (activeTab === 'stats') {
     renderStats(body);
