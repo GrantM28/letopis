@@ -1,3 +1,4 @@
+import { CLAN_NAMES, romanNum } from '../../shared/clans';
 import { Rng } from '../../shared/rng';
 
 // Bulgarian personal names. Old Slavic/Bulgarian names fit the early eras, so they are weighted early on.
@@ -97,26 +98,15 @@ export function fixBandName(name: string): string {
 }
 
 export function bandName(rng: Rng, used: Set<string>): string {
-  for (let k = 0; k < 200; k++) {
-    let totem: string;
-    const r = rng.next();
-    // plain names first, adjectives once the plain ones are taken
-    const fancy = k > 8 || rng.chance(0.4);
-    // with an adjective the article moves to the adjective: "Малкия Гарван", "Самотната Звезда"
-    if (r < 0.45) totem = fancy ? `${rng.pick(ADJ_M)} ${bareM(rng.pick(TOTEM_M))}` : rng.pick(TOTEM_M);
-    else if (r < 0.9) totem = fancy ? `${rng.pick(ADJ_F)} ${bareF(rng.pick(TOTEM_F))}` : rng.pick(TOTEM_F);
-    else totem = rng.pick(TOTEM_N);
-    // a third of the bands also carry the place they come from
-    if (rng.chance(k > 20 ? 0.8 : 0.33)) {
-      const place = rng.chance(0.5) ? `${rng.pick(ADJ_M)} ${rng.pick(PLACE_M)}` : `${rng.pick(ADJ_F)} ${rng.pick(PLACE_F)}`;
-      totem = `${totem} от ${place}`;
+  // a free name from the list; when all are taken, the same names with a number
+  for (let n = 1; ; n++) {
+    const free = CLAN_NAMES.map(([bg]) => (n === 1 ? bg : `${bg} ${romanNum(n)}`)).filter((x) => !used.has(x));
+    if (free.length) {
+      const name = rng.pick(free);
+      used.add(name);
+      return name;
     }
-    const name = `Родът на ${totem}`;
-    if (!used.has(name)) { used.add(name); return name; }
   }
-  const n = `Родът на ${rng.pick(TOTEM_F)} ${used.size}`;
-  used.add(n);
-  return n;
 }
 
 const BAND_COLORS = [0xd9534f, 0x5bc0de, 0xf0ad4e, 0x5cb85c, 0x9b59b6, 0xe67e22, 0x1abc9c, 0xe84393, 0x34495e, 0xc0a16b, 0x16a085, 0x8e44ad, 0xd35400, 0x2980b9];

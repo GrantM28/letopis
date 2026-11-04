@@ -8,7 +8,7 @@ import { FEMALE, MALE, bandColor, bandName, fixBandName, familyFrom, nickname, p
 import { ERAS, TECHS, TECH_BY_ID, Tech, eraOf } from './tech';
 import { BIG, startStage, treeKinds } from '../../shared/trees';
 import { findRoad } from './roads';
-import { BEAST_EN, ERAS_EN, FEATURE_EN, SECRET_HEROES_EN, SECRET_KINDS_EN, TECH_EN, bandEn, bandLabelEn, causeEn, chiefEn, deedEn, personEn, translit } from '../../shared/i18n';
+import { BEAST_EN, ERAS_EN, FEATURE_EN, SECRET_HEROES_EN, SECRET_KINDS_EN, TECH_EN, bandEn, bandLabelEn, bandThe, causeEn, chiefEn, deedEn, personEn, translit } from '../../shared/i18n';
 
 export const START_YEAR = -12000;
 /** what a new age brings, written in the chronicle when the first band reaches it: [bg, en] */
@@ -973,8 +973,8 @@ export class Simulation {
     this.emit('settle', 3,
       `${b.name} спря да скита и основа селото ${b.settlementName}. ${chief ? `Старейшината ${this.nameOf(elder)}` : `Най-възрастният в рода, ${this.nameOf(elder)},`} избра мястото край водата.`,
       `${b.name} построи село и го нарече ${b.settlementName}!`, elder.id, b.id, [],
-      [`The ${bandEn(b.name)} stopped wandering and founded the village of ${translit(b.settlementName)}. ${chief ? `The elder ${this.nameEn(elder)}` : `The oldest of the clan, ${this.nameEn(elder)},`} chose the place by the water.`,
-        `The ${bandEn(b.name)} built a village and named it ${translit(b.settlementName)}!`]);
+      [`${bandThe(b.name, true)} stopped wandering and founded the village of ${translit(b.settlementName)}. ${chief ? `The elder ${this.nameEn(elder)}` : `The oldest of the clan, ${this.nameEn(elder)},`} chose the place by the water.`,
+        `${bandThe(b.name, true)} built a village and named it ${translit(b.settlementName)}!`]);
   }
 
   private lifeAndDeath(members: Map<number, Person[]>) {
