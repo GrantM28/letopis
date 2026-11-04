@@ -17,7 +17,9 @@ OUT = os.path.join(ROOT, 'art', 'cut')
 
 ALPHA_CUT = 128   # below this a pixel is background
 ERODE = 3         # px eaten from the outline: removes the coloured halo the generator leaves
-MIN_PART = 0.04   # parts smaller than this share of the biggest part are specks and are dropped
+MIN_PART = 0.04
+# sheets that are not 4x4: letter -> (rows, columns); their cells are named <letter><row><column, two digits>
+GRIDS = {'AQ': (5, 10), 'AR': (5, 10)}   # parts smaller than this share of the biggest part are specks and are dropped
 
 
 def find_cuts(mask: np.ndarray, axis: int, n: int = 4, search: int = 60) -> list[int]:
@@ -74,16 +76,25 @@ def components(mask: np.ndarray) -> tuple[np.ndarray, list[int]]:
     return lab, sizes
 
 
-def clean_cell(rgba: np.ndarray) -> np.ndarray | None:
+def dilate(mask: np.ndarray, r: int) -> np.ndarray:
+    return ~erode(~mask, r)
+
+
+def clean_cell(rgba: np.ndarray, symbol: bool = False) -> np.ndarray | None:
     mask = rgba[..., 3] >= ALPHA_CUT
-    mask = erode(mask, ERODE)
+    if symbol:
+        # thin stamped symbols: no eroding (it eats spears, legs and stars); close the speckles inside instead
+        mask = erode(dilate(mask, 2), 2) & (rgba[..., 3] > 0) | mask
+        mask = erode(dilate(mask, 2), 2)
+    else:
+        mask = erode(mask, ERODE)
     if not mask.any():
         return None
     lab, sizes = components(mask)
     biggest = max(sizes[1:])
     keep = np.zeros_like(mask)
     for i, s in enumerate(sizes):
-        if i and s >= biggest * MIN_PART:
+        if i and s >= biggest * (0.004 if symbol else MIN_PART):
             keep |= lab == i
     ys, xs = np.nonzero(keep)
     y0, y1, x0, x1 = ys.min(), ys.max() + 1, xs.min(), xs.max() + 1
@@ -118,16 +129,18 @@ def main() -> int:
         if img[..., 3].min() == 255:
             img = key_magenta(img)
         mask = img[..., 3] >= ALPHA_CUT
-        rows = find_cuts(mask, 0)
-        cols = find_cuts(mask, 1)
-        for r in range(4):
-            for c in range(4):
+        nr, nc = GRIDS.get(letter, (4, 4))
+        rows = find_cuts(mask, 0, nr, search=40 if nr > 4 else 60)
+        cols = find_cuts(mask, 1, nc, search=40 if nc > 4 else 60)
+        for r in range(nr):
+            for c in range(nc):
+                cid = f'{letter}{r + 1}{c + 1:02}' if letter in GRIDS else f'{letter}{r + 1}{c + 1}'
                 cell = img[rows[r]:rows[r + 1], cols[c]:cols[c + 1]]
-                sprite = clean_cell(cell)
+                sprite = clean_cell(cell, symbol=letter in GRIDS)
                 if sprite is None:
-                    print(f'{letter}{r + 1}{c + 1}: empty', file=sys.stderr)
+                    print(f'{cid}: empty', file=sys.stderr)
                     continue
-                Image.fromarray(sprite).save(os.path.join(OUT, f'{letter}{r + 1}{c + 1}.png'))
+                Image.fromarray(sprite).save(os.path.join(OUT, f'{cid}.png'))
         print(name, 'rows', rows, 'cols', cols)
     return 0
 
