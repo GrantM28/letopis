@@ -89,20 +89,25 @@ export class Atlas {
   }
 }
 
-// Totem in the band name -> symbol in the atlas (sym0..sym15, same order as sheet J).
-const SYM = {
-  paw: 0, wolf: 1, eagle: 2, antlers: 3, falcon: 4, boar: 5, bison: 6, fox: 7,
-  owl: 8, fish: 9, oak: 10, waves: 11, flame: 12, star: 13, moon: 14, sun: 15,
-};
+// Totem in the band name -> symbol in the atlas (sym0..sym99: sheets AQ then AR, row by row).
+// Only the totem is matched ("Родът на Белия Вълк от Ледения Хълм" -> "Вълк").
 const TOTEM_SYMBOL: [RegExp, number][] = [
-  [/Мечка/, SYM.paw], [/Вълк/, SYM.wolf], [/Орел|Гарван|Щъркел/, SYM.eagle], [/Елен|Сърна/, SYM.antlers],
-  [/Сокол|Ястреб|Лястовиц/, SYM.falcon], [/Глиган|Бобър/, SYM.boar], [/Бизон|Кон|Лъв/, SYM.bison], [/Лисиц|Рис/, SYM.fox],
-  [/Бухал|Сова/, SYM.owl], [/Риба/, SYM.fish], [/Дъб|Бор|Гора/, SYM.oak], [/Река|Езеро|Змия|Роса|Вят|Облак/, SYM.waves],
-  [/Огън|Пламъч/, SYM.flame], [/Звезд|Зорниц/, SYM.star], [/Луна/, SYM.moon], [/Слън/, SYM.sun],
+  [/Вълчиц/, 2], [/Вълк/, 2], [/Орел|Орл|Сокол|Ястреб|Лястовиц/, 13], [/Елен|Сърн|Кошут/, 5], [/Глиган/, 24],
+  [/Бизон/, 6], [/Бухал|Сов|Кукумявк/, 14], [/Дъб|Чинар|Явор|Лип|Върб/, 47], [/Камък|Скал/, 54],
+  [/Огн|Огън|Пламъч/, 32], [/Вят|Вихр|Вихър/, 75], [/Гарван|Сойк|Кълвач/, 15], [/Рис|Лъв/, 8], [/Бобър|Бобр/, 43],
+  [/Бор|Гор/, 86], [/Облак/, 76], [/Щъркел|Жерав|Чапл|Лебед/, 60], [/Мамут/, 0], [/Тур|Зубър|Зубр/, 1],
+  [/Гръм|Гром|Мълни|Бур/, 74], [/Кремък|Кремък/, 37], [/Изгрев|Зор[аи]|Здрач/, 56], [/Залез/, 71],
+  [/Руче|Рек/, 31], [/Водопад|Дъг/, 79], [/Козирог/, 22], [/Скорпион|Пчел|Мравк|Калинк/, 19], [/Бръшлян/, 46],
+  [/Мечк/, 4], [/Лисиц/, 61], [/Риб/, 9], [/Звезд|Зорниц/, 72], [/Лун/, 29], [/Змия|Змий/, 16], [/Планин/, 30],
+  [/Рос/, 81], [/Пеперуд/, 88], [/Видр/, 10], [/Катериц/, 48], [/Костенурк/, 11], [/Слън/, 28], [/Езер/, 89],
+  [/Ехо/, 58], [/Небе/, 73], [/Кон/, 62], [/Таралеж/, 3], [/Сърц/, 96],
 ];
+const USED = new Set(TOTEM_SYMBOL.map(([, s]) => s));
+const FREE = Array.from({ length: 100 }, (_, i) => i).filter((i) => !USED.has(i));
 export function bandSymbol(name: string, id: number): number {
-  for (const [re, s] of TOTEM_SYMBOL) if (re.test(name)) return s;
-  return Math.floor(hash(id, 3) * 16);
+  const totem = name.replace(/^Родът на /, '').split(' от ')[0].split(' ').pop() ?? '';
+  for (const [re, s] of TOTEM_SYMBOL) if (re.test(totem)) return s;
+  return FREE[Math.floor(hash(id, 3) * FREE.length)];
 }
 
 // Own GLSL: gentle moving light on the water surface.
