@@ -6,6 +6,7 @@ COPY . .
 RUN npm run typecheck && npm run build && npm prune --omit=dev
 
 FROM node:22.20.0-alpine3.22
+ARG LETOPIS_CHANNEL=
 LABEL org.opencontainers.image.title="Letopis" \
       org.opencontainers.image.description="Idle civilization simulation that lives on its own" \
       org.opencontainers.image.source="https://github.com/leppermesiah/letopis" \
@@ -15,7 +16,8 @@ WORKDIR /app
 ENV NODE_ENV=production \
     LETOPIS_PORT=2222 \
     LETOPIS_DATA=/data \
-    TZ=Europe/Sofia
+    TZ=Europe/Sofia \
+    LETOPIS_CHANNEL=$LETOPIS_CHANNEL
 COPY --from=build /app/package.json ./
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist

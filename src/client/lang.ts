@@ -77,7 +77,7 @@ export function translatePage() {
   set('#conn', undefined, 'Connection to the server');
   const brand = document.querySelector('.brand');
   if (brand?.firstChild) brand.firstChild.textContent = 'Letopis ';
-  document.title = 'Letopis';
+  document.title = document.title.replace('Летопис', 'Letopis');
   const stats: [string, string][] = [['#pop', 'People'], ['#bandsCount', 'Clans'], ['#born', 'Born'], ['#died', 'Died'], ['#age', 'World age']];
   for (const [id, label] of stats) {
     const span = document.querySelector(id)?.previousElementSibling;
