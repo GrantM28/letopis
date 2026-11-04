@@ -6,6 +6,7 @@ import {
   eraEn, personEn, taskEn, techEn, titleEn, translit, yearsInTextEn, GENE_EN,
 } from '../shared/i18n';
 import { MONTHS, formatYear } from '../shared/types';
+import { clanBase } from '../shared/clans';
 import { SECRET_HEROES, SECRET_KINDS } from '../shared/secrets';
 
 function initial(): Lang {
@@ -59,7 +60,7 @@ export const BIOME_EN = BIOME_NAMES_EN;
 export function refName(n: string, isPerson: boolean): string {
   if (!EN) return n;
   if (isPerson) return personEn(n);
-  return /^(Родът|рода) на /.test(n) ? bandEn(n) : translit(n);
+  return /^(Родът|рода) на /.test(n) || clanBase(n) ? bandEn(n) : translit(n);
 }
 
 /** the static page in English (index.html is written in Bulgarian) */

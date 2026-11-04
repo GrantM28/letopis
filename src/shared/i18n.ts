@@ -1,6 +1,8 @@
 // English for Letopis. The world speaks Bulgarian inside the simulation; everything a player reads can also be shown in English.
 // Names are transliterated (Иван Петров -> Ivan Petrov), nicknames, totems and places are translated.
 
+import { CLAN_EN, clanBase } from './clans';
+
 export type Lang = 'bg' | 'en';
 
 const TR: Record<string, string> = {
@@ -83,6 +85,8 @@ const phraseEn = (s: string) => s.split(' ').map(wordEn).join(' ');
 
 /** "Родът на Вълка от Ледения Хълм" -> "Clan of the Wolf from the Icy Hill" */
 export function bandEn(name: string): string {
+  const c = clanBase(name);
+  if (c) return CLAN_EN.get(c[0])! + c[1];
   const m = /^(?:Родът|рода) на (.+)$/.exec(name);
   if (!m) return translit(name);
   const [totem, place] = m[1].split(' от ');
@@ -92,13 +96,21 @@ export function bandEn(name: string): string {
 /** how a band is named inside an English sentence: "the Clan of the Wolf", "the village of Belovo" */
 export function bandLabelEn(name: string, settlement: string | null | undefined, subject = false): string {
   const the = subject ? 'The' : 'the';
-  return settlement ? `${the} village of ${translit(settlement)}` : `${the} ${bandEn(name)}`;
+  return settlement ? `${the} village of ${translit(settlement)}` : bandThe(name, subject);
+}
+
+/** "the Wolf Tooth", "the Silent" (never "the The Silent") */
+export function bandThe(name: string, subject = false): string {
+  const en = bandEn(name);
+  if (en.startsWith('The ')) return subject ? en : `the ${en.slice(4)}`;
+  return `${subject ? 'The' : 'the'} ${en}`;
 }
 
 /** any band text the server writes in Bulgarian: "Родът на ...", "рода на ...", "Селото X", a village name */
 export function bandTextEn(s: string): string {
   if (!s) return s;
   if (/^(Родът|рода) на /.test(s)) return (s[0] === 'Р' ? 'The ' : 'the ') + bandEn(s);
+  if (clanBase(s)) return bandThe(s);
   const v = /^(Селото|селото) (.+)$/.exec(s);
   if (v) return `${v[1][0] === 'С' ? 'The' : 'the'} village of ${translit(v[2])}`;
   return translit(s);
