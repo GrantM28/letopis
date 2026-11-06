@@ -4,7 +4,7 @@ import {
   BandView, ChronicleEntry, Discovery, FamilyTree, GoneBand, TreeNode, PersonDetail, PersonRow, SnapshotMessage, TASKS, TASK_NAMES, TickMessage, WorldInfo, b64decode,
 } from '../shared/types';
 import { SECRET_COUNT, SecretFind, SecretSpot } from '../shared/secrets';
-import { ERAS_BG, ERAS_EN, TECH_LIST } from '../shared/i18n';
+import { ERAS_BG, ERAS_EN, TECH_DESC, TECH_LIST } from '../shared/i18n';
 import {
   B, BL, CAUSE, CHIEF, DEED, EN, ERA, GENE, HERO, P, SECRET_KIND, T, TASK, TECH, TECH_ID, TITLE, VILLAGE, fmtYear, monthName, num, refName, setLang, translatePage,
 } from './lang';
@@ -359,13 +359,17 @@ function renderSide() {
       if (activeTab !== 'discoveries') return;
       const known = new Set(ds.map((d) => d.tech));
       const done = (d: Discovery) => `<li><b>${esc(TECH_ID(d.tech, d.name))}</b> - ${T('открито от', 'discovered by')} ${d.pid ? `<a href="#" class="ref" data-person="${d.pid}">${esc(P(d.who))}</a>` : esc(P(d.who))}${d.band ? ` <span class="muted">(${esc(BL(d.band.replace(/^рода/, 'Родът').replace(/^селото/, 'Селото')))})</span>` : ''} ${T('през', 'in')} <span class="yr">${fmtYear(d.year)}</span></li>`;
-      // still to come: greyed out, in the order history found them, each age under its name
-      const todo = TECH_LIST.filter(([id]) => !known.has(id));
-      const eras = [...new Set(todo.map(([, , e]) => e))];
+      const byId = new Map(ds.map((d) => [d.tech, d]));
+      // every age with all its discoveries, like the secrets: the ones still to come are grey and only described
+      const eras = [...new Set(TECH_LIST.map(([, , e]) => e))];
+      const todo = ([id, bg]: [string, string, number]) => `<li class="todo"><b>${esc(TECH_ID(id, bg))}</b> - ${esc(TECH_DESC[id]?.[EN ? 1 : 0] ?? T('още не е открито', 'not discovered yet'))}</li>`;
       body.innerHTML = `<p class="muted">${T(`Открити ${known.size} от ${TECH_LIST.length} знания. Всяко е открито за първи път от някого в този свят.`, `${known.size} of ${TECH_LIST.length} discoveries made. Each one was first found by someone in this world.`)}</p>
-        <ul class="discoveries">${ds.map(done).join('')}</ul>
-        ${eras.map((e) => `<h3 class="todo-era">${esc(EN ? ERAS_EN[e] : ERAS_BG[e])}</h3><ul class="discoveries">${todo.filter(([, , x]) => x === e)
-          .map(([id, bg]) => `<li class="todo"><b>${esc(TECH_ID(id, bg))}</b> - ${T('още не е открито', 'not discovered yet')}</li>`).join('')}</ul>`).join('')}`;
+        ${eras.map((e) => {
+          const list = TECH_LIST.filter(([, , x]) => x === e);
+          const n = list.filter(([id]) => byId.has(id)).length;
+          return `<h3 class="tech-era">${esc(EN ? ERAS_EN[e] : ERAS_BG[e])} <span>${n}/${list.length}</span></h3>
+            <ul class="discoveries">${list.map((t) => (byId.has(t[0]) ? done(byId.get(t[0])!) : todo(t))).join('')}</ul>`;
+        }).join('')}`;
     });
   } else if (activeTab === 'bands') {
     const sorted = [...bands].sort((a, b) => b.size - a.size);
