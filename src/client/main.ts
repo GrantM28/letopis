@@ -367,8 +367,8 @@ function renderSide() {
         ${eras.map((e) => {
           const list = TECH_LIST.filter(([, , x]) => x === e);
           const n = list.filter(([id]) => byId.has(id)).length;
-          return `<h3 class="tech-era">${esc(EN ? ERAS_EN[e] : ERAS_BG[e])} <span>${n}/${list.length}</span></h3>
-            <ul class="discoveries">${list.map((t) => (byId.has(t[0]) ? done(byId.get(t[0])!) : todo(t))).join('')}</ul>`;
+          return `<section class="tech-age"><h3 class="tech-era">${esc(EN ? ERAS_EN[e] : ERAS_BG[e])} <span>${n}/${list.length}</span></h3>
+            <ul class="discoveries">${list.map((t) => (byId.has(t[0]) ? done(byId.get(t[0])!) : todo(t))).join('')}</ul></section>`;
         }).join('')}`;
     });
   } else if (activeTab === 'bands') {
