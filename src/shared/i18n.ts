@@ -165,6 +165,38 @@ export const TECH_LIST: [string, string, number][] = [
   ['calendar', 'Календар', 2], ['horse', 'Опитомен кон', 2],
 ];
 
+/** a line about each discovery, for the ones still to come: [Bulgarian, English] */
+export const TECH_DESC: Record<string, [string, string]> = {
+  fire: ['Да опитомиш огъня: топлина, светлина и печено месо.', 'Taming fire: warmth, light and cooked meat.'],
+  stone_tools: ['Остри ножове и стъргала от кремък.', 'Sharp knives and scrapers knapped from flint.'],
+  burial: ['Мъртвите се изпращат с обред и се помнят.', 'The dead are sent off with a rite and remembered.'],
+  spear: ['Каменен връх на дълга пръчка: ловът става по-безопасен.', 'A stone point on a long shaft: safer hunting.'],
+  herb_lore: ['Кои треви лекуват и кои тровят.', 'Which plants heal and which ones poison.'],
+  clothing: ['Дрехи от кожи, за да се преживее зимата.', 'Clothes sewn from hides to survive the winter.'],
+  cave_art: ['Рисунки с охра и въглен по стените на пещерите.', 'Pictures in ochre and charcoal on cave walls.'],
+  shelter: ['Кожи, опънати върху кости и клони: подслон навсякъде.', 'Hides stretched over bones and branches: shelter anywhere.'],
+  fishing: ['Харпун и риба от реката.', 'A harpoon, and fish from the river.'],
+  dog: ['Вълчетата край огъня стават първите кучета.', 'Wolf pups by the fire become the first dogs.'],
+  bow: ['Жила върху огъната пръчка: удар от далеч.', 'Sinew on a bent stick: striking from afar.'],
+  grinding: ['Зърно, смляно между два камъка, става брашно.', 'Grain ground between two stones becomes flour.'],
+  agriculture: ['Засетите зърна дават ниви, а родът спира да скита.', 'Sown grain gives fields, and the clan stops wandering.'],
+  pottery: ['Изпечена глина пази храната от мишки и влага.', 'Fired clay keeps food safe from mice and damp.'],
+  herding: ['Кози и овце в кошара: мляко и месо без лов.', 'Goats and sheep in a fold: milk and meat without hunting.'],
+  weaving: ['Лен, изпреден на конец и изтъкан на плат.', 'Flax spun into thread and woven into cloth.'],
+  mudbrick: ['Къщи от плет и кал: селото става дом.', 'Houses of wattle and daub: the village becomes home.'],
+  boats: ['Издълбан дънер: реките вече не са граница.', 'A hollowed log: rivers are no longer a border.'],
+  copper: ['Зелен камък в жарта дава червен метал.', 'A green stone in the embers gives a red metal.'],
+  plough: ['Вол и заострен кол: нива за ден вместо за седмица.', 'An ox and a sharp stake: a field in a day, not a week.'],
+  wheel: ['Дървен кръг на ос и първата каруца.', 'A wooden disc on an axle, and the first cart.'],
+  bronze: ['Мед и калай дават метал, по-твърд от камък.', 'Copper and tin make a metal harder than stone.'],
+  sailing: ['Платно на лодката: вятърът гребе вместо хората.', 'A sail on the boat: the wind rows instead of people.'],
+  writing: ['Знаци в глината, които помнят вместо хората.', 'Marks in clay that remember for people.'],
+  trade: ['Размяна на стоки между далечни села.', 'Goods exchanged between distant villages.'],
+  walls: ['Каменни стени около селото: първите градове.', 'Stone walls around the village: the first towns.'],
+  calendar: ['Звездите казват кога да се сее и кога да се жъне.', 'The stars tell when to sow and when to reap.'],
+  horse: ['Кон под седлото: пътят от седмица става ден.', 'A horse to ride: a week of walking becomes a day.'],
+};
+
 /** a tech by its Bulgarian name (what the server sends) */
 export function techEn(bg: string): string {
   const id = TECH_BG[bg];
