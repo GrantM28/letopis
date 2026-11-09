@@ -586,8 +586,6 @@ function renderSide() {
       <ul id="chronicleList" class="events">${shown.map(eventHtml).join('')}</ul>
       ${shown.length ? '' : `<p class="empty-note">${T('Няма такива записи наскоро. Зареди по-старите.', 'No entries like this lately. Load older ones.')}</p>`}
       <button id="more" class="btn ghost">${T('По-стари записи', 'Older entries')}</button>`;
-    if (aiOn) body.insertAdjacentHTML('afterbegin', '<button class="btn ghost legend-btn" id="legendBtn">📜 Tell the story so far</button>');
-    document.getElementById('legendBtn')?.addEventListener('click', () => void showLegend());
     body.querySelectorAll<HTMLButtonElement>('.chip').forEach((c) => {
       c.onclick = () => { feedKind = c.dataset.kind!; save('letopis.feedKind', feedKind); autoLoads = 0; renderSide(); };
     });
@@ -922,8 +920,6 @@ function closeCard() {
 $('#cardClose').onclick = closeCard;
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeCard(); });
 $('#card').addEventListener('click', (e) => {
-  const talk = (e.target as HTMLElement).closest<HTMLElement>('[data-talk]');
-  if (talk) { e.preventDefault(); openChat(Number(talk.dataset.talk), talk.dataset.name ?? ''); return; }
   const el = (e.target as HTMLElement).closest<HTMLElement>('[data-person],[data-tree],[data-band]');
   if (!el) return;
   e.preventDefault();
@@ -956,7 +952,6 @@ async function showPerson(id: number) {
       <dt>${T('Деца', 'Children')}</dt><dd>${d.children.length ? d.children.map((c) => `<a href="#" data-person="${c.id}" class="${c.alive ? '' : 'dead'}">${esc(P(c.name))}</a>`).join(', ') : `<span class="muted">${T('няма', 'none')}</span>`}</dd>
     </dl>
     <button class="btn tree-btn" data-tree="${d.id}">${T('Родословие', 'Family tree')}</button>
-    ${aiOn && alive ? `<button class="btn tree-btn talk-btn" data-talk="${d.id}" data-name="${esc(P(d.name))}">💬 Talk to ${esc(P(d.name).split(' ')[0])}</button>` : ''}
     ${d.deeds.length ? `<h3>${T('Дела', 'Deeds')}</h3><ul class="deeds">${d.deeds.map((x) => `<li>${esc(DEED(x))}</li>`).join('')}</ul>` : ''}`, beside);
   if (live && alive) { follow = id; r.select(id); }
 }
@@ -1111,55 +1106,6 @@ function showBand(b: BandView) {
       <div><b>${esc(p.name)}</b>${p.chief ? ' <span class="badge village">chief</span>' : ''}<div class="muted">${p.age} y · ${esc(TASK(TASK_NAMES[p.task as keyof typeof TASK_NAMES] ?? p.task))}${p.deeds ? ` · ${p.deeds} deed${p.deeds > 1 ? 's' : ''}` : ''}</div></div></li>`).join('')
       || '<li class="muted">Nobody.</li>';
   }).catch(() => { const el = document.getElementById('bandPeople'); if (el) el.innerHTML = '<li class="muted">Could not load.</li>'; });
-}
-
-// ---------- the storyteller (optional, Claude on the server: storyteller.ts) ----------
-
-let aiOn = false;
-api<{ enabled: boolean }>('/api/ai').then((a) => { aiOn = a.enabled; if (aiOn && activeTab === 'chronicle') renderSide(); }).catch(() => {});
-/** conversations stay while the page is open, one per person */
-const chats = new Map<number, { who: 'you' | 'them'; text: string }[]>();
-
-function openChat(id: number, name: string) {
-  const hist = chats.get(id) ?? [];
-  chats.set(id, hist);
-  const draw = (busy = false, note = '') => {
-    openCard(`<h2>💬 ${esc(name)}</h2>
-      <p class="muted">Speak with ${esc(name.split(' ')[0])}. They answer from their own life in this world, and know only what their age knows.</p>
-      <div class="chat" id="chatLog">${hist.map((m) => `<div class="msg ${m.who}"><span>${esc(m.text)}</span></div>`).join('')
-        || '<p class="muted chat-empty">Ask about their family, their clan, what they fear or hope for…</p>'}
-        ${busy ? '<div class="msg them typing"><span>…</span></div>' : ''}</div>
-      ${note ? `<p class="act-note">${esc(note)}</p>` : ''}
-      <form class="chat-form" id="chatForm"><input id="chatInput" maxlength="600" autocomplete="off" placeholder="Say something…" ${busy ? 'disabled' : ''}>
-        <button class="btn" ${busy ? 'disabled' : ''}>Send</button></form>
-      <button class="btn ghost" data-person="${id}">Back to ${esc(name.split(' ')[0])}'s card</button>`);
-    const log = document.getElementById('chatLog');
-    if (log) log.scrollTop = log.scrollHeight;
-    const input = document.getElementById('chatInput') as HTMLInputElement | null;
-    input?.focus();
-    document.getElementById('chatForm')?.addEventListener('submit', async (ev) => {
-      ev.preventDefault();
-      const text = input?.value.trim() ?? '';
-      if (!text) return;
-      const before = hist.slice();
-      hist.push({ who: 'you', text });
-      draw(true);
-      const r = await fetch('/api/ai/talk', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ person: id, history: before, message: text }) })
-        .then((x) => x.json()).catch(() => ({ error: 'The storyteller could not be reached.' })) as { reply?: string; error?: string };
-      if (r.reply) hist.push({ who: 'them', text: r.reply });
-      else hist.pop();
-      draw(false, r.error ?? '');
-    });
-  };
-  draw();
-}
-
-async function showLegend() {
-  openCard('<h2>📜 The story so far</h2><p class="muted">The chronicler is writing… this can take a little while.</p>', false, 'wide');
-  const r = await fetch('/api/ai/legend', { method: 'POST' }).then((x) => x.json()).catch(() => ({ error: 'The storyteller could not be reached.' })) as { text?: string; error?: string };
-  openCard(`<h2>📜 The story so far</h2>${r.text ? `<div class="legend">${r.text.split(/\n\s*\n/).map((p) => `<p>${esc(p.trim())}</p>`).join('')}</div>
-    <p class="muted">Written by the chronicler from this world's own history. It is kept until something important happens.</p>`
-    : `<p class="act-note">${esc(r.error ?? 'No story came.')}</p>`}`, false, 'wide');
 }
 
 // ---------- while you were away ----------

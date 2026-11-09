@@ -380,19 +380,3 @@ body.map-hidden .minimap { display: none; }
 .clock-label { margin-left: 6px; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
 body.paused .clock-label { color: var(--accent); font-weight: 600; }
 body.paused .tick i { background: var(--muted); }
-
-/* ---------- the storyteller ---------- */
-.chat { display: flex; flex-direction: column; gap: 8px; max-height: 340px; overflow-y: auto; margin: 12px 0; padding: 4px 2px; }
-.msg { display: flex; }
-.msg span { max-width: 82%; padding: 8px 12px; border-radius: 14px; line-height: 1.45; white-space: pre-wrap; }
-.msg.you { justify-content: flex-end; }
-.msg.you span { background: var(--accent-2-soft); border: 1px solid rgba(127, 178, 217, 0.35); border-bottom-right-radius: 4px; }
-.msg.them span { background: var(--panel-raised); border: 1px solid var(--line); border-bottom-left-radius: 4px; font-family: var(--serif); }
-.msg.typing span { color: var(--muted); animation: breathe 1.4s ease-in-out infinite; }
-.chat-empty { text-align: center; }
-.chat-form { display: flex; gap: 8px; }
-.chat-form input { flex: 1; min-width: 0; font: inherit; color: var(--text); background: rgba(255, 255, 255, 0.05); border: 1px solid var(--line); border-radius: 999px; padding: 8px 14px; outline: none; }
-.chat-form input:focus { border-color: var(--accent-2); }
-.talk-btn { margin-left: 6px; }
-.legend-btn { margin-top: 0; }
-.legend p { font-family: var(--serif); font-size: 1.05em; line-height: 1.65; margin: 0 0 12px; }
