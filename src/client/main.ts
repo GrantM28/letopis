@@ -4,7 +4,8 @@ import {
   BandView, ChronicleEntry, Discovery, FamilyTree, GoneBand, TreeNode, PersonDetail, PersonRow, SnapshotMessage, TASKS, TASK_NAMES, TickMessage, WorldInfo, b64decode,
 } from '../shared/types';
 import { SECRET_COUNT, SecretFind, SecretSpot } from '../shared/secrets';
-import { ERAS_BG, ERAS_EN, TECH_DESC, TECH_LIST } from '../shared/i18n';
+import { ERAS_BG, ERAS_EN, TECH_DESC, TECH_EN, TECH_LIST } from '../shared/i18n';
+import { ERA_GATES } from '../shared/later_techs';
 import {
   B, BL, CAUSE, CHIEF, DEED, EN, ERA, GENE, HERO, P, SECRET_KIND, T, TASK, TECH, TECH_ID, TITLE, VILLAGE, fmtYear, monthName, num, refName, setLang, translatePage,
 } from './lang';
@@ -194,7 +195,56 @@ function applyTime(t: TickMessage['time'], population: number) {
   $('#bandsCount').textContent = String(bands.length);
   const days = (Date.now() - t.startedAt) / 86400000;
   $('#age').textContent = days < 1 ? `${Math.round(days * 24)} ${T('ч.', 'h')}` : `${Math.floor(days)} ${T('дни', 'days')}`;
+  currentEra = t.era;
+  updateAgeProgress();
 }
+
+// ---------- progress through the ages ----------
+
+let currentEra = 0;
+/** the discovery that opens each age */
+const GATES = new Map<number, string>([[1, 'agriculture'], [2, 'bronze'], ...ERA_GATES]);
+const TECH_ID_BY_BG = new Map(TECH_LIST.map(([id, bg]) => [bg, id]));
+/** every discovery some living clan knows, by id (bands carry Bulgarian names) */
+function knownNow(): Set<string> {
+  const s = new Set<string>();
+  for (const b of bands) for (const t of b.techs) { const id = TECH_ID_BY_BG.get(t); if (id) s.add(id); }
+  return s;
+}
+const eraName = (e: number) => (EN ? ERAS_EN[e] : ERAS_BG[e]);
+const techLabel = (id: string) => (EN ? TECH_EN[id]?.name : TECH_LIST.find(([x]) => x === id)?.[1]) ?? id;
+
+function updateAgeProgress() {
+  const known = knownNow();
+  const list = TECH_LIST.filter(([, , e]) => e === currentEra);
+  const n = list.filter(([id]) => known.has(id)).length;
+  $('#ageCount').textContent = `${n}/${list.length}`;
+  ($('#ageBar') as HTMLElement).style.width = `${list.length ? (n / list.length) * 100 : 0}%`;
+  const next = currentEra + 1;
+  const gate = GATES.get(next);
+  const nextEl = $('#ageNext');
+  if (next < ERAS_EN.length && gate) {
+    nextEl.textContent = `${T('Следва', 'Next')}: ${eraName(next)}`;
+    $('#ageProg').title = T(`${eraName(next)} започва, когато някой открие „${techLabel(gate)}“.`, `The ${eraName(next)} begins when someone discovers ${techLabel(gate)}.`);
+  } else {
+    nextEl.textContent = T('Последната епоха', 'The last age');
+    $('#ageProg').title = '';
+  }
+}
+
+/** back to where the people are */
+function showAllBands() {
+  stopTour();
+  follow = null;
+  if (!bands.length) return;
+  const xs = bands.map((b) => b.x), ys = bands.map((b) => b.y);
+  const cx = (Math.min(...xs) + Math.max(...xs)) / 2, cy = (Math.min(...ys) + Math.max(...ys)) / 2;
+  const span = Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys), 8);
+  // the iso tiles are about TW wide: fit the spread of the clans into the screen
+  const fit = Math.min(app.screen.width, app.screen.height) / (span * TW * 0.75);
+  lookAt(cx, cy, Math.max(0.25, Math.min(1.6, fit)));
+}
+$('#homeBtn').onclick = showAllBands;
 
 function onSnapshot(m: SnapshotMessage) {
   bands = m.bands;
@@ -226,7 +276,8 @@ function onTick(m: TickMessage) {
     const row = people.find((p) => p[0] === r.selectedId);
     if (row) ageEl.textContent = String(row[5]);
   }
-  if (activeTab === 'bands' || activeTab === 'stats') renderSide();
+  if (activeTab === 'bands') renderBandList();
+  else if (activeTab === 'stats') renderSide();
 }
 
 /** reload the page when the server runs a newer build (after an update of the container) */
@@ -295,13 +346,14 @@ function linkedText(e: ChronicleEntry): string {
   return out + esc(text.slice(at));
 }
 
+const ICON: Record<string, string> = {
+  discovery: '💡', rediscovery: '🔁', settle: '🏘️', colony: '🏘️', split: '🚶', death: '🕯️', twins: '👶', hunt: '🦣',
+  winter: '❄️', secret: '✨', drought: '☀️', extinct: '🌑', lost: '📜', meet: '🤝', learn: '📚', era: '⭐', milestone: '👥', genesis: '🌅', merge: '🔗', marriage: '💞', end: '🌑',
+};
+
 function eventHtml(e: ChronicleEntry): string {
-  const icon: Record<string, string> = {
-    discovery: '💡', rediscovery: '🔁', settle: '🏘️', colony: '🏘️', split: '🚶', death: '🕯️', twins: '👶', hunt: '🦣',
-    winter: '❄️', secret: '✨', drought: '☀️', extinct: '🌑', lost: '📜', meet: '🤝', learn: '📚', era: '⭐', milestone: '👥', genesis: '🌅', merge: '🔗', marriage: '💞', end: '🌑',
-  };
   return `<li class="ev imp${e.importance}">
-    <span class="ev-icon">${icon[e.kind] ?? '•'}</span>
+    <span class="ev-icon">${ICON[e.kind] ?? '•'}</span>
     <div><div class="ev-year">${fmtYear(e.year)}</div><div class="ev-text">${linkedText(e)}</div></div></li>`;
 }
 
@@ -323,13 +375,29 @@ function addEvent(e: ChronicleEntry, live: boolean) {
   }
 }
 
-let onlyBig = store('letopis.onlyBig', false);
-const feedFilter = (e: ChronicleEntry) => !onlyBig || e.importance >= 2;
+/** chronicle filters: which kinds of entries each chip shows */
+const FEED_KINDS: Record<string, { bg: string; en: string; kinds?: string[] }> = {
+  all: { bg: 'Всичко', en: 'All' },
+  big: { bg: 'Важно', en: 'Important' },
+  discovery: { bg: 'Открития', en: 'Discoveries', kinds: ['discovery', 'rediscovery', 'learn', 'era', 'lost'] },
+  life: { bg: 'Живот', en: 'Life', kinds: ['death', 'twins', 'marriage', 'milestone', 'genesis'] },
+  clans: { bg: 'Родове', en: 'Clans', kinds: ['settle', 'colony', 'split', 'meet', 'merge', 'extinct', 'end'] },
+  nature: { bg: 'Природа', en: 'Nature', kinds: ['hunt', 'winter', 'drought', 'secret'] },
+};
+let feedKind = store('letopis.feedKind', store('letopis.onlyBig', false) ? 'big' : 'all');
+if (!FEED_KINDS[feedKind]) feedKind = 'all';
+/** older pages fetched by themselves for the current filter */
+let autoLoads = 0;
+const feedFilter = (e: ChronicleEntry) => {
+  if (feedKind === 'all') return true;
+  if (feedKind === 'big') return e.importance >= 2;
+  return FEED_KINDS[feedKind].kinds!.includes(e.kind);
+};
 
 function toast(e: ChronicleEntry) {
   const t = document.createElement('div');
-  t.className = `toast imp${e.importance}`;
-  t.innerHTML = `<div class="ev-year">${fmtYear(e.year)}</div>${linkedText(e)}`;
+  t.className = `toast imp${e.importance}${e.kind === 'era' ? ' era' : ''}`;
+  t.innerHTML = `<span class="ev-icon">${ICON[e.kind] ?? '•'}</span><div><div class="ev-year">${fmtYear(e.year)}</div>${linkedText(e)}</div>`;
   t.onclick = (ev) => {
     const el = (ev.target as HTMLElement).closest<HTMLElement>('[data-person],[data-band]');
     if (el) { ev.preventDefault(); openRef(el); }
@@ -343,16 +411,29 @@ function toast(e: ChronicleEntry) {
 // ---------- side panel ----------
 
 let activeTab = store('letopis.tab', 'chronicle');
+/** ages opened in the discoveries tab; until one is touched, only the current age is open */
+const openAges = new Set<number>();
+let openAgesTouched = false;
+/** the clans tab: search text and sort order */
+let bandQuery = '';
+let bandSort = store<'size' | 'knowledge' | 'name'>('letopis.bandSort', 'size');
 
 function renderSide() {
   document.querySelectorAll<HTMLButtonElement>('.tab').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === activeTab)));
   const body = $('#sideBody');
   if (activeTab === 'chronicle') {
-    body.innerHTML = `<label class="chk"><input type="checkbox" id="onlyBig" ${onlyBig ? 'checked' : ''}> ${T('Само важните събития', 'Only important events')}</label>
-      <ul id="chronicleList" class="events">${feed.filter(feedFilter).map(eventHtml).join('')}</ul>
+    const shown = feed.filter(feedFilter);
+    body.innerHTML = `<div class="chips" role="group" aria-label="${T('Филтър', 'Filter')}">${Object.entries(FEED_KINDS).map(([k, v]) =>
+      `<button class="chip" data-kind="${k}" aria-pressed="${k === feedKind}">${esc(EN ? v.en : v.bg)}</button>`).join('')}</div>
+      <ul id="chronicleList" class="events">${shown.map(eventHtml).join('')}</ul>
+      ${shown.length ? '' : `<p class="empty-note">${T('Няма такива записи наскоро. Зареди по-старите.', 'No entries like this lately. Load older ones.')}</p>`}
       <button id="more" class="btn ghost">${T('По-стари записи', 'Older entries')}</button>`;
-    $('#onlyBig').onchange = (e) => { onlyBig = (e.target as HTMLInputElement).checked; save('letopis.onlyBig', onlyBig); renderSide(); };
+    body.querySelectorAll<HTMLButtonElement>('.chip').forEach((c) => {
+      c.onclick = () => { feedKind = c.dataset.kind!; save('letopis.feedKind', feedKind); autoLoads = 0; renderSide(); };
+    });
     $('#more').onclick = loadOlder;
+    // a narrow filter over only the latest entries can come up empty: reach back a few pages by itself
+    if (shown.length < 15 && autoLoads < 4) { autoLoads++; void loadOlder(); }
   } else if (activeTab === 'discoveries') {
     body.innerHTML = `<p class="muted">${T('Зареждам...', 'Loading...')}</p>`;
     api<Discovery[]>('/api/discoveries').then((ds) => {
@@ -363,20 +444,48 @@ function renderSide() {
       // every age with all its discoveries, like the secrets: the ones still to come are grey and only described
       const eras = [...new Set(TECH_LIST.map(([, , e]) => e))];
       const todo = ([id, bg]: [string, string, number]) => `<li class="todo"><b>${esc(TECH_ID(id, bg))}</b> - ${esc(TECH_DESC[id]?.[EN ? 1 : 0] ?? T('още не е открито', 'not discovered yet'))}</li>`;
-      body.innerHTML = `<p class="muted">${T(`Открити ${known.size} от ${TECH_LIST.length} знания. Всяко е открито за първи път от някого в този свят.`, `${known.size} of ${TECH_LIST.length} discoveries made. Each one was first found by someone in this world.`)}</p>
+      const pct = (a: number, b: number) => (b ? Math.round((a / b) * 100) : 0);
+      body.innerHTML = `<div class="overall">
+          <div class="age-line"><span>${T('Открити знания', 'Discoveries made')}</span><b>${known.size}/${TECH_LIST.length}</b></div>
+          <div class="meter"><i style="width:${pct(known.size, TECH_LIST.length)}%"></i></div>
+        </div>
+        <p class="lead">${T('Всяко знание е открито за първи път от някого в този свят. Сивите още чакат своя откривател.', 'Each one was first found by someone in this world. The grey ones are still waiting for their discoverer.')}</p>
         ${eras.map((e) => {
           const list = TECH_LIST.filter(([, , x]) => x === e);
           const n = list.filter(([id]) => byId.has(id)).length;
-          return `<section class="tech-age"><h3 class="tech-era">${esc(EN ? ERAS_EN[e] : ERAS_BG[e])} <span>${n}/${list.length}</span></h3>
-            <ul class="discoveries">${list.map((t) => (byId.has(t[0]) ? done(byId.get(t[0])!) : todo(t))).join('')}</ul></section>`;
+          const state = e === currentEra ? 'current' : n === list.length ? 'done' : n ? 'started' : '';
+          const open = openAges.has(e) || (!openAgesTouched && e === currentEra);
+          return `<details class="tech-age ${state}" data-era="${e}"${open ? ' open' : ''}><summary>
+              <span class="tech-era">${esc(EN ? ERAS_EN[e] : ERAS_BG[e])}${e === currentEra ? ` <span class="tag">${T('сега', 'now')}</span>` : ''}</span>
+              <span class="tech-count">${n}/${list.length}</span>
+              <div class="meter"><i style="width:${pct(n, list.length)}%"></i></div></summary>
+            <ul class="discoveries">${list.map((t) => (byId.has(t[0]) ? done(byId.get(t[0])!) : todo(t))).join('')}</ul></details>`;
         }).join('')}`;
+      body.querySelectorAll<HTMLDetailsElement>('details.tech-age').forEach((d) => {
+        d.addEventListener('toggle', () => {
+          openAgesTouched = true;
+          const e = Number(d.dataset.era);
+          if (d.open) openAges.add(e); else openAges.delete(e);
+        });
+      });
     });
   } else if (activeTab === 'bands') {
-    const sorted = [...bands].sort((a, b) => b.size - a.size);
-    body.innerHTML = `<ul class="bands">${sorted.map((b) => `
-      <li data-band="${b.id}"><span class="dot" style="background:#${b.color.toString(16).padStart(6, '0')}"></span>
-      <div><b>${esc(b.settlementName ? VILLAGE(b.settlementName) : B(b.name))}</b>${b.settlementName ? `<small> · ${esc(B(b.name))}</small>` : ''}
-      <div class="muted">${b.size} ${T('души', 'people')} · ${b.settled ? T('село', 'village') : T('скитат', 'nomads')} · ${T('знания', 'knowledge')}: ${b.techs.length}</div></div></li>`).join('')}</ul>`;
+    const sorts: [typeof bandSort, string, string][] = [['size', 'Най-големи', 'Largest'], ['knowledge', 'Най-учени', 'Most knowledge'], ['name', 'По име', 'By name']];
+    body.innerHTML = `<label class="search"><svg class="ic"><use href="#i-search"/></svg>
+        <input id="bandSearch" type="search" placeholder="${T('Търси род или село', 'Find a clan or village')}" value="${esc(bandQuery)}" autocomplete="off"></label>
+      <div class="chips">${sorts.map(([k, bg, en]) => `<button class="chip" data-sort="${k}" aria-pressed="${k === bandSort}">${T(bg, en)}</button>`).join('')}</div>
+      <p class="lead" id="bandSummary"></p>
+      <ul class="bands" id="bandList"></ul>`;
+    const input = $('#bandSearch') as HTMLInputElement;
+    input.oninput = () => { bandQuery = input.value; renderBandList(); };
+    body.querySelectorAll<HTMLButtonElement>('.chip[data-sort]').forEach((c) => {
+      c.onclick = () => {
+        bandSort = c.dataset.sort as typeof bandSort; save('letopis.bandSort', bandSort);
+        body.querySelectorAll('.chip[data-sort]').forEach((x) => x.setAttribute('aria-pressed', String(x === c)));
+        renderBandList();
+      };
+    });
+    renderBandList();
   } else if (activeTab === 'heroes') {
     body.innerHTML = `<p class="muted">${T('Зареждам...', 'Loading...')}</p>`;
     api<{ id: number; name: string; age: number; band: string; deeds: string[] }[]>('/api/heroes').then((hs) => {
@@ -406,6 +515,31 @@ function renderSide() {
           : `<li>${T('Намери ме', 'Find me')}</li>`).join('')}</ol>`;
     });
   }
+}
+
+/** the list part of the clans tab: redrawn every month without touching the search box */
+function renderBandList() {
+  const list = document.getElementById('bandList');
+  if (!list) return;
+  const label = (b: BandView) => (b.settlementName ? VILLAGE(b.settlementName) : B(b.name));
+  const q = bandQuery.trim().toLowerCase();
+  const shown = bands.filter((b) => !q || label(b).toLowerCase().includes(q) || B(b.name).toLowerCase().includes(q));
+  shown.sort(bandSort === 'name' ? (a, b) => label(a).localeCompare(label(b), EN ? 'en' : 'bg')
+    : bandSort === 'knowledge' ? (a, b) => b.techs.length - a.techs.length || b.size - a.size
+    : (a, b) => b.size - a.size);
+  const max = Math.max(1, ...bands.map((b) => b.size));
+  const villages = bands.filter((b) => b.settled).length;
+  const sum = $('#bandSummary');
+  if (sum) sum.textContent = T(`${bands.length} рода · ${villages} уседнали в села · ${bands.length - villages} скитат`,
+    `${bands.length} clans · ${villages} settled in villages · ${bands.length - villages} wandering`);
+  const hex = (c: number) => `#${c.toString(16).padStart(6, '0')}`;
+  list.innerHTML = shown.length ? shown.map((b) => `
+    <li data-band="${b.id}"><span class="dot" style="background:${hex(b.color)}"></span>
+    <div><b>${esc(label(b))}</b>${b.settlementName ? `<small> · ${esc(B(b.name))}</small>` : ''}
+      <span class="badge${b.settled ? ' village' : ''}">${b.settled ? T('село', 'village') : T('скитат', 'nomads')}</span>
+      <div class="muted">${b.size} ${T('души', 'people')} · ${T('знания', 'knowledge')}: ${b.techs.length}${b.chief ? ` · ${esc(CHIEF(b.chief.title))} ${esc(P(b.chief.name))}` : ''}</div>
+      <div class="band-size"><i style="width:${(b.size / max) * 100}%;background:${hex(b.color)}"></i></div></div></li>`).join('')
+    : `<li class="empty-note">${T('Няма такъв род.', 'No clan by that name.')}</li>`;
 }
 
 let statsAt = 0;
@@ -451,7 +585,7 @@ async function loadOlder() {
   const oldest = feed.length ? feed[feed.length - 1].id : undefined;
   const more = await api<ChronicleEntry[]>(`/api/chronicle?limit=80${oldest ? `&before=${oldest}` : ''}`);
   for (const e of more) if (!feed.some((f) => f.id === e.id)) feed.push(e);
-  renderSide();
+  if (activeTab === 'chronicle') renderSide();
 }
 
 document.querySelectorAll<HTMLButtonElement>('.tab').forEach((b) => {

@@ -85,12 +85,18 @@ export function translatePage() {
   }
   set('#sideHandle', undefined, 'Hide or show the panel');
   const tabs: Record<string, string> = { chronicle: 'Chronicle', discoveries: 'Discoveries', bands: 'Clans', heroes: 'People', stats: 'Statistics', secrets: 'Secrets' };
-  for (const [k, v] of Object.entries(tabs)) set(`.tab[data-tab="${k}"]`, v);
+  for (const [k, v] of Object.entries(tabs)) { set(`.tab[data-tab="${k}"] .lbl`, v); set(`.tab[data-tab="${k}"]`, undefined, v); }
   set('#zoomIn', undefined, 'Zoom in');
   set('#zoomOut', undefined, 'Zoom out');
-  set('#tourBtn', 'Tour', 'The camera wanders the world on its own');
-  set('#nightBtn', 'Night', 'Day and night cycle');
-  set('#kidsBtn', 'Kids mode', 'Bigger letters and explanations for children');
-  set('#sideToggle', 'Panel', 'Hide or show the chronicle');
+  set('#homeBtn', undefined, 'Show all the clans');
+  set('#tourBtn .lbl', 'Tour');
+  set('#tourBtn', undefined, 'The camera wanders the world on its own');
+  set('#nightBtn .lbl', 'Night');
+  set('#nightBtn', undefined, 'Day and night cycle');
+  set('#kidsBtn .lbl', 'Kids mode');
+  set('#kidsBtn', undefined, 'Bigger letters and explanations for children');
+  set('#sideToggle .lbl', 'Panel');
+  set('#sideToggle', undefined, 'Hide or show the chronicle');
+  set('#ageLabel', 'Discoveries of this age');
   set('#cardClose', undefined, 'Close');
 }
