@@ -744,6 +744,7 @@ interface History {
   gone: { extinct: number; merged: number };
   totalBorn: number; totalDied: number; year: number; era: number; notify: boolean;
   relations?: { alliances: number; rivalries: number };
+  learning?: { year: number; score: number; gen: number }[];
 }
 
 const EVENT_NAMES: Record<string, string> = {
@@ -839,14 +840,21 @@ async function renderStats(body: HTMLElement, wide = false) {
   lineChart(body.querySelector<HTMLElement>('#chTech')!, { xs, eras, fmtX: fmt, height: 120, series: [
     { name: 'Discoveries', color: '#b48ead', values: s.map((x) => x.techs), fill: true },
   ] });
-  api<{ clans: number; styles: Record<string, number>; avgGeneration: number; maxGeneration: number; tried: number; kept: number } | null>('/api/brains').then((bs) => {
+  api<{ clans: number; styles: Record<string, number>; avgGeneration: number; maxGeneration: number; tried: number; kept: number; network: { inputs: number; hidden: number; outputs: number; weights: number } } | null>('/api/brains').then((bs) => {
     const el = body.querySelector<HTMLElement>('#dashBrains');
     if (!el || !bs) return;
     el.classList.remove('muted');
-    el.innerHTML = `<p class="lead">Every clan learns by trying a slightly different way of spending its work each year and keeping it when the clan eats better;
-      daughter clans inherit their parents' way with small changes. Nobody wrote these strategies.</p>
-      ${barList(Object.entries(bs.styles), 'var(--accent)', 8)}
+    el.innerHTML = `<p class="lead">Every clan carries a small neural network (${bs.network.inputs} senses → ${bs.network.hidden} neurons → ${bs.network.outputs} decisions)
+      that decides each month how the clan shares its work. Each year a clan tries a slightly changed network and keeps it when the clan eats better,
+      and daughter clans inherit their parents' network with small mutations. Nobody wrote these strategies.</p>
+      <div id="chLearn"></div>
+      <h4>Ways of life now</h4>${barList(Object.entries(bs.styles), 'var(--accent)', 8)}
       <p class="muted">Line generations: ${bs.avgGeneration} on average, up to ${bs.maxGeneration} · ${num(bs.kept)} of ${num(bs.tried)} tries kept by the clans alive now.</p>`;
+    const L = h.learning ?? [];
+    lineChart(el.querySelector<HTMLElement>('#chLearn')!, { xs: L.map((x) => x.year), fmtX: fmt, height: 130, fmtY: (y) => y.toFixed(2), series: [
+      { name: 'How well clans do (food and growth)', color: '#6cc38a', values: L.map((x) => x.score), fill: true },
+      { name: 'Generation ÷ 10', color: '#b48ead', values: L.map((x) => x.gen / 10), dashed: true },
+    ] });
   }).catch(() => {});
   const wideBtn = body.querySelector<HTMLButtonElement>('#statsWide');
   if (wideBtn) wideBtn.onclick = () => { openCard('<div id="dashBody"><p class="muted">Loading…</p></div>', false, 'wide'); void renderStats($('#dashBody'), true); };
@@ -1074,15 +1082,17 @@ function showBand(b: BandView) {
   });
   // what the clan has learned (brain.ts on the server)
   const JOB_NAMES: Record<string, string> = { farm: 'Farming', herd: 'Herding', fish: 'Fishing', craft: 'Crafting', build: 'Building', forage: 'Hunting and gathering' };
-  api<{ style: string; weights: Record<string, number>; give: number; generation: number; tried: number; kept: number; trying: boolean; inspired: boolean } | null>(`/api/brain/${b.id}`).then((br) => {
+  api<{ style: string; weights: Record<string, number>; now: Record<string, number>; give: number; generation: number; tried: number; kept: number; trying: boolean; inspired: boolean; reactsTo: string[]; network: string } | null>(`/api/brain/${b.id}`).then((br) => {
     const el = document.getElementById('bandBrain');
     if (!el || !br) { if (el) el.textContent = 'Still finding its way.'; return; }
     el.classList.remove('muted');
     $('#bandStyleTag').textContent = br.style + (br.inspired ? ' · inspired' : '');
-    const max = Math.max(...Object.values(br.weights));
-    el.innerHTML = `<p class="lead">How this clan has learned to spend its work: every year it tries a slightly different way and keeps it if the clan eats better.
+    const max = Math.max(...Object.values(br.now), ...Object.values(br.weights));
+    el.innerHTML = `<p class="lead">This clan's brain is a small neural network (${esc(br.network)}). Every month it looks at the clan's situation and
+        decides how to share the work; every year it tries a slightly changed network and keeps it only if the clan ate better.
         Generation ${br.generation} of its line · ${br.kept} of ${br.tried} tries kept${br.trying ? ' · trying something new this year' : ''}.</p>
-      <div class="barlist">${Object.entries(br.weights).sort((x, y) => y[1] - x[1]).map(([k, v]) => `<div class="barrow"><span class="bl-k">${JOB_NAMES[k] ?? k}</span><span class="bl-v">×${v.toFixed(2)}</span>
+      ${br.reactsTo?.length ? `<p class="muted">It reacts most to: <b>${br.reactsTo.map(esc).join('</b>, <b>')}</b>.</p>` : ''}
+      <div class="barlist">${Object.entries(br.now).sort((x, y) => y[1] - x[1]).map(([k, v]) => `<div class="barrow"><span class="bl-k">${JOB_NAMES[k] ?? k}</span><span class="bl-v">×${v.toFixed(2)} now · ×${(br.weights[k] ?? 0).toFixed(2)} this year</span>
         <div class="bl-bar"><i style="width:${(v / max) * 100}%;background:${hex(b.color)}"></i></div></div>`).join('')}
         <div class="barrow"><span class="bl-k">Generosity to friends</span><span class="bl-v">${Math.round(br.give * 100)}%</span>
         <div class="bl-bar"><i style="width:${br.give * 100}%;background:var(--good)"></i></div></div></div>`;

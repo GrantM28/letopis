@@ -292,6 +292,9 @@ export function deedEn(d: string): string {
   if ((m = /^Доживя до 70 години \((.+)\)$/.exec(d))) return `Lived to 70 (${yearsInTextEn(m[1])})`;
   if ((m = /^Основа (.+) и стана негов (\S+) \((.+)\)$/.exec(d))) return `Founded the ${bandEn(m[1])} and became its ${chiefEn(m[2]).toLowerCase()} (${yearsInTextEn(m[3])})`;
   if ((m = /^Поведе лова на (.+)$/.exec(d))) return `Led the hunt for ${BEAST_EN[m[1]] ?? m[1]}`;
+  // the deeds of the fork's world events (event_words.ts)
+  const ev = eventDeedEn(d);
+  if (ev) return ev;
   return yearsInTextEn(d);
 }
 

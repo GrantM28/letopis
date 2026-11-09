@@ -33,12 +33,14 @@ and a reworked, English-only interface. Upstream changes are merged in from time
   become rivals who quarrel over hunting grounds (nothing violent on screen). Alliances, rivalries and reconciliations go in the chronicle.
 - **Time controls** next to the year: pause, normal speed, and fast forward (2×, 5×, 20×, 100×; each click goes faster).
   Space pauses and resumes. The speed is the world's own: it holds for everyone watching and is kept across restarts.
-- **Clans that learn** (machine learning in the simulation): every clan has a small "brain" that decides how its work is
-  shared between farming, herding, fishing, crafting, building and foraging, and how generous it is with friends. Each year it
-  tries a slightly different strategy and keeps it only if the clan ate better (an evolution strategy, a simple kind of
-  reinforcement learning). Daughter clans inherit their parents' brain with small mutations, and clans whose strategy fails
-  go hungry and die out (neuroevolution). Fisherfolk by the rivers, herders and farmers appear without anyone writing them.
-  Each clan card shows its way of life; the dashboard shows how the strategies spread.
+- **Clans that learn** (machine learning inside the simulation, nothing leaves your server): every clan carries a small
+  neural network, its brain (11 senses → 8 neurons → 7 decisions, 159 weights). Each month it senses the season, hunger, food stores,
+  the fruit, game and fish around, the cold, the clan's size, whether it is settled and the age of the world, and decides how the clan
+  shares its work between farming, herding, fishing, crafting, building and foraging, and how generous it is with its friends.
+  Each year the clan tries a slightly changed network and keeps it only if the clan ate better and grew (an evolution strategy, a
+  gradient-free kind of reinforcement learning). Daughter clans inherit their parents' network with small mutations, and clans whose
+  network fails go hungry and die out (neuroevolution). Each clan card shows what its brain decided this month and what it reacts to
+  most; the dashboard shows the learning curve and the ways of life that emerged.
 - **Help the world** (the Help button, or the buttons on a clan's card to help that clan): send a blessing (food), rain,
   call a feast, inspire an inventor (four times the chance of a discovery for two years) or calm a feud. Each power has a
   waiting time shared by everyone watching, and everything is written in the chronicle.
@@ -114,6 +116,7 @@ npm run dev     # runs at x200 speed with data in ./data, http://localhost:2222 
 npm run build   # production build into dist/
 npm run typecheck
 npm run simtest -- 42 6000 500   # simulate 6000 years of world 42 without the server, printing every 500 years
+npm run check:english            # fails if anything the page shows would come out in Bulgarian (also runs on every GitHub build)
 ```
 
 On Windows, start the dev server from `.claude/launch.json` or set `LETOPIS_DATA=./data` and `LETOPIS_SPEED=200` yourself

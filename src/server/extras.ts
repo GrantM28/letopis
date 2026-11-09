@@ -36,6 +36,7 @@ export class Extras {
       CREATE TABLE IF NOT EXISTS x_records (world TEXT PRIMARY KEY, json TEXT);
       CREATE TABLE IF NOT EXISTS x_acts (world TEXT NOT NULL, kind TEXT NOT NULL, at INTEGER, band TEXT, PRIMARY KEY (world, kind));
       CREATE TABLE IF NOT EXISTS x_settings (key TEXT PRIMARY KEY, value TEXT);
+      CREATE TABLE IF NOT EXISTS x_learning (world TEXT NOT NULL, year INTEGER NOT NULL, score REAL, gen REAL, kept INTEGER, tried INTEGER, PRIMARY KEY (world, year));
     `);
   }
 
@@ -69,6 +70,9 @@ export class Extras {
       sim.s.discovered.length, sim.s.era, ages.length ? ages.reduce((a, b) => a + b, 0) / ages.length : 0,
       ages.filter((a) => a < 12).length, ages.filter((a) => a >= 60).length,
     );
+    // how well the clans' brains are doing (brain.ts): the learning curve
+    const bs = brainSummary(sim as never);
+    if (bs.clans) this.db.prepare('INSERT OR REPLACE INTO x_learning VALUES (?,?,?,?,?,?)').run(w, year, bs.avgScore, bs.avgGeneration, bs.kept, bs.tried);
     // records
     const rec = this.records(w);
     let changed = false;
@@ -113,6 +117,13 @@ export class Extras {
     return out;
   }
 
+  /** the learning curve, thinned to at most 300 points */
+  private learning(world: string) {
+    const rows = this.db.prepare('SELECT year, score, gen FROM x_learning WHERE world = ? ORDER BY year').all(world) as { year: number; score: number; gen: number }[];
+    const step = Math.max(1, Math.ceil(rows.length / 300));
+    return rows.filter((_, i) => i % step === 0 || i === rows.length - 1);
+  }
+
   private counts(world: string, kind: string): Record<string, number> {
     const rows = this.db.prepare('SELECT key, n FROM x_counts WHERE world = ? AND kind = ? ORDER BY n DESC').all(world, kind) as { key: string; n: number }[];
     return Object.fromEntries(rows.map((r) => [kind === 'cause' ? causeEn(r.key) : r.key, r.n]));
@@ -146,7 +157,7 @@ export class Extras {
     if (p === '/api/history') {
       json(res, {
         series: this.history(w), causes: this.counts(w, 'cause'), events: this.counts(w, 'event'), eras: this.eras(w),
-        records: this.records(w), gone: this.goneCount(w), totalBorn: sim.s.totalBorn, totalDied: sim.s.totalDied,
+        records: this.records(w), gone: this.goneCount(w), learning: this.learning(w), totalBorn: sim.s.totalBorn, totalDied: sim.s.totalDied,
         year: Math.floor(sim.year), era: sim.s.era, notify, relations: relationCounts(sim as never),
       });
       return true;

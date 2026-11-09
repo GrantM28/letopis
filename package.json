@@ -1,6 +1,6 @@
 {
   "name": "letopis",
-  "version": "1.32.0",
+  "version": "1.33.0",
   "license": "MIT",
   "private": true,
   "description": "Letopis: an idle civilization simulation that lives on its own",
@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit",
     "start": "node --disable-warning=ExperimentalWarning dist/server.js",
     "dev": "node build.mjs && LETOPIS_DATA=./data LETOPIS_SPEED=200 node --disable-warning=ExperimentalWarning dist/server.js",
+    "check:english": "esbuild scripts/englishcheck.ts --bundle --platform=node --format=esm --outfile=dist/englishcheck.mjs --log-level=warning && node dist/englishcheck.mjs",
     "simtest": "esbuild scripts/simtest.ts --bundle --platform=node --format=esm --outfile=dist/simtest.mjs --log-level=warning && node dist/simtest.mjs"
   },
   "repository": {

@@ -296,6 +296,9 @@ const server = http.createServer((req, res) => {
 // every tick carries all the people: compressed it is about a fifth of the size
 const wss = new WebSocketServer({ server, path: '/ws', perMessageDeflate: { threshold: 4096, zlibDeflateOptions: { level: 3 } } });
 const clients = new Set<WebSocket>();
+/** more than this waiting to go out to one page and it gets no more months until it catches up (fork) */
+const SLOW_CLIENT_BYTES = 2 * 1024 * 1024;
+const lagging = new WeakSet<WebSocket>();
 wss.on('connection', (ws) => {
   clients.add(ws);
   ws.send(JSON.stringify(snapshot()));
@@ -324,7 +327,15 @@ function broadcast() {
   sim.roadChanges = [];
   pendingEvents = [];
   const data = JSON.stringify(msg);
-  for (const ws of clients) if (ws.readyState === WebSocket.OPEN) ws.send(data);
+  for (const ws of clients) {
+    if (ws.readyState !== WebSocket.OPEN) continue;
+    // a page that does not keep up (a hidden tab, a phone in a pocket, a slow line) must not make the server
+    // queue month after month for it until it runs out of memory: skip it, and when it has caught up send it
+    // one full picture instead of the months it missed (the trees, roads and explored land come as changes)
+    if (ws.bufferedAmount > SLOW_CLIENT_BYTES) { lagging.add(ws); continue; }
+    if (lagging.has(ws)) { lagging.delete(ws); ws.send(JSON.stringify(snapshot())); continue; }
+    ws.send(data);
+  }
 }
 
 function shutdown() {
