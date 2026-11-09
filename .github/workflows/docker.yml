@@ -23,12 +23,9 @@ jobs:
       - name: Did the sprite sheets change?
         id: sprites
         run: |
-          before="${{ github.event.before }}"
-          if [ -z "$before" ] || [ "$before" = "0000000000000000000000000000000000000000" ] || ! git cat-file -e "$before^{commit}" 2>/dev/null; then
-            changed=$(git diff --name-only HEAD~1 HEAD -- art/sheets tools || true)
-          else
-            changed=$(git diff --name-only "$before" HEAD -- art/sheets tools || true)
-          fi
+          # anything in the sheets or the tools newer than the last atlas: so an upload missed by a run is caught by the next
+          last=$(git log -1 --format=%H -- public/sprites/atlas.json)
+          changed=$(git diff --name-only "$last" HEAD -- art/sheets tools || true)
           echo "$changed"
           if [ -n "$changed" ]; then echo "changed=true" >> "$GITHUB_OUTPUT"; else echo "changed=false" >> "$GITHUB_OUTPUT"; fi
       - uses: actions/setup-python@v5
