@@ -52,6 +52,7 @@ In the image or in the browser:
 | parse-svg-path | 0.1.2 | MIT | https://github.com/jkroso/parse-svg-path | dependency of pixi.js |
 | tiny-lru | 11.4.7 | BSD-3-Clause | https://github.com/avoidwork/tiny-lru | dependency of pixi.js |
 | ws | 8.18.3 | MIT | https://github.com/websockets/ws | WebSocket server |
+| @anthropic-ai/sdk | 1.3.0 | Apache-2.0 | https://github.com/anthropics/anthropic-sdk-typescript | the optional storyteller (fork) |
 | Node.js | 22.20.0 | MIT (+ licenses of bundled parts) | https://nodejs.org | server runtime, built-in `node:sqlite` |
 
 Build only (not in the image):

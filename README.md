@@ -42,6 +42,9 @@ and a reworked, English-only interface. Upstream changes are merged in from time
 - **Help the world** (the Help button, or the buttons on a clan's card to help that clan): send a blessing (food), rain,
   call a feast, inspire an inventor (four times the chance of a discovery for two years) or calm a feud. Each power has a
   waiting time shared by everyone watching, and everything is written in the chronicle.
+- **The storyteller** (optional, needs an Anthropic API key): talk to anyone alive from their card ("💬 Talk to…") and they answer
+  in character from their own life in the simulation (family, clan, deeds, what their age knows), and "📜 Tell the story so far" in the
+  chronicle writes the legend of your world from its history. It runs on Claude (Claude Opus 5.5) from your server, with an hourly limit.
 - **Prayers**: clans in trouble pray: a hungry clan for food, a dry one for rain, a feuding one for peace. Answer them from
   the Help panel (the red number on the Help button counts them); a prayer nobody answers fades after two hours.
 - A living chronicle with filters (important, discoveries, life, clans, nature), clickable people and clans,
@@ -99,6 +102,9 @@ and a new one begins a minute later.
 | `LETOPIS_SEED` | random | seed of the first world |
 | `LETOPIS_NTFY_URL` | – | an [ntfy](https://ntfy.sh) topic URL (e.g. `https://ntfy.sh/my-letopis`) for phone notifications |
 | `LETOPIS_WEBHOOK_URL` | – | a URL that gets a JSON `POST` for each great moment (e.g. a Home Assistant webhook) |
+| `ANTHROPIC_API_KEY` | – | turns the storyteller on (talk to people, the legend of the world). Without it nothing is sent anywhere |
+| `LETOPIS_AI_MODEL` | `claude-opus-5-5` | the Claude model the storyteller uses |
+| `LETOPIS_AI_PER_HOUR` | `60` | the most storyteller requests in an hour, for everyone together, to keep the cost small |
 | `LETOPIS_NOTIFY_MIN` | `3` | the least importance that is sent: 3 = new ages and first discoveries, 2 = also plagues, wonders, comets and the like |
 | `TZ` | `Europe/Sofia` | time zone |
 
@@ -133,6 +139,7 @@ Pushing to `main` builds the Docker image with GitHub Actions and publishes it a
 | `src/client/minimap.ts` | the world map in the corner |
 | `src/server/extras.ts` | yearly history, records, people list and acts (`/api/history`, `/api/people`, `/api/acts`) |
 | `src/server/notify.ts` | ntfy and webhook notifications |
+| `src/server/storyteller.ts` | the optional storyteller: Claude speaks for the people and writes the legend |
 | `src/client/main.ts`, `public/` | the page: panels, tabs, cards |
 | `src/client/render.ts`, `src/client/landmarks.ts` | the map; later-age buildings are drawn in code in `landmarks.ts` |
 | `src/client/charts.ts` | the charts of the statistics dashboard |
@@ -173,7 +180,7 @@ The finished atlas is in git, so Python is not needed to build the game.
 Added in this fork: `/api/history` (yearly series, causes of death, event counts, records, the ages),
 `/api/people?q=&band=&sort=old|young|name|deeds|children&offset=&limit=` (everyone alive), `/api/relations/:bandId` (a clan's friends and rivals),
 `/api/acts` (powers and open prayers), `POST /api/act/bless|rain|feast|inspire|calm?band=`, `POST /api/prayer/:id` (answer a prayer),
-`/api/brains` and `/api/brain/:bandId` (what the clans learned), `GET/POST /api/time?scale=0|1|2|5|20|100` (pause and speed).
+`/api/brains` and `/api/brain/:bandId` (what the clans learned), `GET /api/ai`, `POST /api/ai/talk` and `POST /api/ai/legend` (the storyteller), `GET/POST /api/time?scale=0|1|2|5|20|100` (pause and speed).
 
 `/api/health` works well as a sensor for Home Assistant or any uptime monitor.
 

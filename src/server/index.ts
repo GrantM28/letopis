@@ -10,6 +10,7 @@ import { Discovery, SnapshotMessage, TickMessage, WorldInfo, b64encode } from '.
 import { TECHS } from './sim/tech';
 import { notify, notifyEnabled } from './notify';
 import { Extras } from './extras';
+import { aiEnabled, handleAi } from './storyteller';
 
 const PORT = Number(process.env.LETOPIS_PORT ?? 2222);
 const DATA = path.resolve(process.env.LETOPIS_DATA ?? '/data');
@@ -235,6 +236,13 @@ const server = http.createServer((req, res) => {
       }
       return json(res, { scale: timeScale, scales: TIME_SCALES });
     }
+    if (p.startsWith('/api/ai')) {
+      // the storyteller answers later (it waits for Claude)
+      handleAi(req, res, p, sim, store, extras, json)
+        .then((done) => { if (!done) json(res, { error: 'not found' }, 404); })
+        .catch((e) => { log('AI error', e); if (!res.headersSent) json(res, { error: 'internal error' }, 500); });
+      return;
+    }
     if (extras.handle(req, res, p, sim, json, notifyEnabled)) return;
     if (p === '/api/health') return json(res, { ok: true, world, year: Math.floor(sim.year), population: sim.s.people.length });
     if (p === '/api/world') return json(res, worldInfo);
@@ -341,7 +349,7 @@ process.on('SIGTERM', shutdown);
 process.on('SIGINT', shutdown);
 
 server.listen(PORT, () => {
-  log(`Letopis is listening on port ${PORT}, data in ${DATA}, speed x${SPEED}`);
+  log(`Letopis is listening on port ${PORT}, data in ${DATA}, speed x${SPEED}${aiEnabled ? ', storyteller on' : ''}`);
   flush();
   sim.events = [];
   save();

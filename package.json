@@ -17,6 +17,7 @@
     "url": "git+https://github.com/leppermesiah/letopis.git"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "1.3.0",
     "ws": "8.18.3"
   },
   "devDependencies": {
