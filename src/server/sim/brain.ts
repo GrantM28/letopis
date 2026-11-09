@@ -68,6 +68,11 @@ export interface Brain {
   tried: number;
   kept: number;
   style?: string;
+  /** a way of life seen once, waiting to be confirmed by the next period before the chronicle tells it */
+  styleSeen?: string;
+  styleSeenTimes?: number;
+  /** the year the chronicle last told this clan's change of life */
+  styleNews?: number;
 }
 
 export interface BrainHost extends EventHost {
@@ -113,7 +118,8 @@ function mutate(h: EventHost, net: number[], sigma: number): number[] {
   return net.map((x) => r3(Math.max(-6, Math.min(6, x + gauss(h) * sigma))));
 }
 
-/** the network: senses in, job weights (0.2..5) and generosity (0..1) out */
+/** the network: senses in; job weights as shares (a softmax scaled to average 1, 0.15..4) and the rest 0..1 out.
+ *  (v1.40: shares instead of six separate exp() values, which all pushed up to the same ceiling and said little) */
 export function forward(net: number[], x: number[]): number[] {
   const hid = new Array<number>(HID);
   for (let j = 0; j < HID; j++) {
@@ -122,12 +128,18 @@ export function forward(net: number[], x: number[]): number[] {
     hid[j] = Math.tanh(s);
   }
   const base = IN * HID + HID;
-  const out: number[] = [];
+  const raw: number[] = [];
   for (let o = 0; o < OUT; o++) {
     let s = net[base + HID * OUT + o];
     for (let j = 0; j < HID; j++) s += net[base + o * HID + j] * hid[j];
-    out.push(o < JOBS.length ? Math.exp(Math.max(-1.6, Math.min(1.6, s))) : 1 / (1 + Math.exp(-s)));
+    raw.push(s);
   }
+  const jobs = raw.slice(0, JOBS.length);
+  const top = Math.max(...jobs);
+  const ex = jobs.map((v) => Math.exp(Math.max(-8, v - top)));
+  const sum = ex.reduce((a, b) => a + b, 0);
+  const out = ex.map((e) => Math.max(0.15, Math.min(4, (e / sum) * JOBS.length)));
+  for (let o = JOBS.length; o < OUT; o++) out.push(1 / (1 + Math.exp(-raw[o])));
   return out;
 }
 
@@ -138,7 +150,8 @@ function fullness(field: Float32Array, cap: Float32Array | null, b: Band, R: num
   for (let y = cy - R; y <= cy + R; y++) for (let x = cx - R; x <= cx + R; x++) {
     if (!inBounds(x, y)) continue;
     const i = idx(x, y);
-    s += field[i];
+    // read the land as the save keeps it (to hundredths): a reloaded world senses exactly the same (v1.40)
+    s += Math.round(field[i] * 100) / 100;
     c += cap ? cap[i] : 1;
   }
   if (!c) return 0;
@@ -220,8 +233,9 @@ export function brainStep(h: BrainHost, members: Map<number, Person[]>) {
     if (br.trial && br.trial.net.length === PARAMS_V133) br.trial.net = growNet(h, br.trial.net);
     if (!br.net || br.net.length !== PARAMS) br.net = newNet(h, br.w, br.give);
     // decide for this month from what the clan senses now
-    const x = sense(h, b, members.get(b.id)?.length ?? 0);
-    br.senses = x.map(r3);
+    // rounded to 2 decimals: a saved and reloaded world (whose land the original rounds when it saves) decides the same (v1.40)
+    const x = sense(h, b, members.get(b.id)?.length ?? 0).map((v) => Math.round(v * 100) / 100);
+    br.senses = x;
     br.out = forward(br.trial?.net ?? br.net, x);
     br.wAcc ??= new Array(OUT).fill(0);
     br.out.forEach((v, i) => { br.wAcc![i] += v; });
@@ -295,11 +309,22 @@ export function brainStep(h: BrainHost, members: Map<number, Person[]>) {
     }
     // a clan whose way of life changed is news, now and then
     const style = styleOf(br, (t) => h.hasTech(b, t));
-    if (br.style && style.key !== br.style && (members.get(b.id)?.length ?? 0) >= 12 && h.rng.chance(0.35)) {
-      h.emit('learned', 1, `${h.bandLabel(b, true)} промени начина си на живот: ${STYLE_BG[style.key] ?? style.name}.`, undefined, undefined, b.id, [],
-        [`${h.bandEnLabel(b, true)} changed their way of life: they are ${style.name.toLowerCase()} now.`]);
+    // told only when the new way of life holds two periods running (v1.40: not every flicker)
+    if (br.style && style.key !== br.style) {
+      if (br.styleSeen === style.key && (br.styleSeenTimes = (br.styleSeenTimes ?? 1) + 1) >= 3) {
+        const year = Math.floor(h.year);
+        if ((members.get(b.id)?.length ?? 0) >= 12 && (br.styleNews === undefined || year - br.styleNews >= 30)) {
+          br.styleNews = year;
+          h.emit('learned', 1, `${h.bandLabel(b, true)} промени начина си на живот: ${STYLE_BG[style.key] ?? style.name}.`, undefined, undefined, b.id, [],
+            [`${h.bandEnLabel(b, true)} changed their way of life: they are ${style.name.toLowerCase()} now.`]);
+        }
+        br.style = style.key;
+        br.styleSeen = undefined;
+      } else if (br.styleSeen !== style.key) { br.styleSeen = style.key; br.styleSeenTimes = 1; }
+    } else {
+      br.style = style.key;
+      br.styleSeen = undefined;
     }
-    br.style = style.key;
   }
   // forget the brains of clans that are gone
   if (h.s.tick % 60 === 0) {

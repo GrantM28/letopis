@@ -35,6 +35,7 @@ await build({
 // cache busting for the browser
 const html = readFileSync('dist/public/index.html', 'utf8')
   .replace('href="style.css"', `href="style.css?v=${BUILD}"`)
+  .replace('href="fork.css"', `href="fork.css?v=${BUILD}"`)
   .replace('src="app.js"', `src="app.js?v=${BUILD}"`);
 writeFileSync('dist/public/index.html', html);
 writeFileSync('dist/public/version.json', JSON.stringify({ build: BUILD, version: VERSION }));

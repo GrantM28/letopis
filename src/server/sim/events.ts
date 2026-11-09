@@ -400,6 +400,12 @@ function compass(dx: number, dy: number): string {
 export function announceMove(h: EventHost, b: Band, fromX: number, fromY: number, toX: number, toY: number, why: MoveWhy, chief?: Person) {
   const d = Math.hypot(toX - fromX, toY - fromY);
   if (d < 1.5) return;
+  // only the moves worth telling (v1.40: moves were half the chronicle): far ones, or forced by hunger or the end of the wood,
+  // and at most one per clan in fifty years; the others still happen, just quietly. The year is saved with the world.
+  const news = ((h.s as { moveNews?: Record<number, number> }).moveNews ??= {});
+  const year = Math.floor(h.year);
+  if ((d < 10 && why !== 'hunger' && why !== 'wood') || (news[b.id] !== undefined && year - news[b.id] < 50)) return;
+  news[b.id] = year;
   const far = d < 6 ? 'a short way' : d < 14 ? "a few days' walk" : 'far';
   const dir = compass(toX - fromX, toY - fromY);
   const reasons: Record<MoveWhy, string[]> = {

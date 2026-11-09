@@ -9,6 +9,8 @@ import { ERAS, TECHS, TECH_BY_ID, Tech, eraOf } from './tech';
 import { LATER_ERA_WHY } from '../../shared/later_techs';
 import { ActKind, EventHost, MoveWhy, act, announceMove, answerPrayer, prayersStep, worldEvents } from './events';
 import { RelationHost, relationsStep } from './relations';
+/** what the fork's add-ons may use of the simulation */
+export type ForkHost = EventHost & RelationHost & BrainHost & { treesNear(x: number, y: number, R: number, min: number): number };
 import { BrainHost, brainStep, steerJobs, wantsToMove } from './brain';
 import { BIG, startStage, treeKinds } from '../../shared/trees';
 import { findRoad } from './roads';
@@ -120,6 +122,8 @@ export interface SimState {
   /** watchers' help: inspired clans (band id -> months left) and open prayers (fork: events.ts) */
   inspired?: Record<number, number>;
   prayers?: import('./events').Prayer[];
+  /** the year each clan's last move was told in the chronicle (fork: events.ts) */
+  moveNews?: Record<number, number>;
 }
 
 export interface DeadRecord {
@@ -690,8 +694,8 @@ export class Simulation {
     if (this.month === 3) this.pairing(members);
     this.bandDynamics(members);
     this.contact();
-    if (this.s.tick % 3 === 0) relationsStep(this as unknown as RelationHost, members);
-    brainStep(this as unknown as BrainHost, members);
+    if (this.s.tick % 3 === 0) relationsStep(this.host(), members);
+    brainStep(this.host(), members);
     if (this.month === 6) this.buildRoads();
     if (this.s.tick % 6 === 0) this.explore();
     this.randomEvents(members);
@@ -770,7 +774,7 @@ export class Simulation {
     if (this.hasTech(b, 'stone_tools')) jobs.push(['craft', 0.6]);
     if (b.settled && this.hasTech(b, 'mudbrick')) jobs.push(['build', 0.5]);
     jobs.push(['forage', farms ? 2 : 6] as unknown as [Task, number]);
-    steerJobs(this as unknown as BrainHost, b, jobs);
+    steerJobs(this.host(), b, jobs);
     const total = jobs.reduce((s2, j) => s2 + j[1], 0);
     for (const p of workers) {
       let r = this.rng.next() * total;
@@ -1199,7 +1203,7 @@ export class Simulation {
         const noWood = this.treesNear(b.cx, b.cy, 4, 2) === 0;
         const starving = (b.fed ?? 1) < 0.7 && this.rng.chance(0.08);
         // or the clan's brain (brain.ts) judges it time to go on
-        const restless = !noWood && !starving && wantsToMove(this as unknown as BrainHost, b);
+        const restless = !noWood && !starving && wantsToMove(this.host(), b);
         if (noWood || starving || restless) this.moveCamp(b, m, noWood ? 22 : 16, noWood ? 'wood' : starving ? 'hunger' : 'restless');
       }
       // split: rare, a band has to grow big first
@@ -1207,7 +1211,8 @@ export class Simulation {
       const limit = b.settled ? (this.hasTech(b, 'castle') ? 280 : this.hasTech(b, 'walls') ? 210 : 140) : 40 + Math.round(avg(m, (p) => p.genes.soc) * 20);
       // too many mouths for this land: some leave to find their own
       const crowded = !b.settled && m.length >= 24 && (b.fed ?? 1) < 1.05 && this.rng.chance(0.012);
-      if (m.length > limit || crowded) this.split(b, m, members);
+      // far too many and no good land to go to: some leave anyway, for the best of the poor places (fork, v1.40 guard)
+      if (m.length > limit || crowded) this.split(b, m, members, m.length > limit * 3);
     }
     void t;
   }
@@ -1320,7 +1325,7 @@ export class Simulation {
       // he is there and likes it: the camp, the banner and everyone follow
       chief.x = sc.x;
       chief.y = sc.y;
-      announceMove(this as unknown as EventHost, b, b.cx, b.cy, sc.x, sc.y, sc.why ?? 'other', chief);
+      announceMove(this.host(), b, b.cx, b.cy, sc.x, sc.y, sc.why ?? 'other', chief);
       b.cx = sc.x;
       b.cy = sc.y;
       b.scout = null;
@@ -1354,13 +1359,13 @@ export class Simulation {
       return;
     }
     // the chronicle tells where they went (fork: events.ts)
-    announceMove(this as unknown as EventHost, b, b.cx, b.cy, best.x, best.y, why);
+    announceMove(this.host(), b, b.cx, b.cy, best.x, best.y, why);
     b.cx = best.x; b.cy = best.y;
     this.clearAround(b.cx, b.cy, 1);
     for (const p of m) p.task = 'travel';
   }
 
-  private split(b: Band, m: Person[], members: Map<number, Person[]>) {
+  private split(b: Band, m: Person[], members: Map<number, Person[]>, desperate = false) {
     // a founding couple leaves with their children and some friends
     // the founder is a man in his prime: he becomes the elder of the new band
     const adults = m.filter((p) => p.sex === 0 && p.id !== b.chiefId && this.ageOf(p) >= 20 && this.ageOf(p) <= 45 && p.partnerId);
@@ -1381,7 +1386,7 @@ export class Simulation {
       }
     }
     // where to go
-    let best: { x: number; y: number } | null = null, bestS = 0;
+    let best: { x: number; y: number } | null = null, bestS = desperate ? -0.5 : 0;
     for (let k = 0; k < 30; k++) {
       const r = this.rng.range(9, b.settled ? 22 : 16);
       const a = this.rng.range(0, Math.PI * 2);
@@ -1496,14 +1501,40 @@ export class Simulation {
     }
   }
 
+  /** the one doorway the fork's add-ons (events.ts, relations.ts, brain.ts) use into the simulation: if the original
+   *  renames something they rely on, it fails to compile here instead of breaking quietly (fork) */
+  private forkHost?: ForkHost;
+  host(): ForkHost {
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
+    const sim = this;
+    this.forkHost ??= {
+      get rng() { return sim.rng; },
+      get s() { return sim.s; },
+      get t() { return sim.t; },
+      get month() { return sim.month; },
+      get year() { return sim.year; },
+      emit: (kind, importance, text, kids, personId, bandId, extra, en) => sim.emit(kind, importance, text, kids, personId, bandId, extra ?? [], en),
+      bandLabel: (b, subject) => sim.bandLabel(b, subject),
+      bandEnLabel: (b, subject) => sim.bandEnLabel(b, subject),
+      nameOf: (p) => sim.nameOf(p),
+      nameEn: (p) => sim.nameEn(p),
+      die: (p, cause, m) => sim.die(p, cause, m),
+      hasTech: (b, id) => sim.hasTech(b, id),
+      ageOf: (p) => sim.ageOf(p),
+      bRefs: (b) => sim.bRefs(b),
+      treesNear: (x, y, R, min) => sim.treesNear(x, y, R, min),
+    };
+    return this.forkHost;
+  }
+
   /** a small act of a watcher (a blessing, rain, a feast): see events.ts */
   watcherAct(kind: ActKind, target?: number): Band | null {
-    return act(this as unknown as EventHost, kind, this.membersNow(), target);
+    return act(this.host(), kind, this.membersNow(), target);
   }
 
   /** a watcher answers a prayer (fork: events.ts) */
   answerPrayer(id: number) {
-    return answerPrayer(this as unknown as EventHost, id, this.membersNow());
+    return answerPrayer(this.host(), id, this.membersNow());
   }
 
   private membersNow(): Map<number, Person[]> {
@@ -1515,8 +1546,8 @@ export class Simulation {
 
   private randomEvents(members: Map<number, Person[]>) {
     if (!this.s.bands.length) return;
-    worldEvents(this as unknown as EventHost, members);
-    prayersStep(this as unknown as EventHost, members);
+    worldEvents(this.host(), members);
+    prayersStep(this.host(), members);
     // a great hunt
     if (this.rng.chance(0.004)) {
       const b = this.rng.pick(this.s.bands);
@@ -1717,6 +1748,9 @@ export class Simulation {
     this.s.rng = this.rng.s;
     this.s.plants = Array.from(this.t.plants, (v) => Math.round(v * 100));
     this.s.game = Array.from(this.t.game, (v) => Math.round(v * 100));
+    // the running world takes the same rounded land it just saved, so a restart goes on exactly as if it never stopped (fork)
+    for (let i = 0; i < this.s.plants.length; i++) this.t.plants[i] = this.s.plants[i] / 100;
+    for (let i = 0; i < this.s.game.length; i++) this.t.game[i] = this.s.game[i] / 100;
     this.s.explored = this.exploredB64();
     this.s.trees = Buffer.from(this.trees).toString('base64');
     this.s.roads = Buffer.from(this.roads).toString('base64');

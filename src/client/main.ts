@@ -4,10 +4,16 @@ import {
   BandView, ChronicleEntry, Discovery, FamilyTree, GoneBand, TreeNode, PersonDetail, PersonRow, SnapshotMessage, TASKS, TASK_NAMES, TickMessage, WorldInfo, b64decode,
 } from '../shared/types';
 import { SECRET_COUNT, SecretFind, SecretSpot } from '../shared/secrets';
-import { ERAS_BG, ERAS_EN, TECH_DESC, TECH_EN, TECH_LIST } from '../shared/i18n';
-import { ERA_GATES } from '../shared/later_techs';
-import { barList, lineChart } from './charts';
+import { ERAS_BG, ERAS_EN, TECH_LIST } from '../shared/i18n';
 import { Minimap } from './minimap';
+import { setUi } from './kit';
+import { clockFromServer } from './clock';
+import { GATES, eraName, knownNow, techLabel, updateAgeProgress } from './ages';
+import { initHelp } from './help';
+import { renderPeople } from './people';
+import { fillBandCard } from './clancard';
+import { renderStats, resetStats } from './dashboard';
+import { renderDiscoveries, showTech } from './discoveries';
 import {
   B, BL, CAUSE, CHIEF, DEED, EN, ERA, GENE, HERO, P, SECRET_KIND, T, TASK, TECH, TECH_ID, TITLE, VILLAGE, fmtYear, monthName, num, refName, translatePage,
 } from './lang';
@@ -199,164 +205,10 @@ function applyTime(t: TickMessage['time'], population: number) {
   const days = (Date.now() - t.startedAt) / 86400000;
   $('#age').textContent = days < 1 ? `${Math.round(days * 24)} ${T('ч.', 'h')}` : `${Math.floor(days)} ${T('дни', 'days')}`;
   currentEra = t.era;
-  updateAgeProgress();
+  updateAgeProgress(bands, currentEra);
 }
-
-// ---------- the speed of time (fork): pause, normal, fast forward ----------
-
-const SCALES = [0, 1, 2, 5, 20, 100];
-let timeScale = 1;
-/** the speed before pausing, so Space and Play bring it back */
-let lastRunning = 1;
-/** the speed we asked for and the server has not confirmed yet (months already on their way still carry the old one) */
-let wantedScale: number | null = null;
-let wantedAt = 0;
-function clockFromServer(scale: number) {
-  if (wantedScale !== null) {
-    if (scale !== wantedScale && performance.now() - wantedAt < 15000) return;
-    wantedScale = null;
-  }
-  showClock(scale);
-}
-function showClock(scale: number) {
-  timeScale = scale;
-  if (scale > 0) lastRunning = scale;
-  $('#clockPause').setAttribute('aria-pressed', String(scale === 0));
-  $('#clockPlay').setAttribute('aria-pressed', String(scale === 1));
-  $('#clockFast').setAttribute('aria-pressed', String(scale > 1));
-  $('#clockLabel').textContent = scale === 0 ? 'Paused' : `${scale}×`;
-  document.body.classList.toggle('paused', scale === 0);
-}
-async function setScale(scale: number) {
-  wantedScale = scale;
-  wantedAt = performance.now();
-  showClock(scale); // at once; the server confirms to everyone watching
-  await fetch(`/api/time?scale=${scale}`, { method: 'POST' }).catch(() => null);
-}
-$('#clockPause').onclick = () => void setScale(0);
-$('#clockPlay').onclick = () => void setScale(1);
-$('#clockFast').onclick = () => {
-  const next = SCALES.find((s) => s > Math.max(1, timeScale));
-  void setScale(next ?? 2);
-};
-document.addEventListener('keydown', (e) => {
-  const el = e.target instanceof Element ? e.target : null;
-  if (e.code !== 'Space' || el?.closest('input, textarea, button')) return;
-  e.preventDefault();
-  void setScale(timeScale === 0 ? lastRunning : 0);
-});
-
-// ---------- progress through the ages ----------
 
 let currentEra = 0;
-/** the discovery that opens each age */
-const GATES = new Map<number, string>([[1, 'agriculture'], [2, 'bronze'], ...ERA_GATES]);
-const TECH_ID_BY_BG = new Map(TECH_LIST.map(([id, bg]) => [bg, id]));
-/** every discovery some living clan knows, by id (bands carry Bulgarian names) */
-function knownNow(): Set<string> {
-  const s = new Set<string>();
-  for (const b of bands) for (const t of b.techs) { const id = TECH_ID_BY_BG.get(t); if (id) s.add(id); }
-  return s;
-}
-const eraName = (e: number) => (EN ? ERAS_EN[e] : ERAS_BG[e]);
-const techLabel = (id: string) => (EN ? TECH_EN[id]?.name : TECH_LIST.find(([x]) => x === id)?.[1]) ?? id;
-
-function updateAgeProgress() {
-  const known = knownNow();
-  const list = TECH_LIST.filter(([, , e]) => e === currentEra);
-  const n = list.filter(([id]) => known.has(id)).length;
-  $('#ageCount').textContent = `${n}/${list.length}`;
-  ($('#ageBar') as HTMLElement).style.width = `${list.length ? (n / list.length) * 100 : 0}%`;
-  const next = currentEra + 1;
-  const gate = GATES.get(next);
-  const nextEl = $('#ageNext');
-  if (next < ERAS_EN.length && gate) {
-    nextEl.textContent = `${T('Следва', 'Next')}: ${eraName(next)}`;
-    $('#ageProg').title = T(`${eraName(next)} започва, когато някой открие „${techLabel(gate)}“.`, `The ${eraName(next)} begins when someone discovers ${techLabel(gate)}.`);
-  } else {
-    nextEl.textContent = T('Последната епоха', 'The last age');
-    $('#ageProg').title = '';
-  }
-}
-
-// ---------- helping the world: a blessing, rain, a feast ----------
-
-const ACT_INFO: Record<string, { icon: string; name: string; text: string; who: string }> = {
-  bless: { icon: '🌟', name: 'Send a blessing', text: 'Food finds its way to the clan.', who: 'the hungriest clan' },
-  rain: { icon: '🌧️', name: 'Send rain', text: 'A long warm rain over the land around the clan.', who: 'the driest land' },
-  feast: { icon: '🍖', name: 'Call a feast', text: 'The clan invites its neighbours to a great feast.', who: 'the biggest clan' },
-  inspire: { icon: '💭', name: 'Inspire an inventor', text: 'For two years the clan is four times as likely to discover something.', who: 'the biggest clan' },
-  calm: { icon: '🕊️', name: 'Calm a feud', text: 'The clan makes peace with its rivals.', who: 'the clan with the most rivals' },
-};
-const WANT_TEXT: Record<string, string> = { bless: 'pray for food', rain: 'pray for rain', calm: 'pray for peace' };
-type ActState = { kind: string; ready: boolean; readyIn: number; last: { at: number; band: string } | null };
-type PrayerView = { id: number; band: number; name: string; color: number; want: string; year: number; fadesIn: number };
-const mins = (ms: number) => (ms >= 3600000 ? `${Math.floor(ms / 3600000)} h ${Math.ceil((ms % 3600000) / 60000)} min` : `${Math.max(1, Math.ceil(ms / 60000))} min`);
-const ago = (t: number) => { const m = Math.round((Date.now() - t) / 60000); return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : `${Math.round(m / 60)} h ago`; };
-
-/** one power: on a chosen clan, or (without one) where it is needed most */
-async function useAct(kind: string, band?: number): Promise<string> {
-  const res = await fetch(`/api/act/${kind}${band ? `?band=${band}` : ''}`, { method: 'POST' }).then((x) => x.json()).catch(() => null) as
-    { ok?: boolean; band?: string; bandId?: number; error?: string; readyIn?: number } | null;
-  if (res?.ok && res.bandId) {
-    const b = bands.find((x) => x.id === res.bandId);
-    if (b) { stopTour(); lookAt(b.x, b.y, Math.max(cam.tz, 1.4)); }
-    return `Done: ${esc(res.band ?? '')} will remember it.`;
-  }
-  return res?.readyIn ? `Not yet: ready again in ${mins(res.readyIn)}.` : `Not now: ${esc(res?.error ?? 'the server did not answer')}.`;
-}
-
-async function showActs(note = '') {
-  const data = await api<{ acts: ActState[]; prayers: PrayerView[] }>('/api/acts').catch(() => null);
-  if (!data) return;
-  const hex = (c: number) => `#${c.toString(16).padStart(6, '0')}`;
-  openCard(`<h2>✨ Help the world</h2>
-    <p class="muted">The world lives on its own, but now and then you may lend a hand. Each power waits a while before it can be used again
-      (the same wait for everyone watching), and everything you do is written in the chronicle. To help one particular clan, open its card.</p>
-    ${note ? `<p class="act-note">${note}</p>` : ''}
-    <h3>Prayers <small>${data.prayers.length}</small></h3>
-    ${data.prayers.length ? `<ul class="prayers">${data.prayers.map((p) => `<li>
-        <span class="dot" style="background:${hex(p.color)}"></span>
-        <span class="pr-body"><a href="#" class="ref" data-band="${p.band}">${esc(p.name)}</a> ${WANT_TEXT[p.want] ?? 'pray'}
-          <small>since ${fmtYear(p.year)} · fades in ${mins(p.fadesIn)}</small></span>
-        <button class="btn pr-answer" data-prayer="${p.id}">Answer</button></li>`).join('')}</ul>`
-      : '<p class="muted">No clan is praying right now. Clans in trouble pray now and then: a hungry clan for food, a dry one for rain, a feuding one for peace.</p>'}
-    <h3>Powers</h3>
-    <div class="acts">${data.acts.map((a) => {
-      const i = ACT_INFO[a.kind];
-      if (!i) return '';
-      return `<button class="act" data-act="${a.kind}" ${a.ready ? '' : 'disabled'}>
-        <span class="act-icon">${i.icon}</span><span class="act-body"><b>${i.name}</b><small>${i.text} Goes to ${i.who}.</small>
-        <small class="act-state">${a.ready ? 'Ready' : `Ready again in ${mins(a.readyIn)}`}${a.last ? ` · last: ${esc(a.last.band)}, ${ago(a.last.at)}` : ''}</small></span></button>`;
-    }).join('')}</div>`);
-  document.querySelectorAll<HTMLButtonElement>('#cardBody .act').forEach((btn) => {
-    btn.onclick = async () => { btn.disabled = true; void showActs(await useAct(btn.dataset.act!)); };
-  });
-  document.querySelectorAll<HTMLButtonElement>('#cardBody .pr-answer').forEach((btn) => {
-    btn.onclick = async () => {
-      btn.disabled = true;
-      const res = await fetch(`/api/prayer/${btn.dataset.prayer}`, { method: 'POST' }).then((x) => x.json()).catch(() => null) as { ok?: boolean; band?: string; bandId?: number; error?: string } | null;
-      if (res?.ok && res.bandId) { const b = bands.find((x) => x.id === res.bandId); if (b) { stopTour(); lookAt(b.x, b.y, Math.max(cam.tz, 1.4)); } }
-      void showActs(res?.ok ? `Your answer reached ${esc(res.band ?? '')}.` : `Too late: ${esc(res?.error ?? 'the server did not answer')}.`);
-      void refreshPrayerBadge();
-    };
-  });
-}
-$('#actsBtn').onclick = () => void showActs();
-
-/** a small number on the Help button while clans are praying */
-async function refreshPrayerBadge() {
-  const data = await api<{ prayers: PrayerView[] }>('/api/acts').catch(() => null);
-  const n = data?.prayers.length ?? 0;
-  const btn = $('#actsBtn');
-  let badge = btn.querySelector<HTMLElement>('.count');
-  if (!badge) { badge = document.createElement('span'); badge.className = 'count'; btn.appendChild(badge); }
-  badge.textContent = String(n);
-  badge.hidden = n === 0;
-}
-setInterval(() => void refreshPrayerBadge(), 30_000);
-void refreshPrayerBadge();
-
 
 /** back to where the people are */
 function showAllBands() {
@@ -514,6 +366,7 @@ function addEvent(e: ChronicleEntry, live: boolean) {
 const FEED_KINDS: Record<string, { bg: string; en: string; kinds?: string[] }> = {
   all: { bg: 'Всичко', en: 'All' },
   big: { bg: 'Важно', en: 'Important' },
+  story: { bg: 'История', en: 'Story' },
   discovery: { bg: 'Открития', en: 'Discoveries', kinds: ['discovery', 'rediscovery', 'learn', 'era', 'lost'] },
   life: { bg: 'Живот', en: 'Life', kinds: ['death', 'twins', 'marriage', 'milestone', 'genesis', 'plague', 'festival', 'feast'] },
   clans: { bg: 'Родове', en: 'Clans', kinds: ['settle', 'colony', 'split', 'meet', 'merge', 'extinct', 'end', 'wonder', 'expedition', 'alliance', 'rivalry', 'quarrel', 'aid', 'peace', 'estranged', 'learned', 'imitate', 'move'] },
@@ -521,11 +374,14 @@ const FEED_KINDS: Record<string, { bg: string; en: string; kinds?: string[] }> =
 };
 let feedKind = store('letopis.feedKind', store('letopis.onlyBig', false) ? 'big' : 'all');
 if (!FEED_KINDS[feedKind]) feedKind = 'all';
+const EVERYDAY = new Set(['move', 'marriage', 'twins', 'meet', 'learned', 'imitate', 'quarrel', 'aid', 'estranged', 'learn', 'rediscovery', 'merge']);
 /** older pages fetched by themselves for the current filter */
 let autoLoads = 0;
 const feedFilter = (e: ChronicleEntry) => {
   if (feedKind === 'all') return true;
   if (feedKind === 'big') return e.importance >= 2;
+  // the story without everyday life: no moves, weddings, quiet deaths or small clan news (v1.40)
+  if (feedKind === 'story') return !EVERYDAY.has(e.kind) && !(e.kind === 'death' && e.importance < 2);
   return FEED_KINDS[feedKind].kinds!.includes(e.kind);
 };
 
@@ -546,35 +402,9 @@ function toast(e: ChronicleEntry) {
 // ---------- side panel ----------
 
 let activeTab = store('letopis.tab', 'chronicle');
-/** ages opened in the discoveries tab; until one is touched, only the current age is open */
-const openAges = new Set<number>();
-let openAgesTouched = false;
 /** the clans tab: search text and sort order */
 let bandQuery = '';
 let bandSort = store<'size' | 'knowledge' | 'name'>('letopis.bandSort', 'size');
-/** the people tab: everyone alive (searchable, a page at a time) or only the notable ones */
-let peopleView = store<'all' | 'notable'>('letopis.peopleView', 'all');
-let peopleSort = store('letopis.peopleSort', 'old');
-let peopleQuery = '';
-let peopleShown = 0;
-
-type PersonListRow = { id: number; name: string; age: number; sex: number; band: string; bandId: number; task: string; chief: boolean; deeds: number; children: number; gen: number };
-async function loadPeople(more: boolean) {
-  const list = document.getElementById('peopleList');
-  if (!list) return;
-  if (!more) peopleShown = 0;
-  const res = await api<{ total: number; people: PersonListRow[] }>(`/api/people?q=${encodeURIComponent(peopleQuery)}&sort=${peopleSort}&offset=${peopleShown}&limit=100`).catch(() => null);
-  if (!res || activeTab !== 'heroes' || peopleView !== 'all') return;
-  const color = new Map(bands.map((b) => [b.id, `#${b.color.toString(16).padStart(6, '0')}`]));
-  const html = res.people.map((p) => `<li data-person="${p.id}">
-      <span class="avatar sm ${p.sex ? 'f' : 'm'}">${p.age < 12 ? '🧒' : p.age >= 60 ? (p.sex ? '👵' : '👴') : p.sex ? '👩' : '👨'}</span>
-      <div><b>${esc(p.name)}</b>${p.chief ? ' <span class="badge village">chief</span>' : ''}${p.deeds ? ` <span class="badge">${p.deeds} deed${p.deeds > 1 ? 's' : ''}</span>` : ''}
-        <div class="muted"><span class="dot sm" style="background:${color.get(p.bandId) ?? '#888'}"></span>${esc(p.band)} · ${p.age} y · ${esc(TASK(TASK_NAMES[p.task as keyof typeof TASK_NAMES] ?? p.task))}${p.children ? ` · ${p.children} children` : ''}</div></div></li>`).join('');
-  if (more) list.insertAdjacentHTML('beforeend', html); else list.innerHTML = html || '<li class="empty-note">Nobody by that name.</li>';
-  peopleShown += res.people.length;
-  $('#peopleCount').textContent = `${num(res.total)} ${peopleQuery ? 'found' : 'people alive'} · showing ${num(peopleShown)}`;
-  ($('#peopleMore') as HTMLElement).hidden = peopleShown >= res.total;
-}
 
 function renderSide() {
   document.querySelectorAll<HTMLButtonElement>('.tab').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === activeTab)));
@@ -593,64 +423,7 @@ function renderSide() {
     // a narrow filter over only the latest entries can come up empty: reach back a few pages by itself
     if (shown.length < 15 && autoLoads < 4) { autoLoads++; void loadOlder(); }
   } else if (activeTab === 'discoveries') {
-    body.innerHTML = '<p class="muted">Loading...</p>';
-    void loadTree().then((tree) => {
-      if (activeTab !== 'discoveries' || !tree) return;
-      const known = new Set(tree.techs.filter((t) => t.discovered).map((t) => t.id));
-      const reach = (t: TreeTech) => !t.discovered && t.prereq.every((r) => known.has(r));
-      const filters: [typeof discFilter, string][] = [['all', 'All'], ['done', 'Discovered'], ['reach', 'Within reach'], ['todo', 'Not yet']];
-      const pct = (a: number, b: number) => (b ? Math.round((a / b) * 100) : 0);
-      body.innerHTML = `<div class="overall">
-          <div class="age-line"><span>Discoveries made</span><b>${known.size}/${tree.techs.length}</b></div>
-          <div class="meter"><i style="width:${pct(known.size, tree.techs.length)}%"></i></div>
-          <div class="age-line" style="margin-top:6px"><span>Within reach now</span><b>${tree.techs.filter(reach).length}</b></div>
-        </div>
-        <label class="search"><svg class="ic"><use href="#i-search"/></svg>
-          <input id="discSearch" type="search" placeholder="Find a discovery" value="${esc(discQuery)}" autocomplete="off"></label>
-        <div class="chips">${filters.map(([k, n]) => `<button class="chip" data-dfilter="${k}" aria-pressed="${k === discFilter}">${n}</button>`).join('')}</div>
-        <div id="discList"></div>`;
-      const draw = () => {
-        const q = discQuery.trim().toLowerCase();
-        const pass = (t: TreeTech) => (discFilter === 'all' || (discFilter === 'done' && t.discovered) || (discFilter === 'reach' && reach(t)) || (discFilter === 'todo' && !t.discovered))
-          && (!q || techLabel(t.id).toLowerCase().includes(q) || (TECH_DESC[t.id]?.[1] ?? '').toLowerCase().includes(q));
-        const eras = [...new Set(TECH_LIST.map(([, , e]) => e))];
-        const order = new Map(TECH_LIST.map(([id], i) => [id, i]));
-        const searching = !!q || discFilter !== 'all';
-        $('#discList').innerHTML = eras.map((e) => {
-          const all = tree.techs.filter((t) => t.era === e).sort((a, c) => (order.get(a.id) ?? 0) - (order.get(c.id) ?? 0));
-          const list = all.filter(pass);
-          if (!list.length) return '';
-          const n = all.filter((t) => t.discovered).length;
-          const state = e === currentEra ? 'current' : n === all.length ? 'done' : n ? 'started' : '';
-          const open = searching || openAges.has(e) || (!openAgesTouched && e === currentEra);
-          return `<details class="tech-age ${state}" data-era="${e}"${open ? ' open' : ''}><summary>
-              <span class="tech-era">${esc(eraName(e))}${e === currentEra ? ' <span class="tag">now</span>' : ''}</span>
-              <span class="tech-count">${n}/${all.length}</span>
-              <div class="meter"><i style="width:${pct(n, all.length)}%"></i></div></summary>
-            <ul class="discoveries">${list.map((t) => `<li class="${t.discovered ? '' : reach(t) ? 'todo next' : 'todo'}" data-tech="${t.id}">
-              <b>${esc(techLabel(t.id))}</b>${t.discovered && t.first ? ` - discovered by ${t.first.pid ? `<a href="#" class="ref" data-person="${t.first.pid}">${esc(t.first.who)}</a>` : esc(t.first.who)} in <span class="yr">${fmtYear(t.first.year)}</span>`
-                : ` - ${esc(TECH_DESC[t.id]?.[1] ?? 'not discovered yet')}`}</li>`).join('')}</ul></details>`;
-        }).join('') || '<p class="empty-note">No discovery matches.</p>';
-        $('#discList').querySelectorAll<HTMLDetailsElement>('details.tech-age').forEach((d) => {
-          d.addEventListener('toggle', () => {
-            if (searching) return;
-            openAgesTouched = true;
-            const e = Number(d.dataset.era);
-            if (d.open) openAges.add(e); else openAges.delete(e);
-          });
-        });
-      };
-      draw();
-      const input = $('#discSearch') as HTMLInputElement;
-      input.oninput = () => { discQuery = input.value; draw(); };
-      body.querySelectorAll<HTMLButtonElement>('[data-dfilter]').forEach((c) => {
-        c.onclick = () => {
-          discFilter = c.dataset.dfilter as typeof discFilter;
-          body.querySelectorAll('[data-dfilter]').forEach((x) => x.setAttribute('aria-pressed', String(x === c)));
-          draw();
-        };
-      });
-    });
+    renderDiscoveries(body);
 
   } else if (activeTab === 'bands') {
     const sorts: [typeof bandSort, string, string][] = [['size', 'Най-големи', 'Largest'], ['knowledge', 'Най-учени', 'Most knowledge'], ['name', 'По име', 'By name']];
@@ -670,42 +443,7 @@ function renderSide() {
     });
     renderBandList();
   } else if (activeTab === 'heroes') {
-    const sorts: [string, string][] = [['old', 'Oldest'], ['young', 'Youngest'], ['name', 'Name'], ['deeds', 'Most deeds'], ['children', 'Most children']];
-    body.innerHTML = `<div class="chips seg">
-        <button class="chip" data-pview="all" aria-pressed="${peopleView === 'all'}">Everyone</button>
-        <button class="chip" data-pview="notable" aria-pressed="${peopleView === 'notable'}">Notable</button></div>
-      <div id="peopleBody"></div>`;
-    body.querySelectorAll<HTMLButtonElement>('[data-pview]').forEach((c) => {
-      c.onclick = () => { peopleView = c.dataset.pview as typeof peopleView; save('letopis.peopleView', peopleView); renderSide(); };
-    });
-    const pb = $('#peopleBody');
-    if (peopleView === 'notable') {
-      pb.innerHTML = '<p class="muted">Loading...</p>';
-      api<{ id: number; name: string; age: number; band: string; deeds: string[] }[]>('/api/heroes').then((hs) => {
-        if (activeTab !== 'heroes' || peopleView !== 'notable') return;
-        pb.innerHTML = `<p class="lead">People with deeds to their name, and the old ones who have seen the most.</p>` + (hs.length ? `<ul class="heroes">${hs.map((h) => `<li data-person="${h.id}"><b>${esc(P(h.name))}</b>
-          <span class="muted">${h.age} y · ${esc(BL(h.band))}</span>${h.deeds.length ? `<div>${h.deeds.map((x) => esc(DEED(x))).join('<br>')}</div>` : ''}</li>`).join('')}</ul>`
-          : '<p class="muted">Nobody has done anything great yet. Patience.</p>');
-      }).catch(() => { if (activeTab === 'heroes') pb.innerHTML = '<p class="muted">Could not load the people. Try again in a moment.</p>'; });
-    } else {
-      pb.innerHTML = `<label class="search"><svg class="ic"><use href="#i-search"/></svg>
-          <input id="peopleSearch" type="search" placeholder="Find a person or clan" value="${esc(peopleQuery)}" autocomplete="off"></label>
-        <div class="chips">${sorts.map(([k, n]) => `<button class="chip" data-psort="${k}" aria-pressed="${k === peopleSort}">${n}</button>`).join('')}</div>
-        <p class="lead" id="peopleCount"></p><ul class="people" id="peopleList"></ul>
-        <button class="btn ghost" id="peopleMore" hidden>Show more</button>`;
-      const input = $('#peopleSearch') as HTMLInputElement;
-      let timer = 0;
-      input.oninput = () => { clearTimeout(timer); timer = window.setTimeout(() => { peopleQuery = input.value; void loadPeople(false); }, 250); };
-      pb.querySelectorAll<HTMLButtonElement>('[data-psort]').forEach((c) => {
-        c.onclick = () => {
-          peopleSort = c.dataset.psort!; save('letopis.peopleSort', peopleSort);
-          pb.querySelectorAll('[data-psort]').forEach((x) => x.setAttribute('aria-pressed', String(x === c)));
-          void loadPeople(false);
-        };
-      });
-      $('#peopleMore').onclick = () => void loadPeople(true);
-      void loadPeople(false);
-    }
+    renderPeople(body);
 
   } else if (activeTab === 'stats') {
     renderStats(body);
@@ -753,138 +491,13 @@ function renderBandList() {
     : `<li class="empty-note">${T('Няма такъв род.', 'No clan by that name.')}</li>`;
 }
 
-let statsAt = 0;
-
-interface History {
-  series: { year: number; population: number; bands: number; villages: number; births: number; deaths: number; techs: number; era: number; avgAge: number; children: number; elders: number; span?: number }[];
-  causes: Record<string, number>;
-  events: Record<string, number>;
-  eras: { year: number; text: string }[];
-  records: {
-    largestBand?: { size: number; name: string; year: number };
-    oldest?: { age: number; name: string; id: number; year: number };
-    peak?: { population: number; year: number };
-    mostClans?: { bands: number; year: number };
-  };
-  gone: { extinct: number; merged: number };
-  totalBorn: number; totalDied: number; year: number; era: number; notify: boolean;
-  relations?: { alliances: number; rivalries: number };
-  learning?: { year: number; score: number; gen: number }[];
-}
-
-const EVENT_NAMES: Record<string, string> = {
-  discovery: 'First discoveries', rediscovery: 'Rediscoveries', learn: 'Knowledge shared', death: 'Notable deaths', twins: 'Twins born',
-  marriage: 'Marriages between clans', meet: 'Clans meeting', merge: 'Clans merging', extinct: 'Clans dying out', settle: 'Villages founded',
-  hunt: 'Great hunts', winter: 'Hard winters', drought: 'Droughts', flood: 'Floods', plague: 'Plagues', harvest: 'Rich harvests',
-  comet: 'Comets', eclipse: 'Eclipses', quake: 'Earthquakes', fire: 'Town fires', festival: 'Festivals', wonder: 'Great buildings',
-  expedition: 'Expeditions', secret: 'Secrets found', era: 'New ages', milestone: 'Population milestones', blessing: 'Blessings',
-  rain: 'Rains sent', feast: 'Feasts', lost: 'Knowledge lost',
-  alliance: 'Alliances sworn', rivalry: 'Rivalries', quarrel: 'Quarrels', aid: 'Food sent to friends', peace: 'Feuds ended', estranged: 'Friendships faded',
-  learned: 'Clans changing their way of life', inspired: 'Inventors inspired', prayer: 'Prayers', imitate: 'Clans learning from neighbours', move: 'Camps moved',
-};
-
-const css = (v: string, fb: string) => getComputedStyle(document.documentElement).getPropertyValue(v).trim() || fb;
-
-/** the statistics tab; `wide` lays the same out on two columns in a big card */
-async function renderStats(body: HTMLElement, wide = false) {
-  if (!wide && performance.now() - statsAt < 15000 && body.querySelector('.chart')) return;
-  if (!wide) statsAt = performance.now();
-  const h = await api<History>('/api/history').catch(() => null);
-  if (!wide && activeTab !== 'stats') return;
-  if (!h) { body.innerHTML = '<p class="muted">Could not load the statistics. Try again in a moment.</p>'; return; }
-  const s = h.series;
-  const last = s[s.length - 1];
-  const known = knownNow();
-  const villages = bands.filter((b) => b.settled).length;
-  const kpi = (label: string, value: string, sub = '') => `<div><span>${label}</span><b>${value}</b>${sub ? `<small>${sub}</small>` : ''}</div>`;
-  const prev = s.length > 10 ? s[s.length - 11] : s[0];
-  const trend = (a?: number, b?: number) => (a === undefined || b === undefined || !b ? '' : `${a >= b ? '▲' : '▼'} ${Math.abs(Math.round(((a - b) / b) * 100))}% in 10 years`);
-  const r = h.records;
-  const ageStruct = last ? [last.children, last.population - last.children - last.elders, last.elders] : [0, 0, 0];
-  const total = ageStruct.reduce((a, b) => a + b, 0) || 1;
-  const fmt = (y: number) => fmtYear(y);
-  const pc = (k: number) => Math.round((ageStruct[k] / total) * 100);
-  body.innerHTML = `
-    ${wide ? '<h2>The state of the world</h2>' : '<button class="btn ghost" id="statsWide">Open the full dashboard</button>'}
-    <div class="${wide ? 'dash' : 'dash-narrow'}">
-    <section class="span2">
-      <div class="kpis kpis-4">
-        ${kpi('People', num(people.length || last?.population || 0), trend(last?.population, prev?.population))}
-        ${kpi('Clans', num(bands.length), `${villages} villages`)}
-        ${kpi('Discoveries', `${known.size}/${TECH_LIST.length}`, eraName(currentEra))}
-        ${kpi('Avg. age', last ? last.avgAge.toFixed(1) : '–', 'years')}
-        ${kpi('Born', num(h.totalBorn))}
-        ${kpi('Died', num(h.totalDied))}
-        ${kpi('Clans gone', num(h.gone.extinct), `${num(h.gone.merged)} merged`)}
-        ${kpi('Years recorded', num(Math.max(0, h.year - (s[0]?.year ?? h.year))))}
-        ${kpi('Alliances', num(h.relations?.alliances ?? 0), 'between neighbours')}
-        ${kpi('Rivalries', num(h.relations?.rivalries ?? 0), 'no violence, just grudges')}
-      </div>
-    </section>
-    <section class="span2"><h3>Population and clans</h3><div id="chPop"></div></section>
-    <section><h3>Births and deaths per year</h3><div id="chLife"></div></section>
-    <section><h3>Discoveries over time</h3><div id="chTech"></div></section>
-    <section><h3>Who lives now</h3>
-      <div class="stack"><i style="flex:${ageStruct[0]};background:var(--accent-2)" title="Children"></i><i style="flex:${ageStruct[1]};background:var(--accent)" title="Adults"></i><i style="flex:${ageStruct[2]};background:#b48ead" title="Elders"></i></div>
-      <div class="legend"><span><i style="background:var(--accent-2)"></i>Children ${pc(0)}%</span><span><i style="background:var(--accent)"></i>Adults ${pc(1)}%</span><span><i style="background:#b48ead"></i>Elders ${pc(2)}%</span></div>
-    </section>
-    <section><h3>Records</h3><dl class="records">
-      ${r.peak ? `<dt>Most people at once</dt><dd>${num(r.peak.population)} <small>in ${fmt(r.peak.year)}</small></dd>` : ''}
-      ${r.largestBand ? `<dt>Largest clan</dt><dd>${esc(r.largestBand.name)}, ${r.largestBand.size} people <small>in ${fmt(r.largestBand.year)}</small></dd>` : ''}
-      ${r.oldest ? `<dt>Oldest person</dt><dd><a href="#" class="ref" data-person="${r.oldest.id}">${esc(r.oldest.name)}</a>, ${r.oldest.age} years <small>in ${fmt(r.oldest.year)}</small></dd>` : ''}
-      ${r.mostClans ? `<dt>Most clans</dt><dd>${r.mostClans.bands} <small>in ${fmt(r.mostClans.year)}</small></dd>` : ''}
-    </dl>${r.peak ? '' : '<p class="muted">Records are kept from now on.</p>'}</section>
-    <section><h3>The ages</h3><ol class="timeline">
-      <li class="done"><b>${eraName(0)}</b><small>${fmt(-12000)}</small></li>
-      ${ERAS_EN.slice(1).map((_, i) => {
-        const e = i + 1;
-        const reached = e <= h.era;
-        const ev = h.eras[e - 1];
-        const note = reached ? (ev ? fmt(ev.year) : 'reached') : e === h.era + 1 ? `opens with ${techLabel(GATES.get(e) ?? '')}` : 'still ahead';
-        return `<li class="${reached ? 'done' : e === h.era + 1 ? 'next' : ''}"><b>${eraName(e)}</b><small>${note}</small></li>`;
-      }).join('')}
-    </ol></section>
-    <section><h3>How the clans learned</h3><div id="dashBrains" class="muted">Loading…</div></section>
-    <section><h3>How people died</h3>${barList(Object.entries(h.causes), '#b48ead', 8)}</section>
-    <section><h3>What happened most</h3>${barList(Object.entries(h.events).map(([k, v]) => [`${ICON[k] ?? '•'} ${EVENT_NAMES[k] ?? k}`, v] as [string, number]), 'var(--accent-2)', 12)}</section>
-    <section class="span2"><h3>What people know</h3><div class="techs">${[...known].map((t) => `<span class="pill">${esc(techLabel(t))}</span>`).join('') || '<span class="muted">Nothing yet</span>'}</div></section>
-    <section class="span2"><h3>Notifications</h3><p class="muted">${h.notify ? 'On: the server sends the great moments to your phone or Home Assistant.'
-      : 'Off. Set <code>LETOPIS_NTFY_URL</code> (an ntfy topic) or <code>LETOPIS_WEBHOOK_URL</code> (for example a Home Assistant webhook) on the container to get the great moments on your phone.'}</p></section>
-    </div>`;
-  const xs = s.map((x) => x.year);
-  const eras = s.map((x) => x.era);
-  const accent = css('--accent', '#e0a84f'), accent2 = css('--accent-2', '#7fb2d9');
-  lineChart(body.querySelector<HTMLElement>('#chPop')!, { xs, eras, eraNames: ERAS_EN, fmtX: fmt, series: [
-    { name: 'People', color: accent, values: s.map((x) => x.population), fill: true },
-    { name: 'Clans ×10', color: accent2, values: s.map((x) => x.bands * 10), dashed: true },
-  ] });
-  lineChart(body.querySelector<HTMLElement>('#chLife')!, { xs, eras, fmtX: fmt, height: 140, fmtY: (y) => y.toFixed(1), series: [
-    { name: 'Births', color: '#6cc38a', values: s.map((x) => x.births / (x.span ?? 1)) },
-    { name: 'Deaths', color: '#d9776f', values: s.map((x) => x.deaths / (x.span ?? 1)) },
-  ] });
-  lineChart(body.querySelector<HTMLElement>('#chTech')!, { xs, eras, fmtX: fmt, height: 120, series: [
-    { name: 'Discoveries', color: '#b48ead', values: s.map((x) => x.techs), fill: true },
-  ] });
-  api<{ clans: number; styles: Record<string, number>; avgGeneration: number; maxGeneration: number; tried: number; kept: number; copied?: number; copiedKept?: number; avgStep?: number; network: { inputs: number; hidden: number; outputs: number; weights: number } } | null>('/api/brains').then((bs) => {
-    const el = body.querySelector<HTMLElement>('#dashBrains');
-    if (!el || !bs) return;
-    el.classList.remove('muted');
-    el.innerHTML = `<p class="lead">Every clan carries a small neural network (${bs.network.inputs} senses → ${bs.network.hidden} neurons → ${bs.network.outputs} outputs)
-      that decides each month how the clan shares its work. Every two years a clan judges a slightly changed network and keeps it when the clan eats better and grows, now and then copying a neighbour that does better,
-      and daughter clans inherit their parents' network with small mutations. Nobody wrote these strategies.</p>
-      <div id="chLearn"></div>
-      <h4>Ways of life now</h4>${barList(Object.entries(bs.styles), 'var(--accent)', 8)}
-      <p class="muted">Line generations: ${bs.avgGeneration} on average, up to ${bs.maxGeneration} · ${num(bs.kept)} of ${num(bs.tried)} tries kept by the clans alive now
-        · ${num(bs.copiedKept ?? 0)} of ${num(bs.copied ?? 0)} lessons from neighbours kept · average daring ${Math.round((bs.avgStep ?? 0) * 100)}%.</p>`;
-    const L = h.learning ?? [];
-    lineChart(el.querySelector<HTMLElement>('#chLearn')!, { xs: L.map((x) => x.year), fmtX: fmt, height: 130, fmtY: (y) => y.toFixed(2), series: [
-      { name: 'How well clans do (food and growth)', color: '#6cc38a', values: L.map((x) => x.score), fill: true },
-      { name: 'Generation ÷ 10', color: '#b48ead', values: L.map((x) => x.gen / 10), dashed: true },
-    ] });
-  }).catch(() => {});
-  const wideBtn = body.querySelector<HTMLButtonElement>('#statsWide');
-  if (wideBtn) wideBtn.onclick = () => { openCard('<div id="dashBody"><p class="muted">Loading…</p></div>', false, 'wide'); void renderStats($('#dashBody'), true); };
-}
+// the statistics tab and dashboard live in dashboard.ts (fork); this hands them what they need
+setUi({
+  bands: () => bands, people: () => people, activeTab: () => activeTab, currentEra: () => currentEra,
+  knownNow: () => knownNow(bands), eraName, techLabel, gates: GATES, icon: ICON,
+  openCard, rerender: () => renderSide(), focusBand: (b) => { stopTour(); lookAt(b.x, b.y, Math.max(cam.tz, 1.4)); },
+});
+initHelp();
 
 async function loadOlder() {
   const oldest = feed.length ? feed[feed.length - 1].id : undefined;
@@ -894,7 +507,7 @@ async function loadOlder() {
 }
 
 document.querySelectorAll<HTMLButtonElement>('.tab').forEach((b) => {
-  b.onclick = () => { activeTab = b.dataset.tab!; save('letopis.tab', activeTab); statsAt = 0; renderSide(); };
+  b.onclick = () => { activeTab = b.dataset.tab!; save('letopis.tab', activeTab); resetStats(); renderSide(); };
 });
 $('#sideBody').addEventListener('click', (e) => {
   const tech = (e.target as HTMLElement).closest<HTMLElement>('li[data-tech]');
@@ -1098,130 +711,7 @@ function showBand(b: BandView) {
       <div class="bl-bar"><i style="width:${(n / taskTotal) * 100}%;background:${hex(b.color)}"></i></div></div>`).join('')}</div>
     <h3>What they know <small>${b.techs.length}</small></h3><div class="techs">${b.techs.map((t) => `<span class="pill">${esc(TECH(t))}</span>`).join('') || '<span class="muted">Nothing yet</span>'}</div>
     <h3>The people</h3><ul class="people" id="bandPeople"><li class="muted">Loading…</li></ul>`);
-  // help aimed at this clan
-  document.querySelectorAll<HTMLButtonElement>('#bandHelp [data-help]').forEach((btn) => {
-    btn.onclick = async () => {
-      btn.disabled = true;
-      const note = $('#bandHelpNote');
-      note.hidden = false;
-      note.innerHTML = await useAct(btn.dataset.help!, b.id);
-      btn.disabled = false;
-    };
-  });
-  // what the clan has learned (brain.ts on the server)
-  const JOB_NAMES: Record<string, string> = { farm: 'Farming', herd: 'Herding', fish: 'Fishing', craft: 'Crafting', build: 'Building', forage: 'Hunting and gathering' };
-  api<{ style: string; weights: Record<string, number>; now: Record<string, number>; give: number; generation: number; tried: number; kept: number; trying: boolean; inspired: boolean; reactsTo: string[]; network: string; roam: number; copied: number; copiedKept: number; step: number } | null>(`/api/brain/${b.id}`).then((br) => {
-    const el = document.getElementById('bandBrain');
-    if (!el || !br) { if (el) el.textContent = 'Still finding its way.'; return; }
-    el.classList.remove('muted');
-    $('#bandStyleTag').textContent = br.style + (br.inspired ? ' · inspired' : '');
-    const max = Math.max(...Object.values(br.now), ...Object.values(br.weights));
-    el.innerHTML = `<p class="lead">This clan's brain is a small neural network (${esc(br.network)}). Every month it looks at the clan's situation and
-        decides how to share the work and when to move on; every two years it judges a slightly changed network and keeps it only if the clan ate better and grew.
-        Generation ${br.generation} of its line · ${br.kept} of ${br.tried} tries kept${br.trying ? ' · trying something new this year' : ''}
-        · learned from neighbours ${br.copiedKept} of ${br.copied} times · daring ${Math.round(br.step * 100)}%.</p>
-      ${br.reactsTo?.length ? `<p class="muted">It reacts most to: <b>${br.reactsTo.map(esc).join('</b>, <b>')}</b>.</p>` : ''}
-      ${brainSvg(br as unknown as BrainNet)}
-      <div class="barlist">${Object.entries(br.now).sort((x, y) => y[1] - x[1]).map(([k, v]) => `<div class="barrow"><span class="bl-k">${JOB_NAMES[k] ?? k}</span><span class="bl-v">×${v.toFixed(2)} now · ×${(br.weights[k] ?? 0).toFixed(2)} this year</span>
-        <div class="bl-bar"><i style="width:${(v / max) * 100}%;background:${hex(b.color)}"></i></div></div>`).join('')}
-        ${b.settled ? '' : `<div class="barrow"><span class="bl-k">Restlessness (moving on before they must)</span><span class="bl-v">${Math.round(br.roam * 100)}%</span>
-        <div class="bl-bar"><i style="width:${br.roam * 100}%;background:var(--accent-2)"></i></div></div>`}
-        <div class="barrow"><span class="bl-k">Generosity to friends</span><span class="bl-v">${Math.round(br.give * 100)}%</span>
-        <div class="bl-bar"><i style="width:${br.give * 100}%;background:var(--good)"></i></div></div></div>`;
-  }).catch(() => { const el = document.getElementById('bandBrain'); if (el) el.textContent = 'Could not load.'; });
-  // friends and rivals, and everyone in the clan, each in one request
-  api<{ id: number; name: string; color: number; score: number; kind: string }[]>(`/api/relations/${b.id}`).then((rs) => {
-    const el = document.getElementById('bandRel');
-    if (!el) return;
-    const shown = rs.filter((x) => x.kind !== 'neutral').slice(0, 10);
-    const label: Record<string, string> = { ally: 'ally', friendly: 'friendly', cool: 'cool', rival: 'rival' };
-    el.classList.remove('muted');
-    el.innerHTML = shown.length ? `<ul class="rels">${shown.map((x) => `<li data-band="${x.id}"><span class="dot" style="background:${hex(x.color)}"></span>
-        <span class="rel-name">${esc(x.name)}</span><span class="rel ${x.kind}">${label[x.kind]}</span>
-        <span class="rel-bar"><i style="width:${Math.abs(x.score) / 2}%;${x.score < 0 ? 'right:50%' : 'left:50%'}" class="${x.score < 0 ? 'neg' : 'pos'}"></i></span></li>`).join('')}</ul>`
-      : '<p class="muted">No strong feelings for any neighbour yet.</p>';
-  }).catch(() => { const el = document.getElementById('bandRel'); if (el) el.textContent = 'Could not load.'; });
-  api<{ total: number; people: PersonListRow[] }>(`/api/people?band=${b.id}&sort=old&limit=200`).then((res) => {
-    const el = document.getElementById('bandPeople');
-    if (!el) return;
-    el.innerHTML = res.people.map((p) => `<li data-person="${p.id}"><span class="avatar sm ${p.sex ? 'f' : 'm'}">${p.age < 12 ? '🧒' : p.age >= 60 ? (p.sex ? '👵' : '👴') : p.sex ? '👩' : '👨'}</span>
-      <div><b>${esc(p.name)}</b>${p.chief ? ' <span class="badge village">chief</span>' : ''}<div class="muted">${p.age} y · ${esc(TASK(TASK_NAMES[p.task as keyof typeof TASK_NAMES] ?? p.task))}${p.deeds ? ` · ${p.deeds} deed${p.deeds > 1 ? 's' : ''}` : ''}</div></div></li>`).join('')
-      || '<li class="muted">Nobody.</li>';
-  }).catch(() => { const el = document.getElementById('bandPeople'); if (el) el.innerHTML = '<li class="muted">Could not load.</li>'; });
-}
-
-// ---------- the discovery tree (fork): a card for every discovery ----------
-
-type TreeTech = { id: string; era: number; year: number; prereq: string[]; need: string | null; knownBy: number; discovered: boolean;
-  first: { who: string; pid: number; band: string; year: number } | null };
-let discQuery = '';
-let discFilter: 'all' | 'done' | 'reach' | 'todo' = 'all';
-async function loadTree() {
-  return api<{ clans: number; techs: TreeTech[] }>('/api/techtree').catch(() => null);
-}
-const NEED_TEXT: Record<string, string> = {
-  flint: 'good stone nearby', clay: 'clay nearby', grain: 'wild grain nearby', wildHerd: 'wild herds nearby', fish: 'a river or the sea', forest: 'a forest', ore: 'ore in the ground',
-};
-
-async function showTech(id: string) {
-  const tree = await loadTree();
-  const t = tree?.techs.find((x) => x.id === id);
-  if (!tree || !t) return;
-  const byId = new Map(tree.techs.map((x) => [x.id, x]));
-  const chip = (x: TreeTech) => `<button class="chip tech-chip ${x.discovered ? 'done' : ''}" data-tech="${x.id}">${x.discovered ? '✓ ' : ''}${esc(techLabel(x.id))}</button>`;
-  const needs = t.prereq.map((r) => byId.get(r)).filter(Boolean) as TreeTech[];
-  const unlocks = tree.techs.filter((x) => x.prereq.includes(id));
-  const ready = needs.every((x) => x.discovered);
-  const share = tree.clans ? t.knownBy / tree.clans : 0;
-  openCard(`<h2>💡 ${esc(techLabel(id))}</h2>
-    <div class="muted">${esc(eraName(t.era))} · in history around ${fmtYear(t.year)}</div>
-    <p class="lead" style="margin-top:10px">${esc(TECH_DESC[id]?.[1] ?? '')}</p>
-    ${t.discovered && t.first ? `<p>First discovered by ${t.first.pid ? `<a href="#" data-person="${t.first.pid}">${esc(t.first.who)}</a>` : esc(t.first.who)}
-        of ${esc(t.first.band)} in <b>${fmtYear(t.first.year)}</b>.</p>`
-      : `<p class="act-note">${ready ? 'Within reach: every clan that knows what it needs may find it any day now.' : 'Not yet: the world still needs what is listed below.'}</p>`}
-    <div class="barrow" style="margin:10px 0"><span class="bl-k">Known by ${t.knownBy} of ${tree.clans} clans</span><span class="bl-v">${Math.round(share * 100)}%</span>
-      <div class="bl-bar"><i style="width:${share * 100}%;background:var(--accent)"></i></div></div>
-    <h3>Needs</h3>${needs.length ? `<div class="chips">${needs.map(chip).join('')}</div>` : '<p class="muted">Nothing: anyone can find it.</p>'}
-    ${t.need ? `<p class="muted">And ${NEED_TEXT[t.need] ?? t.need}.</p>` : ''}
-    <h3>Leads to</h3>${unlocks.length ? `<div class="chips">${unlocks.map(chip).join('')}</div>` : '<p class="muted">Nothing further yet.</p>'}`);
-  document.querySelectorAll<HTMLElement>('#cardBody [data-tech]').forEach((el) => { el.onclick = () => void showTech(el.dataset.tech!); });
-}
-
-// ---------- the brain, drawn (fork): what a clan's neural network looks like ----------
-
-type BrainNet = { net: number[]; senses: number[]; shape: { inputs: number; hidden: number; outputs: number }; senseNames: string[]; outputNames: string[] };
-const SENSE_SHORT = ['spring/autumn', 'winter/summer', 'hunger', 'food stores', 'fruit', 'game', 'fish', 'settled', 'size', 'age', 'warmth'];
-const OUT_LABEL: Record<string, string> = { farm: 'Farming', herd: 'Herding', fish: 'Fishing', craft: 'Crafting', build: 'Building', forage: 'Foraging', give: 'Generosity', roam: 'Restlessness' };
-
-/** an SVG of the network: lines are the weights (green adds, red holds back, thicker is stronger), circles light up with the signal */
-function brainSvg(b: BrainNet): string {
-  const { inputs: I, hidden: H, outputs: O } = b.shape;
-  const net = b.net, x = b.senses;
-  if (!net || !x || net.length !== I * H + H + H * O + O) return '';
-  const hid: number[] = [];
-  for (let j = 0; j < H; j++) { let s = net[I * H + j]; for (let i = 0; i < I; i++) s += net[j * I + i] * x[i]; hid.push(Math.tanh(s)); }
-  const base = I * H + H;
-  const outs: number[] = [];
-  for (let o = 0; o < O; o++) { let s = net[base + H * O + o]; for (let j = 0; j < H; j++) s += net[base + o * H + j] * hid[j]; outs.push(Math.tanh(s / 2)); }
-  // the unused hunting output is left out of the picture
-  const shown = b.outputNames.map((n, o) => [n, o] as const).filter(([n]) => n !== 'hunt');
-  const W = 360, Hh = 250, xi = 92, xh = 180, xo = 268;
-  const yI = (i: number) => 14 + (i * (Hh - 28)) / (I - 1);
-  const yH = (j: number) => 30 + (j * (Hh - 60)) / (H - 1);
-  const yO = (k: number) => 22 + (k * (Hh - 44)) / (shown.length - 1);
-  const line = (x1: number, y1: number, x2: number, y2: number, w: number) => {
-    const a = Math.min(1, Math.abs(w) / 1.5);
-    return `<line x1="${x1}" y1="${y1.toFixed(1)}" x2="${x2}" y2="${y2.toFixed(1)}" stroke="${w >= 0 ? '#6cc38a' : '#d9776f'}" stroke-opacity="${(0.08 + a * 0.6).toFixed(2)}" stroke-width="${(0.4 + a * 1.6).toFixed(2)}"/>`;
-  };
-  const dot = (cx: number, cy: number, v: number) => `<circle cx="${cx}" cy="${cy.toFixed(1)}" r="5" fill="${v >= 0 ? '#e0a84f' : '#7fb2d9'}" fill-opacity="${(0.25 + Math.min(1, Math.abs(v)) * 0.75).toFixed(2)}" stroke="rgba(255,255,255,0.35)" stroke-width="0.6"/>`;
-  let svg = '';
-  for (let j = 0; j < H; j++) for (let i = 0; i < I; i++) svg += line(xi, yI(i), xh, yH(j), net[j * I + i]);
-  shown.forEach(([, o], k) => { for (let j = 0; j < H; j++) svg += line(xh, yH(j), xo, yO(k), net[base + o * H + j]); });
-  for (let i = 0; i < I; i++) svg += dot(xi, yI(i), x[i]) + `<text x="${xi - 9}" y="${(yI(i) + 3.5).toFixed(1)}" text-anchor="end">${SENSE_SHORT[i] ?? ''}</text>`;
-  for (let j = 0; j < H; j++) svg += dot(xh, yH(j), hid[j]);
-  shown.forEach(([n, o], k) => { svg += dot(xo, yO(k), outs[o]) + `<text x="${xo + 9}" y="${(yO(k) + 3.5).toFixed(1)}">${OUT_LABEL[n] ?? n}</text>`; });
-  return `<svg class="brain-net" viewBox="0 0 ${W} ${Hh}" role="img" aria-label="The clan's neural network">${svg}</svg>
-    <div class="legend"><span><i style="background:#6cc38a"></i>adds</span><span><i style="background:#d9776f"></i>holds back</span><span><i style="background:#e0a84f"></i>active now</span></div>`;
+  fillBandCard(b);
 }
 
 // ---------- while you were away ----------

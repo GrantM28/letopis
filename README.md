@@ -20,8 +20,8 @@ and a reworked, English-only interface. Upstream changes are merged in from time
 - Every person has a name, parents, children and traits (strength, wit, curiosity, sociability, health, longevity) that are inherited with small mutations.
 - Clans wander, split, meet, learn from each other, settle into villages and sometimes die out together with their knowledge.
 - Trees grow and get cut for fires and huts; a clan moves on when the wood around its camp is gone, when hunger drives it,
-  or when its brain judges it time for fresh land. Every move goes into the chronicle: which way, how far, to what land, why,
-  and who led them (a minor entry: the Important filter hides moves, the Clans filter shows them).
+  or when its brain judges it time for fresh land. The moves worth telling go into the chronicle (far ones, or forced by hunger
+  or the end of the wood, at most one per clan in fifty years): which way, how far, to what land, why, and who led them.
 - **Nine ages and 185 discoveries**: Stone, New Stone and Bronze Age, then the Iron Age, Middle Ages, Early Modern, Industrial,
   Information and Space Age. Each age opens with one discovery (iron, the watermill, the printing press, the steam engine,
   the computer, a Moon base), and every age has its smaller ones too: the bone needle and flute, irrigation, brewing and
@@ -44,7 +44,8 @@ and a reworked, English-only interface. Upstream changes are merged in from time
 - **Clans that learn** (machine learning inside the simulation, nothing leaves your server): every clan carries a small
   neural network, its brain (11 senses → 8 neurons → 9 outputs, 177 weights). Each month it senses the season, hunger, food stores,
   the fruit, game and fish around, the cold, the clan's size, whether it is settled and the age of the world, and decides how the clan
-  shares its work between farming, herding, fishing, crafting, building and foraging, how generous it is with its friends, and
+  shares its work between farming, herding, fishing, crafting, building and foraging (as shares that always add up, so a clan
+  can lean on one job only by giving up another), how generous it is with its friends, and
   (for wanderers) whether to move on to fresh land before it must.
   - *Learning in a lifetime*: every two years the clan judges a slightly changed network and keeps it only if the clan ate better and
     grew, counting the people who left to found daughter clans as success (an evolution strategy, a gradient-free kind of
@@ -52,7 +53,7 @@ and a reworked, English-only interface. Upstream changes are merged in from time
   - *Learning from others*: now and then a clan tries a blend of a neighbour's brain that does clearly better, and keeps it only if it works.
   - *Learning over generations*: daughter clans inherit their parents' network with small mutations, and clans whose network fails go
     hungry and die out (neuroevolution).
-  - It is tested: the same worlds with learning switched off grow about 15% fewer people. An early version also let brains choose
+  - It is tested: the same worlds with learning switched off grow 10-15% fewer people. An early version also let brains choose
     between hunting and gathering, but every clan learned to over-hunt and the game ran out for all (a tragedy of the commons),
     so that decision was taken back. Brains also found that herding and fishing had no limit and grew villages of 30,000; a pasture
     and a river now feed only so many.
@@ -66,8 +67,10 @@ and a reworked, English-only interface. Upstream changes are merged in from time
   the Help panel (the red number on the Help button counts them); a prayer nobody answers fades after two hours.
 - **Discoveries tab**: search, filters (discovered, within reach now, not yet) and a card for every discovery: what it needs
   (and from the land), what it leads to, who found it first and when, and how many clans know it now.
-- A living chronicle with filters (important, discoveries, life, clans, nature), clickable people and clans,
-  family trees back to the first humans, and every discovery grouped by age with progress bars.
+- A living chronicle with filters (important, **story**, discoveries, life, clans, nature), clickable people and clans,
+  family trees back to the first humans. *Story* hides everyday life (moves, weddings, quiet deaths, small clan news) and leaves
+  the history. A clan's change of way of life is told only once it holds for three periods.
+- Every discovery grouped by age with progress bars.
 - **Statistics dashboard**: population and clans over time with the ages marked, births and deaths per year, discoveries over time,
   the age make-up of the living, records (most people, largest clan, oldest person), how people died, what happened most, and the timeline of the ages.
 - **People tab**: everyone alive, searchable and sortable (oldest, youngest, name, most deeds, most children), plus the notable ones.
@@ -136,11 +139,17 @@ npm run dev     # runs at x200 speed with data in ./data, http://localhost:2222 
 npm run build   # production build into dist/
 npm run typecheck
 npm run simtest -- 42 6000 500   # simulate 6000 years of world 42 without the server, printing every 500 years
-npm run check:english            # fails if anything the page shows would come out in Bulgarian (also runs on every GitHub build)
+npm test                         # every check before a release (also runs on every GitHub build; a failure stops the image)
+npm test -- saveload             # just one of them
 ```
 
 On Windows, start the dev server from `.claude/launch.json` or set `LETOPIS_DATA=./data` and `LETOPIS_SPEED=200` yourself
 before `node --disable-warning=ExperimentalWarning dist/server.js`.
+
+The tests (`tests/`): `techtree` (every discovery and age gate is sound), `english` (nothing the page shows comes out in
+Bulgarian), `determinism` (the same seed makes the same world), `saveload` (a saved and loaded world goes on exactly as one
+that never stopped, brains included), `smoke` (three worlds live 600 years: no dying out, no runaway clan, discoveries made),
+`api` (the server starts and every endpoint answers).
 
 Pushing to `main` builds the Docker image with GitHub Actions and publishes it as `ghcr.io/grantm28/letopis:latest`.
 
@@ -156,11 +165,15 @@ Pushing to `main` builds the Docker image with GitHub Actions and publishes it a
 | `src/client/minimap.ts` | the world map in the corner |
 | `src/server/extras.ts` | yearly history, records, people list and acts (`/api/history`, `/api/people`, `/api/acts`) |
 | `src/server/notify.ts` | ntfy and webhook notifications |
-| `src/client/main.ts`, `public/` | the page: panels, tabs, cards |
+| `src/client/main.ts`, `public/` | the page: panels, tabs, cards (upstream, with small hooks) |
+| `src/client/help.ts`, `people.ts`, `dashboard.ts`, `discoveries.ts`, `clancard.ts`, `clock.ts`, `ages.ts` | the fork's tabs, cards and controls; `kit.ts` is their doorway into `main.ts` |
+| `public/fork.css` | the fork's styles, loaded after `style.css` |
+| `tests/` | `npm test` |
 | `src/client/render.ts`, `src/client/landmarks.ts` | the map; later-age buildings are drawn in code in `landmarks.ts` |
 | `src/client/charts.ts` | the charts of the statistics dashboard |
 
-The fork keeps its additions in their own files where it can, so upstream updates merge with few conflicts.
+The fork keeps its additions in their own files, so upstream updates merge with few conflicts. [docs/FORK.md](docs/FORK.md)
+lists every hook the fork adds to the original's files.
 
 ### Graphics
 

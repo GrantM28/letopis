@@ -99,3 +99,18 @@ reporting when each age begins). Both write a small report to `docs/experiments/
 - Softmax outputs change how brains behave; if learning stops beating no-learning, keep the old outputs and only add the crowding guard.
 - Moving code out of `main.ts` is a large diff; done in small commits with the page checked after each.
 - Tests that simulate hundreds of years make the build slower (budget: under 6 minutes extra on GitHub).
+
+## Results (shipped in 1.40.0)
+
+- **Tests**: `npm test` runs techtree, english, determinism, saveload, smoke and api; CI runs it before building the image.
+  The save/load test found a real gap: the running world kept exact fruit and game while the save kept them rounded,
+  so a restart changed the future a little. The running world now takes the rounded values at every save, and the test
+  compares every person and clan exactly.
+- **Guard rails**: one typed doorway (`sim.host()`) instead of casts; desperate splits at three times the size limit;
+  senses rounded to hundredths; job shares through a softmax (they always add up).
+- **Learning experiment** (learning vs frozen brains, 4 worlds): average population +10.5%, final +15%, better in all 4. Gate passed.
+- **Chronicle** over 1,500 years: 8,524 → 3,549 entries; moves 38% → 16%, way-of-life changes 11% → 6%. New *Story* filter.
+- **Long runs** (worlds 42 and 3 to 5500 BC): New Stone Age around 7000 BC, population levels off at 17-20k, no runaway.
+- **Clean-up**: the fork's page code moved out of `main.ts` into `help.ts`, `people.ts`, `dashboard.ts`, `discoveries.ts`,
+  `clancard.ts`, `brainview.ts`, `clock.ts`, `ages.ts` (via `kit.ts`); `main.ts` fork diff 789 → about 190 added lines.
+  Fork styles in `public/fork.css`. Every hook listed in `docs/FORK.md`.

@@ -72,7 +72,7 @@ export class Extras {
       ages.filter((a) => a < 12).length, ages.filter((a) => a >= 60).length,
     );
     // how well the clans' brains are doing (brain.ts): the learning curve
-    const bs = brainSummary(sim as never);
+    const bs = brainSummary(sim.host());
     if (bs.clans) this.db.prepare('INSERT OR REPLACE INTO x_learning VALUES (?,?,?,?,?,?)').run(w, year, bs.avgScore, bs.avgGeneration, bs.kept, bs.tried);
     // records
     const rec = this.records(w);
@@ -159,7 +159,7 @@ export class Extras {
       json(res, {
         series: this.history(w), causes: this.counts(w, 'cause'), events: this.counts(w, 'event'), eras: this.eras(w),
         records: this.records(w), gone: this.goneCount(w), learning: this.learning(w), totalBorn: sim.s.totalBorn, totalDied: sim.s.totalDied,
-        year: Math.floor(sim.year), era: sim.s.era, notify, relations: relationCounts(sim as never),
+        year: Math.floor(sim.year), era: sim.s.era, notify, relations: relationCounts(sim.host()),
       });
       return true;
     }
@@ -179,7 +179,7 @@ export class Extras {
       json(res, { ok: true, band: sim.bandEnLabel(r.band, true), bandId: r.band.id, want: r.want });
       return true;
     }
-    if (p === '/api/brains') { json(res, brainSummary(sim as never)); return true; }
+    if (p === '/api/brains') { json(res, brainSummary(sim.host())); return true; }
     if (p === '/api/techtree') {
       // every discovery: what it needs, how many clans know it now, and who found it first
       const knownBy = new Map<string, number>();
@@ -198,14 +198,14 @@ export class Extras {
     }
     if (p.startsWith('/api/brain/')) {
       const b = sim.s.bands.find((x) => x.id === Number(p.split('/').pop()));
-      json(res, b ? { ...brainView(sim as never, b), inspired: !!sim.s.inspired?.[b.id] } : null, b ? 200 : 404);
+      json(res, b ? { ...brainView(sim.host(), b), inspired: !!sim.s.inspired?.[b.id] } : null, b ? 200 : 404);
       return true;
     }
     if (p.startsWith('/api/relations/')) {
       // a clan's friends and rivals, with their names
       const id = Number(p.split('/').pop());
       const byId = new Map(sim.s.bands.map((b) => [b.id, b]));
-      json(res, relationsOf(sim as never, id).filter((r) => byId.has(r.id)).map((r) => {
+      json(res, relationsOf(sim.host(), id).filter((r) => byId.has(r.id)).map((r) => {
         const b = byId.get(r.id)!;
         return { id: r.id, name: sim.bandEnLabel(b, true), color: b.color, score: r.score, kind: r.state ?? (r.score > 15 ? 'friendly' : r.score < -15 ? 'cool' : 'neutral') };
       }));
