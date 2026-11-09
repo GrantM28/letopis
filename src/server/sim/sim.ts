@@ -8,6 +8,7 @@ import { FEMALE, MALE, bandColor, bandName, fixBandName, familyFrom, nickname, p
 import { ERAS, TECHS, TECH_BY_ID, Tech, eraOf } from './tech';
 import { LATER_ERA_WHY } from '../../shared/later_techs';
 import { ActKind, EventHost, act, worldEvents } from './events';
+import { RelationHost, relationsStep } from './relations';
 import { BIG, startStage, treeKinds } from '../../shared/trees';
 import { findRoad } from './roads';
 import { BEAST_EN, ERAS_EN, FEATURE_EN, SECRET_HEROES_EN, SECRET_KINDS_EN, TECH_EN, bandEn, bandLabelEn, bandThe, causeEn, chiefEn, deedEn, personEn, translit } from '../../shared/i18n';
@@ -109,6 +110,8 @@ export interface SimState {
   roads?: string;
   /** village pairs joined by a road, as 'a-b:level' */
   roadPairs?: string[];
+  /** how two neighbouring clans feel about each other, 'a-b' -> -100..100 (fork: relations.ts) */
+  relations?: Record<string, number>;
 }
 
 export interface DeadRecord {
@@ -679,6 +682,7 @@ export class Simulation {
     if (this.month === 3) this.pairing(members);
     this.bandDynamics(members);
     this.contact();
+    if (this.s.tick % 3 === 0) relationsStep(this as unknown as RelationHost, members);
     if (this.month === 6) this.buildRoads();
     if (this.s.tick % 6 === 0) this.explore();
     this.randomEvents(members);

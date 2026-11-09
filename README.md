@@ -28,6 +28,9 @@ and a reworked, English-only interface. Upstream changes are merged in from time
   radio masts, office blocks, solar panels, rockets, a dome on the Moon and more.
 - **World events**: floods, plagues (milder with medicine), rich harvests, comets, eclipses, earthquakes, town fires, festivals,
   great buildings of each age and expeditions, alongside great hunts, hard winters and droughts.
+- **Friends and rivals**: neighbouring clans warm or cool towards each other. Clans that split from one another, trade or
+  write tend to become allies who send food in a bad year and grow richer from trade; hungry clans crowding the same land
+  become rivals who quarrel over hunting grounds (nothing violent on screen). Alliances, rivalries and reconciliations go in the chronicle.
 - **Help the world**: now and then you may send a blessing (food for the hungriest clan), rain (over the driest land) or call a feast.
   Each has a cooldown shared by everyone watching, and each is written in the chronicle.
 - A living chronicle with filters (important, discoveries, life, clans, nature), clickable people and clans,
@@ -35,7 +38,10 @@ and a reworked, English-only interface. Upstream changes are merged in from time
 - **Statistics dashboard**: population and clans over time with the ages marked, births and deaths per year, discoveries over time,
   the age make-up of the living, records (most people, largest clan, oldest person), how people died, what happened most, and the timeline of the ages.
 - **People tab**: everyone alive, searchable and sortable (oldest, youngest, name, most deeds, most children), plus the notable ones.
-- **Clans tab**: search, sort by size, knowledge or name, with each clan's chief and size.
+- **Clans tab**: search, sort by size, knowledge or name, with each clan's chief and size. A clan's card shows its age,
+  children, elders and food, its friends and rivals, what its people are doing, what it knows and everyone in it.
+- **World map** in the corner: the explored land, every clan, and the part you are looking at. Click or drag on it to go there;
+  the map button in the toolbar hides it.
 - The top bar shows how far the world is through the discoveries of its age and which age comes next.
 - **Notifications** to your phone (ntfy) or Home Assistant (webhook) when a new age begins or a great first discovery is made.
 - Kids mode with bigger letters and simpler explanations.
@@ -111,6 +117,8 @@ Pushing to `main` builds the Docker image with GitHub Actions and publishes it a
 | `src/server/sim/sim.ts` | the simulation (upstream) |
 | `src/server/sim/tech.ts`, `src/shared/later_techs.ts` | the discoveries; the Iron Age and later live in `later_techs.ts` |
 | `src/server/sim/events.ts`, `src/shared/event_words.ts` | the world events and the acts of the watchers |
+| `src/server/sim/relations.ts` | friendship and rivalry between neighbouring clans |
+| `src/client/minimap.ts` | the world map in the corner |
 | `src/server/extras.ts` | yearly history, records, people list and acts (`/api/history`, `/api/people`, `/api/acts`) |
 | `src/server/notify.ts` | ntfy and webhook notifications |
 | `src/client/main.ts`, `public/` | the page: panels, tabs, cards |
@@ -137,14 +145,15 @@ The finished atlas is in git, so Python is not needed to build the game.
 `/api/person/:id`, `/api/tree/:id`, `/api/band/:id`, `/api/heroes`, `/api/discoveries`, `/api/stats`, `/api/worlds`, WebSocket `/ws`.
 
 Added in this fork: `/api/history` (yearly series, causes of death, event counts, records, the ages),
-`/api/people?q=&sort=old|young|name|deeds|children&offset=&limit=` (everyone alive), `/api/acts` and `POST /api/act/bless|rain|feast`.
+`/api/people?q=&band=&sort=old|young|name|deeds|children&offset=&limit=` (everyone alive), `/api/relations/:bandId` (a clan's friends and rivals),
+`/api/acts` and `POST /api/act/bless|rain|feast`.
 
 `/api/health` works well as a sensor for Home Assistant or any uptime monitor.
 
 ## Roadmap
 
 - Sprite-sheet art for the later ages, to replace the code-drawn buildings.
-- States, trade routes and alliances between clans.
+- States: allied towns joining into one realm, with trade roads drawn on the map.
 - A longer test of the pacing of the later ages.
 
 ## Credits

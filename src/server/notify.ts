@@ -18,7 +18,7 @@ export const notifyEnabled = !!(WEBHOOK || NTFY);
 const TITLES: Record<string, string> = {
   era: 'A new age begins', discovery: 'A first discovery', wonder: 'A great building', plague: 'A plague',
   milestone: 'The world grows', extinct: 'A clan has died out', end: 'The world has ended', comet: 'A sign in the sky',
-  quake: 'An earthquake', blessing: 'A blessing', rain: 'Rain', feast: 'A feast',
+  quake: 'An earthquake', blessing: 'A blessing', rain: 'Rain', feast: 'A feast', alliance: 'An alliance',
 };
 
 let sentAt: number[] = [];

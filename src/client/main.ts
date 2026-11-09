@@ -7,6 +7,7 @@ import { SECRET_COUNT, SecretFind, SecretSpot } from '../shared/secrets';
 import { ERAS_BG, ERAS_EN, TECH_DESC, TECH_EN, TECH_LIST } from '../shared/i18n';
 import { ERA_GATES } from '../shared/later_techs';
 import { barList, lineChart } from './charts';
+import { Minimap } from './minimap';
 import {
   B, BL, CAUSE, CHIEF, DEED, EN, ERA, GENE, HERO, P, SECRET_KIND, T, TASK, TECH, TECH_ID, TITLE, VILLAGE, fmtYear, monthName, num, refName, translatePage,
 } from './lang';
@@ -290,6 +291,7 @@ function onSnapshot(m: SnapshotMessage) {
   if (m.trees) r.setTrees(m.trees);
   if (m.roads) r.setRoads(m.roads);
   r.setExplored(b64decode(m.explored));
+  mini?.setExplored(r.explored);
   r.updateBands(bands, kids);
   r.updatePeople(people, bandColors(), 400);
   applyTime(m.time, m.population);
@@ -301,7 +303,7 @@ function onSnapshot(m: SnapshotMessage) {
 function onTick(m: TickMessage) {
   bands = m.bands;
   people = m.people;
-  if (m.explored) r.setExplored(b64decode(m.explored));
+  if (m.explored) { r.setExplored(b64decode(m.explored)); mini?.setExplored(r.explored); }
   if (m.trees) r.updateTrees(m.trees);
   if (m.roads) r.updateRoads(m.roads);
   r.updateBands(bands, kids);
@@ -390,6 +392,8 @@ const ICON: Record<string, string> = {
   // world events (events.ts)
   flood: '🌊', plague: '🦠', harvest: '🌾', comet: '☄️', eclipse: '🌘', quake: '🌋', fire: '🔥', festival: '🎉', wonder: '🏛️',
   expedition: '🧭', blessing: '🌟', rain: '🌧️', feast: '🍖',
+  // clan relations (relations.ts)
+  alliance: '🤝', rivalry: '😠', quarrel: '🗯️', aid: '🎁', peace: '🕊️',
 };
 
 function eventHtml(e: ChronicleEntry): string {
@@ -422,7 +426,7 @@ const FEED_KINDS: Record<string, { bg: string; en: string; kinds?: string[] }> =
   big: { bg: 'Важно', en: 'Important' },
   discovery: { bg: 'Открития', en: 'Discoveries', kinds: ['discovery', 'rediscovery', 'learn', 'era', 'lost'] },
   life: { bg: 'Живот', en: 'Life', kinds: ['death', 'twins', 'marriage', 'milestone', 'genesis', 'plague', 'festival', 'feast'] },
-  clans: { bg: 'Родове', en: 'Clans', kinds: ['settle', 'colony', 'split', 'meet', 'merge', 'extinct', 'end', 'wonder', 'expedition'] },
+  clans: { bg: 'Родове', en: 'Clans', kinds: ['settle', 'colony', 'split', 'meet', 'merge', 'extinct', 'end', 'wonder', 'expedition', 'alliance', 'rivalry', 'quarrel', 'aid', 'peace'] },
   nature: { bg: 'Природа', en: 'Nature', kinds: ['hunt', 'winter', 'drought', 'secret', 'flood', 'harvest', 'comet', 'eclipse', 'quake', 'fire', 'blessing', 'rain'] },
 };
 let feedKind = store('letopis.feedKind', store('letopis.onlyBig', false) ? 'big' : 'all');
@@ -649,6 +653,7 @@ interface History {
   };
   gone: { extinct: number; merged: number };
   totalBorn: number; totalDied: number; year: number; era: number; notify: boolean;
+  relations?: { alliances: number; rivalries: number };
 }
 
 const EVENT_NAMES: Record<string, string> = {
@@ -658,6 +663,7 @@ const EVENT_NAMES: Record<string, string> = {
   comet: 'Comets', eclipse: 'Eclipses', quake: 'Earthquakes', fire: 'Town fires', festival: 'Festivals', wonder: 'Great buildings',
   expedition: 'Expeditions', secret: 'Secrets found', era: 'New ages', milestone: 'Population milestones', blessing: 'Blessings',
   rain: 'Rains sent', feast: 'Feasts', lost: 'Knowledge lost',
+  alliance: 'Alliances sworn', rivalry: 'Rivalries', quarrel: 'Quarrels', aid: 'Food sent to friends', peace: 'Feuds ended',
 };
 
 const css = (v: string, fb: string) => getComputedStyle(document.documentElement).getPropertyValue(v).trim() || fb;
@@ -694,6 +700,8 @@ async function renderStats(body: HTMLElement, wide = false) {
         ${kpi('Died', num(h.totalDied))}
         ${kpi('Clans gone', num(h.gone.extinct), `${num(h.gone.merged)} merged`)}
         ${kpi('Years recorded', num(Math.max(0, h.year - (s[0]?.year ?? h.year))))}
+        ${kpi('Alliances', num(h.relations?.alliances ?? 0), 'between neighbours')}
+        ${kpi('Rivalries', num(h.relations?.rivalries ?? 0), 'no violence, just grudges')}
       </div>
     </section>
     <section class="span2"><h3>Population and clans</h3><div id="chPop"></div></section>
@@ -922,26 +930,47 @@ async function showTree(id: number) {
 function showBand(b: BandView) {
   const members = people.filter((p) => p[4] === b.id);
   const kidsN = members.filter((p) => p[5] < 12).length;
+  const eldersN = members.filter((p) => p[5] >= 60).length;
   const tasks = new Map<string, number>();
   for (const p of members) {
     const t = TASK(r.nightTask(p[0], p[3]) ?? TASK_NAMES[TASKS[p[3]]]);
     tasks.set(t, (tasks.get(t) ?? 0) + 1);
   }
+  const hex = (c: number) => `#${c.toString(16).padStart(6, '0')}`;
+  const knownIds = new Set(b.techIds ?? []);
+  const eraOfBand = Math.max(0, ...[...GATES].filter(([, g]) => knownIds.has(g)).map(([e]) => e));
+  const taskTotal = members.length || 1;
   openCard(`
-    <h2><span class="dot" style="background:#${b.color.toString(16).padStart(6, '0')}"></span> ${esc(b.settlementName ? VILLAGE(b.settlementName) : B(b.name))}</h2>
-    <div class="muted">${b.settlementName ? `${esc(B(b.name))} · ` : ''}${T('от', 'since')} ${fmtYear(b.founded)} · ${b.settled ? T('уседнали', 'settled') : T('скитат по земята', 'wandering the land')}</div>
+    <h2><span class="dot" style="background:${hex(b.color)}"></span> ${esc(b.settlementName ? VILLAGE(b.settlementName) : B(b.name))}</h2>
+    <div class="muted">${b.settlementName ? `${esc(B(b.name))} · ` : ''}since ${fmtYear(b.founded)} · ${b.settled ? 'settled' : 'wandering the land'} · ${eraName(eraOfBand)}</div>
     ${b.chief ? `<div>${esc(CHIEF(b.chief.title))}: <a href="#" data-person="${b.chief.id}">${esc(P(b.chief.name))}</a></div>` : ''}
     ${originHtml(b.founder, b.from)}
-    <div class="kpis"><div><span>${T('Хора', 'People')}</span><b>${b.size}</b></div><div><span>${T('Деца', 'Children')}</span><b>${kidsN}</b></div><div><span>${T('Запаси', 'Food')}</span><b>${b.food}</b></div></div>
-    <h3>${T('Какво правят сега', 'What they are doing')}</h3><ul class="deeds">${[...tasks].sort((a, c) => c[1] - a[1]).map(([t, n]) => `<li>${n} ${esc(t)}</li>`).join('')}</ul>
-    <h3>${T('Какво знаят', 'What they know')}</h3><div class="techs">${b.techs.map((t) => `<span class="pill">${esc(TECH(t))}</span>`).join('') || `<span class="muted">${T('Още нищо', 'Nothing yet')}</span>`}</div>
-    <h3>${T('Хората', 'The people')}</h3><div class="names">${members.slice(0, 60).map((p) => `<a href="#" data-person="${p[0]}">#${p[0]}</a>`).join(', ')}</div>`);
-  // names come from the server one by one; fill them in lazily
-  const links = [...document.querySelectorAll<HTMLAnchorElement>('#cardBody .names a')];
-  links.slice(0, 40).forEach(async (a) => {
-    const d = await api<PersonDetail>(`/api/person/${a.dataset.person}`).catch(() => null);
-    if (d) a.textContent = P(d.name);
-  });
+    <div class="kpis kpis-4"><div><span>People</span><b>${b.size}</b></div><div><span>Children</span><b>${kidsN}</b></div>
+      <div><span>Elders</span><b>${eldersN}</b></div><div><span>Food</span><b>${b.food}</b></div></div>
+    <h3>Friends and rivals</h3><div id="bandRel" class="muted">Loading…</div>
+    <h3>What they are doing</h3><div class="barlist">${[...tasks].sort((a, c) => c[1] - a[1]).map(([t, n]) => `<div class="barrow"><span class="bl-k">${esc(t)}</span><span class="bl-v">${n}</span>
+      <div class="bl-bar"><i style="width:${(n / taskTotal) * 100}%;background:${hex(b.color)}"></i></div></div>`).join('')}</div>
+    <h3>What they know <small>${b.techs.length}</small></h3><div class="techs">${b.techs.map((t) => `<span class="pill">${esc(TECH(t))}</span>`).join('') || '<span class="muted">Nothing yet</span>'}</div>
+    <h3>The people</h3><ul class="people" id="bandPeople"><li class="muted">Loading…</li></ul>`);
+  // friends and rivals, and everyone in the clan, each in one request
+  api<{ id: number; name: string; color: number; score: number; kind: string }[]>(`/api/relations/${b.id}`).then((rs) => {
+    const el = document.getElementById('bandRel');
+    if (!el) return;
+    const shown = rs.filter((x) => x.kind !== 'neutral').slice(0, 10);
+    const label: Record<string, string> = { ally: 'ally', friendly: 'friendly', cool: 'cool', rival: 'rival' };
+    el.classList.remove('muted');
+    el.innerHTML = shown.length ? `<ul class="rels">${shown.map((x) => `<li data-band="${x.id}"><span class="dot" style="background:${hex(x.color)}"></span>
+        <span class="rel-name">${esc(x.name)}</span><span class="rel ${x.kind}">${label[x.kind]}</span>
+        <span class="rel-bar"><i style="width:${Math.abs(x.score) / 2}%;${x.score < 0 ? 'right:50%' : 'left:50%'}" class="${x.score < 0 ? 'neg' : 'pos'}"></i></span></li>`).join('')}</ul>`
+      : '<p class="muted">No strong feelings for any neighbour yet.</p>';
+  }).catch(() => { const el = document.getElementById('bandRel'); if (el) el.textContent = 'Could not load.'; });
+  api<{ total: number; people: PersonListRow[] }>(`/api/people?band=${b.id}&sort=old&limit=200`).then((res) => {
+    const el = document.getElementById('bandPeople');
+    if (!el) return;
+    el.innerHTML = res.people.map((p) => `<li data-person="${p.id}"><span class="avatar sm ${p.sex ? 'f' : 'm'}">${p.age < 12 ? '🧒' : p.age >= 60 ? (p.sex ? '👵' : '👴') : p.sex ? '👩' : '👨'}</span>
+      <div><b>${esc(p.name)}</b>${p.chief ? ' <span class="badge village">chief</span>' : ''}<div class="muted">${p.age} y · ${esc(TASK(TASK_NAMES[p.task as keyof typeof TASK_NAMES] ?? p.task))}${p.deeds ? ` · ${p.deeds} deed${p.deeds > 1 ? 's' : ''}` : ''}</div></div></li>`).join('')
+      || '<li class="muted">Nobody.</li>';
+  }).catch(() => { const el = document.getElementById('bandPeople'); if (el) el.innerHTML = '<li class="muted">Could not load.</li>'; });
 }
 
 // ---------- while you were away ----------
@@ -1009,6 +1038,29 @@ if (store('letopis.sideHidden', false)) document.body.classList.add('side-hidden
 $('#sideToggle').onclick = toggleSide;
 $('#sideHandle').onclick = toggleSide;
 
+// ---------- the world map in the corner ----------
+
+let mini: Minimap | null = null;
+let miniAt = 0;
+// on a small screen it starts hidden: the map itself is small there
+let showMap = store('letopis.minimap', window.innerWidth > 900);
+const applyMap = () => {
+  document.body.classList.toggle('map-hidden', !showMap);
+  $('#mapBtn').setAttribute('aria-pressed', String(showMap));
+};
+applyMap();
+$('#mapBtn').onclick = () => { showMap = !showMap; save('letopis.minimap', showMap); applyMap(); };
+function drawMinimap() {
+  // the four screen corners, back to tiles (the iso projection undone; height is ignored)
+  const W = app.screen.width, H = app.screen.height;
+  const corners = [[0, 0], [W, 0], [W, H], [0, H]].map(([sx, sy]) => {
+    const wx = (sx - r.world.x) / cam.zoom, wy = (sy - r.world.y) / cam.zoom;
+    const a = wx / (TW / 2), b = wy / (TH / 2);
+    return { x: (a + b) / 2, y: (b - a) / 2 };
+  });
+  mini!.draw(bands, corners, null);
+}
+
 // ---------- frame loop ----------
 
 app.ticker.add((t) => {
@@ -1029,6 +1081,7 @@ function frameStep(t: { deltaMS: number; deltaTime: number }) {
   const resting = Math.abs(cam.tx - cam.x) + Math.abs(cam.ty - cam.y) < 0.5 && Math.abs(cam.tz - cam.zoom) < 0.002;
   const fps = r.still && resting && !tour && !dragging && pointers.size === 0 ? 12 : 0;
   if (app.ticker.maxFPS !== fps) app.ticker.maxFPS = fps;
+  if (mini && showMap && now - miniAt > 120) { miniAt = now; drawMinimap(); }
   const left = Math.max(0, tickMs - (now - lastTickAt));
   ($('#tickBar') as HTMLElement).style.width = `${100 - (left / tickMs) * 100}%`;
 }
@@ -1039,6 +1092,8 @@ const info = await api<WorldInfo>('/api/world');
 worldId = info.worldId;
 const seenBefore = store<number>(`letopis.seen.${worldId}`, 0);
 r.setWorld(info);
+mini = new Minimap($('#minimap') as HTMLCanvasElement, info);
+mini.onPick = (x, y) => { stopTour(); follow = null; lookAt(x, y); };
 api<{ found: SecretFind[] }>('/api/secrets').then((s) => r.setSecrets(s.found.map((f) => f.k))).catch(() => r.setSecrets([]));
 const snap = await api<SnapshotMessage>('/api/snapshot');
 onSnapshot(snap);

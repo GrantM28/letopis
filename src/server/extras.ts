@@ -9,6 +9,7 @@ import type { DatabaseSync } from 'node:sqlite';
 import type { Simulation } from './sim/sim';
 import { ACTS, ACT_COOLDOWN_MIN, ActKind } from './sim/events';
 import { causeEn } from '../shared/i18n';
+import { ALLY, RIVAL, relationCounts, relationsOf } from './sim/relations';
 
 type Json = (res: http.ServerResponse, data: unknown, status?: number) => void;
 
@@ -134,11 +135,21 @@ export class Extras {
       json(res, {
         series: this.history(w), causes: this.counts(w, 'cause'), events: this.counts(w, 'event'), eras: this.eras(w),
         records: this.records(w), gone: this.goneCount(w), totalBorn: sim.s.totalBorn, totalDied: sim.s.totalDied,
-        year: Math.floor(sim.year), era: sim.s.era, notify,
+        year: Math.floor(sim.year), era: sim.s.era, notify, relations: relationCounts(sim as never),
       });
       return true;
     }
     if (p === '/api/acts') { json(res, this.acts(w)); return true; }
+    if (p.startsWith('/api/relations/')) {
+      // a clan's friends and rivals, with their names
+      const id = Number(p.split('/').pop());
+      const byId = new Map(sim.s.bands.map((b) => [b.id, b]));
+      json(res, relationsOf(sim as never, id).filter((r) => byId.has(r.id)).map((r) => {
+        const b = byId.get(r.id)!;
+        return { id: r.id, name: sim.bandEnLabel(b, true), color: b.color, score: r.score, kind: r.score >= ALLY ? 'ally' : r.score <= RIVAL ? 'rival' : r.score > 15 ? 'friendly' : r.score < -15 ? 'cool' : 'neutral' };
+      }));
+      return true;
+    }
     if (p === '/api/people') {
       // everyone alive, searchable and sorted, a page at a time
       const url = new URL(req.url ?? '/', 'http://x');
@@ -154,6 +165,8 @@ export class Extras {
           task: x.task, chief: chiefs.has(x.id), deeds: x.deeds.length, children: x.children.length, gen: x.gen };
       });
       if (q) rows = rows.filter((r) => r.name.toLowerCase().includes(q) || r.band.toLowerCase().includes(q));
+      const onlyBand = Number(url.searchParams.get('band') ?? 0);
+      if (onlyBand) rows = rows.filter((r) => r.bandId === onlyBand);
       const by: Record<string, (a: (typeof rows)[number], b: (typeof rows)[number]) => number> = {
         old: (a, b) => b.age - a.age, young: (a, b) => a.age - b.age, name: (a, b) => a.name.localeCompare(b.name),
         deeds: (a, b) => b.deeds - a.deeds || b.age - a.age, children: (a, b) => b.children - a.children || b.age - a.age,
