@@ -1,4 +1,5 @@
 // Discoveries. Each one is found by a real person in a real band, and can spread or be forgotten.
+import { ERA_GATES, LATER_TECHS } from '../../shared/later_techs';
 
 export type Need = 'flint' | 'clay' | 'grain' | 'wildHerd' | 'fish' | 'forest' | 'ore' | null;
 
@@ -120,10 +121,14 @@ export const TECHS: Tech[] = [
     kids: '{name} се сприятели с кон и сега яздят заедно!' },
 ];
 
+// the Iron Age and everything after it live in their own file
+TECHS.push(...LATER_TECHS.map(({ id, era, target, prereq, need, base, gene, bg }): Tech => ({ id, name: bg.name, era, target, prereq, need, base, gene, text: bg.text, kids: bg.kids })));
+
 export const TECH_BY_ID = new Map(TECHS.map((t) => [t.id, t]));
 
 /** Era of a set of known techs: the highest era with a defining tech known. */
 export function eraOf(techs: Set<string>): number {
+  for (const [era, gate] of ERA_GATES) if (techs.has(gate)) return era;
   if (techs.has('bronze')) return 2;
   if (techs.has('agriculture')) return 1;
   return 0;

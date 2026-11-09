@@ -6,6 +6,7 @@ import { Terrain, generateTerrain, findStart, idx, inBounds, W, H, setWorldSize,
 import { SECRET_COUNT, SECRET_HEROES, SECRET_KINDS, SecretFind } from '../../shared/secrets';
 import { FEMALE, MALE, bandColor, bandName, fixBandName, familyFrom, nickname, placeName } from './names';
 import { ERAS, TECHS, TECH_BY_ID, Tech, eraOf } from './tech';
+import { LATER_ERA_WHY } from '../../shared/later_techs';
 import { BIG, startStage, treeKinds } from '../../shared/trees';
 import { findRoad } from './roads';
 import { BEAST_EN, ERAS_EN, FEATURE_EN, SECRET_HEROES_EN, SECRET_KINDS_EN, TECH_EN, bandEn, bandLabelEn, bandThe, causeEn, chiefEn, deedEn, personEn, translit } from '../../shared/i18n';
@@ -15,6 +16,7 @@ export const START_YEAR = -12000;
 const ERA_WHY: Record<number, [string, string]> = {
   1: ['Хората вече не само търсят храна, а я отглеждат.', 'People no longer only search for food, they grow it.'],
   2: ['Медта и калаят се сливат в метал, по-твърд от камъка. Селата растат в градове.', 'Copper and tin melt into a metal harder than stone. Villages grow into towns.'],
+  ...LATER_ERA_WHY,
 };
 /** chance per band and month for an idea whose time has come */
 const GLOBAL_DISCOVERY = 0.0003;
@@ -726,7 +728,7 @@ export class Simulation {
 
   private work(b: Band, m: Person[]) {
     const t = this.t;
-    const tool = this.hasTech(b, 'bronze') ? 1.5 : this.hasTech(b, 'copper') ? 1.35 : this.hasTech(b, 'stone_tools') ? 1.25 : 1;
+    const tool = this.hasTech(b, 'iron') ? 1.65 : this.hasTech(b, 'bronze') ? 1.5 : this.hasTech(b, 'copper') ? 1.35 : this.hasTech(b, 'stone_tools') ? 1.25 : 1;
     const fire = this.hasTech(b, 'fire') ? 1.1 : 1;
     // carts bring food from farther away
     const R = b.settled ? (this.hasTech(b, 'wheel') ? 5 : 4) : 6;
@@ -788,7 +790,7 @@ export class Simulation {
         }
         case 'fish': got = 1.4 * skill * (this.hasTech(b, 'boats') ? 1.3 : 1) * (this.hasTech(b, 'sailing') ? 1.25 : 1) * (0.7 + season * 0.3); break;
         case 'farm': {
-          farmWant += 2.4 * this.farmSeason() * skill * tool * (this.hasTech(b, 'plough') ? 1.35 : 1) * (this.hasTech(b, 'calendar') ? 1.1 : 1);
+          farmWant += 2.4 * this.farmSeason() * skill * tool * (this.hasTech(b, 'plough') ? 1.35 : 1) * (this.hasTech(b, 'calendar') ? 1.1 : 1) * this.laterFarming(b);
           break;
         }
         case 'herd': got = 1.7 * skill; break;
@@ -812,7 +814,7 @@ export class Simulation {
     if (chief) this.lead(b, chief, m);
     prod += (this.harvest(t.plants, b, R, gatherWant, 0.07) + this.harvest(t.game, b, R + 2, huntWant, 0.045)) * craftBonus * fire;
     // the plough turns more land into fields, the calendar sows it at the right time
-    const land = (this.hasTech(b, 'plough') ? 1.4 : 1) * (this.hasTech(b, 'calendar') ? 1.1 : 1);
+    const land = (this.hasTech(b, 'plough') ? 1.4 : 1) * (this.hasTech(b, 'calendar') ? 1.1 : 1) * this.laterFarming(b);
     if (farmWant > 0) prod += Math.min(farmWant, this.arable(b) * land * this.farmSeason()) * craftBonus;
     const spoil = this.hasTech(b, 'pottery') ? 0.05 : this.hasTech(b, 'grinding') ? 0.08 : 0.12;
     b.food = Math.max(0, b.food * (1 - spoil) + prod - need);
@@ -821,6 +823,12 @@ export class Simulation {
     b.fed = (b.fed ?? 1.2) * 0.75 + cover * 0.25;
     b.lastProd = prod;
     b.lastNeed = need;
+  }
+
+  /** iron ploughs, resting fields, new crops and fertilizer: each makes the same land feed more people */
+  private laterFarming(b: Band): number {
+    return (this.hasTech(b, 'iron_plough') ? 1.2 : 1) * (this.hasTech(b, 'crop_rotation') ? 1.15 : 1)
+      * (this.hasTech(b, 'new_crops') ? 1.1 : 1) * (this.hasTech(b, 'fertilizer') ? 1.3 : 1);
   }
 
   private farmSeason(): number {
@@ -926,7 +934,7 @@ export class Simulation {
       const again = seen ? 1.6 : 1;
       // a first discovery happens somewhere in the world: many bands do not make it come sooner
       const world = seen ? 1 : Math.min(1, 4 / this.s.bands.length);
-      const written = this.hasTech(b, 'writing') ? 1.15 : 1;
+      const written = (this.hasTech(b, 'writing') ? 1.15 : 1) * (this.hasTech(b, 'university') ? 1.15 : 1) * (this.hasTech(b, 'printing') ? 1.2 : 1);
       const chance = written * world * GLOBAL_DISCOVERY * Math.sqrt(tech.base / 0.0025) * this.techPace(tech) * again * crowd * Math.pow(g * 2, 2);
       if (!this.rng.chance(chance)) continue;
       this.addTech(b, tech.id);
@@ -991,7 +999,8 @@ export class Simulation {
       const temp = this.t.temp[idx(Math.round(b.cx), Math.round(b.cy))];
       const winter = this.month === 11 || this.month <= 1;
       const coldRisk = winter && temp < 0.4 ? (0.4 - temp) * (this.hasTech(b, 'clothing') ? 0.15 : 1) * (this.hasTech(b, 'fire') ? 0.4 : 1) * 0.02 : 0;
-      const medicine = this.hasTech(b, 'herb_lore') ? 0.8 : 1;
+      const medicine = this.hasTech(b, 'genetics') ? 0.3 : this.hasTech(b, 'antibiotics') ? 0.35 : this.hasTech(b, 'vaccination') ? 0.5
+        : this.hasTech(b, 'medicine') ? 0.7 : this.hasTech(b, 'herb_lore') ? 0.8 : 1;
       const settledDisease = b.settled ? 1.4 : 1;
       for (const p of m) {
         const a = this.ageOf(p);
@@ -1169,7 +1178,7 @@ export class Simulation {
       }
       // split: rare, a band has to grow big first
       // a walled town holds more people before some leave to found a new village
-      const limit = b.settled ? (this.hasTech(b, 'walls') ? 210 : 140) : 40 + Math.round(avg(m, (p) => p.genes.soc) * 20);
+      const limit = b.settled ? (this.hasTech(b, 'castle') ? 280 : this.hasTech(b, 'walls') ? 210 : 140) : 40 + Math.round(avg(m, (p) => p.genes.soc) * 20);
       // too many mouths for this land: some leave to find their own
       const crowded = !b.settled && m.length >= 24 && (b.fed ?? 1) < 1.05 && this.rng.chance(0.012);
       if (m.length > limit || crowded) this.split(b, m, members);
@@ -1388,7 +1397,7 @@ export class Simulation {
         const a = bands[i], b = bands[j];
         const d = dist(a, b);
         // horses and carts bring far neighbours together
-        const reach = this.hasTech(a, 'horse') || this.hasTech(b, 'horse') ? 24 : 16;
+        const reach = this.hasTech(a, 'railway') || this.hasTech(b, 'railway') ? 32 : this.hasTech(a, 'horse') || this.hasTech(b, 'horse') ? 24 : 16;
         if (d > reach) continue;
         // traders even out a good and a bad harvest between neighbours
         if (this.hasTech(a, 'trade') && this.hasTech(b, 'trade')) {

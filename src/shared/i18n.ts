@@ -2,6 +2,7 @@
 // Names are transliterated (Иван Петров -> Ivan Petrov), nicknames, totems and places are translated.
 
 import { CLAN_EN, clanBase } from './clans';
+import { LATER_TECHS } from './later_techs';
 
 export type Lang = 'bg' | 'en';
 
@@ -196,6 +197,14 @@ export const TECH_DESC: Record<string, [string, string]> = {
   calendar: ['Звездите казват кога да се сее и кога да се жъне.', 'The stars tell when to sow and when to reap.'],
   horse: ['Кон под седлото: пътят от седмица става ден.', 'A horse to ride: a week of walking becomes a day.'],
 };
+
+// the Iron Age and everything after it: one record per discovery in later_techs.ts
+for (const t of LATER_TECHS) {
+  TECH_EN[t.id] = { name: t.en.name, text: t.en.text, kids: t.en.kids };
+  TECH_BG[t.bg.name] = t.id;
+  TECH_LIST.push([t.id, t.bg.name, t.era]);
+  TECH_DESC[t.id] = [t.bg.desc, t.en.desc];
+}
 
 /** a tech by its Bulgarian name (what the server sends) */
 export function techEn(bg: string): string {
