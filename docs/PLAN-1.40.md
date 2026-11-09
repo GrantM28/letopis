@@ -13,10 +13,10 @@ no big new systems, but the tests, guard rails and clean-up that let 2.0 be buil
 | Learning can hurt everyone | letting brains pick hunting over gathering made every clan over-hunt (tragedy of the commons); taken back in 1.34 | 3 seeds × 1,200 years |
 | Brains saturate | average job weights sit near the 5.0 ceiling (herd 4.6, fish 4.9, craft 4.7): the networks push everything up and the *shares* hardly differ, so most clans read as "Jacks of all trades" | long runs at 7000–7500 BC |
 | Save and reload | the world continues identically (people, births, discoveries, dice), but brain outputs drift in the 4th decimal because the original game rounds plants and game when it saves | save/load test, 300 + 200 years |
-| Chronicle noise | camp moves are 44–64% of all entries, "changed their way of life" 11–12%: together more than half, crowding out the story | health tests, 3 worlds to 9000 BC |
-| Survival | no world died out; ~2,200–2,800 people by 9000 BC, no clan above 44 people | health tests, 3 worlds |
-| Speed | ~1.5 ms per month with a few hundred people, 6–12 ms with ~2,500; the dice were the hottest line (fixed in 1.36, −20%) | profile + health tests |
-| Save size | 2.3–3.1 MB raw / ~0.6 MB compressed at ~2,500 people; brains are ~0.6 MB of it | health tests |
+| Chronicle noise | camp moves are 44–66% of all entries, "changed their way of life" 8–12%: together more than half, crowding out the story | health tests, 6 worlds to 9000 BC |
+| Survival | no world died out; ~2,200–3,300 people by 9000 BC, no clan above 44 people | health tests, 6 worlds |
+| Speed | ~1.5 ms per month with a few hundred people, 6–16 ms with ~2,500; the dice were the hottest line (fixed in 1.36, −20%) | profile + health tests |
+| Save size | 2.3–3.9 MB raw / ~0.6 MB compressed at ~2,500 people; brains are ~0.6 MB of it | health tests |
 | Drift from the original | 27 files differ (+3,706 / −244 lines); 1,306 of those lines are in the original author's files, 785 in `src/client/main.ts` alone; 11 places reach into private parts of the simulation | `git diff upstream/main...main` |
 | Upstream | no new commits since the fork, but the author was committing daily; any update will collide with `main.ts` | `git log main..upstream/*` |
 | Tests | only `npm run check:english` runs on every build; everything else above was a one-off script | |
