@@ -4,7 +4,6 @@ import {
 import { Simplex } from '../shared/noise';
 import { Fauna } from './animals';
 import { LANDMARKS, makeLandmark } from './landmarks';
-import { makePixelFilter, updatePixelFilter } from './pixel';
 import { SECRET_KINDS, SecretSpot, secretSpots } from '../shared/secrets';
 import { B, VILLAGE } from './lang';
 import { Rng } from '../shared/rng';
@@ -174,24 +173,6 @@ export class WorldRenderer {
   app: Application;
   atlas: Atlas;
   world = new Container(); // camera moves this
-  /** all the layers but the labels (fork: the pixel look filters this) */
-  scene = new Container();
-  pixelFilter: Filter | null = null;
-
-  /** the cozy 8-bit look on or off */
-  setPixelLook(on: boolean) {
-    if (on && !this.pixelFilter) {
-      try {
-        const f = makePixelFilter();
-        const probe = new Sprite(Texture.WHITE);
-        probe.filters = [f];
-        this.app.renderer.render({ container: probe });
-        probe.destroy();
-        this.pixelFilter = f;
-      } catch (e) { console.warn('pixel look off', e); return; }
-    }
-    this.scene.filters = on && this.pixelFilter ? [this.pixelFilter] : null;
-  }
   terrainLayer = new Container();
   waterLayer = new Container();
   snowLayer = new Container();
@@ -258,9 +239,7 @@ export class WorldRenderer {
   constructor(app: Application, atlas: Atlas) {
     this.app = app;
     this.atlas = atlas;
-    // everything but the labels sits in one scene, so the pixel look (pixel.ts) can be one filter over it
-    this.scene.addChild(this.farLayer, this.waterLayer, this.terrainLayer, this.snowLayer, this.objLayer, this.campLayer, this.peopleLayer, this.fogLayer, this.glowLayer);
-    this.world.addChild(this.scene, this.labelLayer);
+    this.world.addChild(this.farLayer, this.waterLayer, this.terrainLayer, this.snowLayer, this.objLayer, this.campLayer, this.peopleLayer, this.fogLayer, this.glowLayer, this.labelLayer);
     this.nightCanvas.width = 8;
     this.nightCanvas.height = 8;
     this.nightSprite = new Sprite(Texture.from(this.nightCanvas));
@@ -1126,9 +1105,6 @@ export class WorldRenderer {
       const H = this.app.renderer.height;
       // gl_FragCoord has y up
       u.uCam = new Float32Array([this.world.x * res, H - this.world.y * res, s * res, 0]);
-    }
-    if (this.pixelFilter && this.scene.filters) {
-      updatePixelFilter(this.pixelFilter, this.world.x, this.world.y);
     }
     // seasons: snow in winter
     const m = this.month;
