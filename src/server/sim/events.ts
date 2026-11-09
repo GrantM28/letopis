@@ -184,20 +184,44 @@ export function worldEvents(h: EventHost, members: Map<number, Person[]>) {
   }
 }
 
-// ---------- what a watcher may do ----------
+/// ---------- what a watcher may do ----------
 
-export type ActKind = 'bless' | 'rain' | 'feast';
-export const ACTS: ActKind[] = ['bless', 'rain', 'feast'];
+export type ActKind = 'bless' | 'rain' | 'feast' | 'inspire' | 'calm';
+export const ACTS: ActKind[] = ['bless', 'rain', 'feast', 'inspire', 'calm'];
 /** real minutes between two acts of the same kind, for everyone watching this world */
-export const ACT_COOLDOWN_MIN: Record<ActKind, number> = { bless: 20, rain: 30, feast: 45 };
+export const ACT_COOLDOWN_MIN: Record<ActKind, number> = { bless: 20, rain: 30, feast: 45, inspire: 60, calm: 30 };
 
-/** a small, kind act on the band that needs it most; returns the band it touched */
-export function act(h: EventHost, kind: ActKind, members: Map<number, Person[]>): Band | null {
+/** what the watchers' help needs from the simulation besides EventHost */
+interface ActHost extends EventHost {
+  s: EventHost['s'] & {
+    inspired?: Record<number, number>; prayers?: Prayer[];
+    relations?: Record<string, number>; relState?: Record<string, 'ally' | 'rival'>;
+  };
+  bRefs(b: Band): import('../../shared/types').ChronicleRef[];
+}
+
+/** the clans a band has sworn rivalry with */
+function rivalsOf(h: ActHost, b: Band): Band[] {
+  const out: Band[] = [];
+  for (const [k, v] of Object.entries(h.s.relState ?? {})) {
+    if (v !== 'rival') continue;
+    const [x, y] = k.split('-').map(Number);
+    const other = x === b.id ? y : y === b.id ? x : 0;
+    const o = other ? h.s.bands.find((c) => c.id === other) : undefined;
+    if (o) out.push(o);
+  }
+  return out;
+}
+
+/** a small, kind act; on the chosen band, or on the one that needs it most. Returns the band it touched */
+export function act(hh: EventHost, kind: ActKind, members: Map<number, Person[]>, targetId?: number): Band | null {
+  const h = hh as ActHost;
   const bands = h.s.bands;
   if (!bands.length) return null;
-  const hungriest = [...bands].sort((a, b) => (a.fed ?? 1) - (b.fed ?? 1))[0];
+  const target = targetId ? bands.find((x) => x.id === targetId) ?? null : null;
+  if (targetId && !target) return null;
   if (kind === 'bless') {
-    const b = hungriest;
+    const b = target ?? [...bands].sort((a, c) => (a.fed ?? 1) - (c.fed ?? 1))[0];
     const n = members.get(b.id)?.length ?? 10;
     b.food += 20 + n * 1.5;
     b.fed = Math.max(b.fed ?? 1, 1.3);
@@ -209,7 +233,7 @@ export function act(h: EventHost, kind: ActKind, members: Map<number, Person[]>)
   }
   if (kind === 'rain') {
     // the driest land around a band: plants spring back
-    const b = [...bands].sort((a, c) => plantsAround(h, a) - plantsAround(h, c))[0];
+    const b = target ?? [...bands].sort((a, c) => plantsAround(h, a) - plantsAround(h, c))[0];
     const cx = Math.round(b.cx), cy = Math.round(b.cy);
     for (let y = cy - 10; y <= cy + 10; y++) for (let x = cx - 10; x <= cx + 10; x++) {
       if (!inBounds(x, y)) continue;
@@ -222,8 +246,41 @@ export function act(h: EventHost, kind: ActKind, members: Map<number, Person[]>)
         `A lovely rain fell at ${h.bandEnLabel(b)} and everything turned green!`]);
     return b;
   }
-  // a feast: the biggest band invites its neighbours; people meet and pair more easily
-  const b = [...bands].sort((a, c) => (members.get(c.id)?.length ?? 0) - (members.get(a.id)?.length ?? 0))[0];
+  if (kind === 'inspire') {
+    // the most curious adult has a dream; for two years the clan is four times as likely to find something new
+    const b = target ?? [...bands].sort((a, c) => (members.get(c.id)?.length ?? 0) - (members.get(a.id)?.length ?? 0))[0];
+    const m = adults(h, members.get(b.id) ?? []);
+    const dreamer = m.length ? best(m, 'cur') : null;
+    (h.s.inspired ??= {})[b.id] = 24;
+    if (dreamer) dreamer.deeds.push('Сънува сън, пълен с идеи');
+    h.emit('inspired', 2, `${dreamer ? `${h.nameOf(dreamer)} от ` : ''}${h.bandLabel(b, !dreamer)} сънува странен сън и се събуди с глава, пълна с идеи.`,
+      `${dreamer ? h.nameOf(dreamer) : h.bandLabel(b, true)} сънува вълшебен сън и измисля нови неща!`, dreamer?.id, b.id, [],
+      [`${dreamer ? `${h.nameEn(dreamer)} of ` : ''}${h.bandEnLabel(b, !dreamer)} had a strange dream and woke up full of ideas.`,
+        `${dreamer ? h.nameEn(dreamer) : h.bandEnLabel(b, true)} had a magical dream and is inventing new things!`]);
+    return b;
+  }
+  if (kind === 'calm') {
+    // an old feud is laid to rest: the chosen clan's rivalries, or the bitterest one in the world
+    let b = target;
+    let rivals = b ? rivalsOf(h, b) : [];
+    if (!b) {
+      for (const c of bands) { const r = rivalsOf(h, c); if (r.length > rivals.length) { b = c; rivals = r; } }
+    }
+    if (!b || !rivals.length) return null;
+    for (const o of rivals) {
+      const k = b.id < o.id ? `${b.id}-${o.id}` : `${o.id}-${b.id}`;
+      if (h.s.relations) h.s.relations[k] = 0;
+      if (h.s.relState) delete h.s.relState[k];
+    }
+    const o = rivals[0];
+    h.emit('peace', 2, `${h.bandLabel(b, true)} и ${h.bandLabel(o)} седнаха край един огън и се помириха.${rivals.length > 1 ? ' Старите вражди утихнаха.' : ''}`,
+      `${h.bandLabel(b, true)} и ${h.bandLabel(o)} се сдобриха и вече са приятели!`, undefined, b.id, h.bRefs(o),
+      [`${h.bandEnLabel(b, true)} and ${h.bandEnLabel(o)} sat down by one fire and made peace.${rivals.length > 1 ? ' The old feuds have gone quiet.' : ''}`,
+        `${h.bandEnLabel(b, true)} and ${h.bandEnLabel(o)} made up and are friends now!`]);
+    return b;
+  }
+  // a feast: the chosen clan, or the biggest, invites its neighbours
+  const b = target ?? [...bands].sort((a, c) => (members.get(c.id)?.length ?? 0) - (members.get(a.id)?.length ?? 0))[0];
   b.food += 15;
   const m = adults(h, members.get(b.id) ?? []);
   const host = m.length ? best(m, 'soc') : null;
@@ -233,6 +290,74 @@ export function act(h: EventHost, kind: ActKind, members: Map<number, Person[]>)
     [`${host ? `${h.nameEn(host)} of ` : ''}${h.bandEnLabel(b, !host)} invited the neighbours to a great feast. Stories were told and friendships were made.`,
       `${h.bandEnLabel(b, true)} made a great feast and invited everyone!`]);
   return b;
+}
+
+// ---------- prayers: clans in trouble ask the watchers for help ----------
+
+export interface Prayer {
+  id: number;
+  band: number;
+  /** what would help: a blessing (food), rain, or peace (calm) */
+  want: 'bless' | 'rain' | 'calm';
+  /** real time it was said, ms */
+  at: number;
+  /** the year in the world */
+  year: number;
+}
+/** an unanswered prayer fades after this much real time */
+export const PRAYER_TTL_MS = 2 * 60 * 60 * 1000;
+const MAX_PRAYERS = 5;
+
+/** every month: inspiration wears off, some clans in trouble pray, old prayers fade */
+export function prayersStep(hh: EventHost, members: Map<number, Person[]>) {
+  const h = hh as ActHost;
+  const insp = h.s.inspired;
+  if (insp) for (const k of Object.keys(insp)) { const id = Number(k); if (--insp[id] <= 0) delete insp[id]; }
+  const prayers = (h.s.prayers ??= []);
+  const now = Date.now();
+  // fading: the clan is gone, or nobody answered in time
+  for (let i = prayers.length - 1; i >= 0; i--) {
+    const p = prayers[i];
+    const b = h.s.bands.find((x) => x.id === p.band);
+    if (!b) { prayers.splice(i, 1); continue; }
+    if (now - p.at > PRAYER_TTL_MS) {
+      prayers.splice(i, 1);
+      const what = { bless: ['храна', 'food'], rain: ['дъжд', 'rain'], calm: ['мир', 'peace'] }[p.want];
+      h.emit('prayer', 1, `${h.bandLabel(b, true)} молеше за ${what[0]}, но небето мълча.`, undefined, undefined, b.id, [],
+        [`${h.bandEnLabel(b, true)} prayed for ${what[1]}, but the sky stayed silent.`]);
+    }
+  }
+  if (prayers.length >= MAX_PRAYERS || !h.rng.chance(0.08)) return;
+  // who is in trouble, and what would help them
+  const asking = h.s.bands.filter((b) => !prayers.some((p) => p.band === b.id) && (members.get(b.id)?.length ?? 0) >= 8);
+  const needs: { b: Band; want: Prayer['want'] }[] = [];
+  for (const b of asking) {
+    if ((b.fed ?? 1) < 0.85) needs.push({ b, want: 'bless' });
+    else if (plantsAround(h, b) < 0.35) needs.push({ b, want: 'rain' });
+    else if (rivalsOf(h, b).length) needs.push({ b, want: 'calm' });
+  }
+  if (!needs.length) return;
+  const { b, want } = h.rng.pick(needs);
+  const id = (prayers.reduce((m, p) => Math.max(m, p.id), 0) || h.s.tick * 10) + 1;
+  prayers.push({ id, band: b.id, want, at: now, year: Math.floor(h.year) });
+  const text: Record<Prayer['want'], [string, string]> = {
+    bless: [`Старите от ${h.bandLabel(b)} запалиха огън и молят за храна: децата са гладни.`, `The elders of ${h.bandEnLabel(b)} lit a fire and pray for food: the children are hungry.`],
+    rain: [`${h.bandLabel(b, true)} танцува за дъжд: земята около тях е напукана.`, `${h.bandEnLabel(b, true)} are dancing for rain: the land around them is cracked and dry.`],
+    calm: [`${h.bandLabel(b, true)} се моли враждата със съседите да свърши.`, `${h.bandEnLabel(b, true)} pray for the feud with their neighbours to end.`],
+  };
+  h.emit('prayer', 2, text[want][0], undefined, undefined, b.id, [], [text[want][1]]);
+}
+
+/** answering a prayer: the act it asked for, on the clan that asked */
+export function answerPrayer(hh: EventHost, id: number, members: Map<number, Person[]>): { band: Band; want: Prayer['want'] } | null {
+  const h = hh as ActHost;
+  const prayers = h.s.prayers ?? [];
+  const i = prayers.findIndex((p) => p.id === id);
+  if (i < 0) return null;
+  const p = prayers[i];
+  prayers.splice(i, 1);
+  const b = act(h, p.want, members, p.band);
+  return b ? { band: b, want: p.want } : null;
 }
 
 function plantsAround(h: EventHost, b: Band): number {

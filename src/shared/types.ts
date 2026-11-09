@@ -87,6 +87,8 @@ export interface TimeInfo {
   /** real milliseconds between ticks right now */
   tickMs: number;
   startedAt: number; // real time ms when this world began
+  /** the watchers' time control (fork): 0 paused, 1 normal, more is faster */
+  scale?: number;
 }
 
 export interface BandView {

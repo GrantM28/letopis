@@ -21,6 +21,7 @@ export function expeditionWhere(era: number): [string, string] {
 export function eventDeedEn(d: string): string | null {
   if (d === 'Устрои голям празник') return 'Held a great festival';
   if (d === 'Посрещна съседите на голям пир') return 'Hosted the neighbours at a great feast';
+  if (d === 'Сънува сън, пълен с идеи') return 'Dreamed a dream full of ideas';
   let m: RegExpExecArray | null;
   if ((m = /^Построи (.+)$/.exec(d))) {
     for (const list of Object.values(WONDERS)) for (const [bg, en] of list) if (bg === m[1]) return `Built ${en}`;

@@ -7,8 +7,9 @@ import { SECRET_COUNT, SECRET_HEROES, SECRET_KINDS, SecretFind } from '../../sha
 import { FEMALE, MALE, bandColor, bandName, fixBandName, familyFrom, nickname, placeName } from './names';
 import { ERAS, TECHS, TECH_BY_ID, Tech, eraOf } from './tech';
 import { LATER_ERA_WHY } from '../../shared/later_techs';
-import { ActKind, EventHost, act, worldEvents } from './events';
+import { ActKind, EventHost, act, answerPrayer, prayersStep, worldEvents } from './events';
 import { RelationHost, relationsStep } from './relations';
+import { BrainHost, brainStep, steerJobs } from './brain';
 import { BIG, startStage, treeKinds } from '../../shared/trees';
 import { findRoad } from './roads';
 import { BEAST_EN, ERAS_EN, FEATURE_EN, SECRET_HEROES_EN, SECRET_KINDS_EN, TECH_EN, bandEn, bandLabelEn, bandThe, causeEn, chiefEn, deedEn, personEn, translit } from '../../shared/i18n';
@@ -114,6 +115,11 @@ export interface SimState {
   relations?: Record<string, number>;
   /** sworn alliances and rivalries, 'a-b' -> 'ally' | 'rival' */
   relState?: Record<string, 'ally' | 'rival'>;
+  /** what each clan has learned (fork: brain.ts) */
+  brains?: Record<number, import('./brain').Brain>;
+  /** watchers' help: inspired clans (band id -> months left) and open prayers (fork: events.ts) */
+  inspired?: Record<number, number>;
+  prayers?: import('./events').Prayer[];
 }
 
 export interface DeadRecord {
@@ -685,6 +691,7 @@ export class Simulation {
     this.bandDynamics(members);
     this.contact();
     if (this.s.tick % 3 === 0) relationsStep(this as unknown as RelationHost, members);
+    brainStep(this as unknown as BrainHost, members);
     if (this.month === 6) this.buildRoads();
     if (this.s.tick % 6 === 0) this.explore();
     this.randomEvents(members);
@@ -763,6 +770,7 @@ export class Simulation {
     if (this.hasTech(b, 'stone_tools')) jobs.push(['craft', 0.6]);
     if (b.settled && this.hasTech(b, 'mudbrick')) jobs.push(['build', 0.5]);
     jobs.push(['forage', farms ? 2 : 6] as unknown as [Task, number]);
+    steerJobs(this as unknown as BrainHost, b, jobs);
     const total = jobs.reduce((s2, j) => s2 + j[1], 0);
     for (const p of workers) {
       let r = this.rng.next() * total;
@@ -941,7 +949,7 @@ export class Simulation {
       const again = seen ? 1.6 : 1;
       // a first discovery happens somewhere in the world: many bands do not make it come sooner
       const world = seen ? 1 : Math.min(1, 4 / this.s.bands.length);
-      const written = (this.hasTech(b, 'writing') ? 1.15 : 1) * (this.hasTech(b, 'university') ? 1.15 : 1) * (this.hasTech(b, 'printing') ? 1.2 : 1);
+      const written = (this.s.inspired?.[b.id] ? 4 : 1) * (this.hasTech(b, 'writing') ? 1.15 : 1) * (this.hasTech(b, 'university') ? 1.15 : 1) * (this.hasTech(b, 'printing') ? 1.2 : 1);
       const chance = written * world * GLOBAL_DISCOVERY * Math.sqrt(tech.base / 0.0025) * this.techPace(tech) * again * crowd * Math.pow(g * 2, 2);
       if (!this.rng.chance(chance)) continue;
       this.addTech(b, tech.id);
@@ -1475,16 +1483,26 @@ export class Simulation {
   }
 
   /** a small act of a watcher (a blessing, rain, a feast): see events.ts */
-  watcherAct(kind: ActKind): Band | null {
+  watcherAct(kind: ActKind, target?: number): Band | null {
+    return act(this as unknown as EventHost, kind, this.membersNow(), target);
+  }
+
+  /** a watcher answers a prayer (fork: events.ts) */
+  answerPrayer(id: number) {
+    return answerPrayer(this as unknown as EventHost, id, this.membersNow());
+  }
+
+  private membersNow(): Map<number, Person[]> {
     const members = new Map<number, Person[]>();
     for (const b of this.s.bands) members.set(b.id, []);
     for (const p of this.s.people) members.get(p.bandId)?.push(p);
-    return act(this as unknown as EventHost, kind, members);
+    return members;
   }
 
   private randomEvents(members: Map<number, Person[]>) {
     if (!this.s.bands.length) return;
     worldEvents(this as unknown as EventHost, members);
+    prayersStep(this as unknown as EventHost, members);
     // a great hunt
     if (this.rng.chance(0.004)) {
       const b = this.rng.pick(this.s.bands);

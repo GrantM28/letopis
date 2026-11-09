@@ -7,6 +7,7 @@
 import type { Band, Person } from './sim';
 import type { EventHost } from './events';
 import type { ChronicleRef } from '../../shared/types';
+import { generosity } from './brain';
 
 export interface RelationHost extends EventHost {
   s: EventHost['s'] & { relations?: Record<string, number>; relState?: Record<string, 'ally' | 'rival'> };
@@ -60,7 +61,8 @@ export function relationsStep(h: RelationHost, members: Map<number, Person[]>) {
       if (was === 'ally') {
         const [rich, poor] = a.food > b.food ? [a, b] : [b, a];
         if ((poor.fed ?? 1) < 0.9 && rich.food > size(rich) * 2) {
-          const give = Math.min(rich.food * 0.15, size(poor) * 2);
+          // a generous clan (its brain, brain.ts) sends more
+          const give = Math.min(rich.food * 0.15, size(poor) * 2) * (0.3 + generosity(h as never, rich.id) * 1.4);
           rich.food -= give; poor.food += give;
           now = Math.min(100, now + 4);
           if (rng.chance(0.15)) {

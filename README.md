@@ -31,8 +31,19 @@ and a reworked, English-only interface. Upstream changes are merged in from time
 - **Friends and rivals**: neighbouring clans warm or cool towards each other. Clans that split from one another, trade or
   write tend to become allies who send food in a bad year and grow richer from trade; hungry clans crowding the same land
   become rivals who quarrel over hunting grounds (nothing violent on screen). Alliances, rivalries and reconciliations go in the chronicle.
-- **Help the world**: now and then you may send a blessing (food for the hungriest clan), rain (over the driest land) or call a feast.
-  Each has a cooldown shared by everyone watching, and each is written in the chronicle.
+- **Time controls** next to the year: pause, normal speed, and fast forward (2×, 5×, 20×, 100×; each click goes faster).
+  Space pauses and resumes. The speed is the world's own: it holds for everyone watching and is kept across restarts.
+- **Clans that learn** (machine learning in the simulation): every clan has a small "brain" that decides how its work is
+  shared between farming, herding, fishing, crafting, building and foraging, and how generous it is with friends. Each year it
+  tries a slightly different strategy and keeps it only if the clan ate better (an evolution strategy, a simple kind of
+  reinforcement learning). Daughter clans inherit their parents' brain with small mutations, and clans whose strategy fails
+  go hungry and die out (neuroevolution). Fisherfolk by the rivers, herders and farmers appear without anyone writing them.
+  Each clan card shows its way of life; the dashboard shows how the strategies spread.
+- **Help the world** (the Help button, or the buttons on a clan's card to help that clan): send a blessing (food), rain,
+  call a feast, inspire an inventor (four times the chance of a discovery for two years) or calm a feud. Each power has a
+  waiting time shared by everyone watching, and everything is written in the chronicle.
+- **Prayers**: clans in trouble pray: a hungry clan for food, a dry one for rain, a feuding one for peace. Answer them from
+  the Help panel (the red number on the Help button counts them); a prayer nobody answers fades after two hours.
 - A living chronicle with filters (important, discoveries, life, clans, nature), clickable people and clans,
   family trees back to the first humans, and every discovery grouped by age with progress bars.
 - **Statistics dashboard**: population and clans over time with the ages marked, births and deaths per year, discoveries over time,
@@ -118,6 +129,7 @@ Pushing to `main` builds the Docker image with GitHub Actions and publishes it a
 | `src/server/sim/tech.ts`, `src/shared/later_techs.ts` | the discoveries; the Iron Age and later live in `later_techs.ts` |
 | `src/server/sim/events.ts`, `src/shared/event_words.ts` | the world events and the acts of the watchers |
 | `src/server/sim/relations.ts` | friendship and rivalry between neighbouring clans |
+| `src/server/sim/brain.ts` | the clans' brains: how they learn and pass on their way of life |
 | `src/client/minimap.ts` | the world map in the corner |
 | `src/server/extras.ts` | yearly history, records, people list and acts (`/api/history`, `/api/people`, `/api/acts`) |
 | `src/server/notify.ts` | ntfy and webhook notifications |
@@ -140,7 +152,9 @@ new atlas back to the repository as "Rebuild the sprite atlas". Pull afterwards 
 **Pixel art (8-bit) sheets** are recognised by themselves: a sheet with at most 512 colours, or with `8bit` or `pixel`
 in its file name. Their outlines are kept exactly (the painted sheets lose 3 px of halo), they are scaled only by whole
 numbers with nearest-neighbour, and they go on their own atlas pages that the game draws without smoothing, so every
-pixel stays square. Painted and pixel sheets can be mixed while you redraw them one by one.
+pixel stays square. Painted and pixel sheets can be mixed while you redraw them one by one. "8-bit looking" images made
+by an image generator often blend colours at the edges and have thousands of colours; put `8bit` in the file name
+(for example `I-people-8bit.png`, keeping the letter prefix) to have them treated as pixel art anyway.
 
 To do the same by hand (needs Python, Pillow and NumPy):
 
@@ -158,7 +172,8 @@ The finished atlas is in git, so Python is not needed to build the game.
 
 Added in this fork: `/api/history` (yearly series, causes of death, event counts, records, the ages),
 `/api/people?q=&band=&sort=old|young|name|deeds|children&offset=&limit=` (everyone alive), `/api/relations/:bandId` (a clan's friends and rivals),
-`/api/acts` and `POST /api/act/bless|rain|feast`.
+`/api/acts` (powers and open prayers), `POST /api/act/bless|rain|feast|inspire|calm?band=`, `POST /api/prayer/:id` (answer a prayer),
+`/api/brains` and `/api/brain/:bandId` (what the clans learned), `GET/POST /api/time?scale=0|1|2|5|20|100` (pause and speed).
 
 `/api/health` works well as a sensor for Home Assistant or any uptime monitor.
 

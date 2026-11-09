@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#0d1424">
-  <title>Летопис</title>
+  <title>Letopis</title>
   <link rel="icon" href="favicon-32.png" type="image/png" sizes="32x32">
   <link rel="icon" href="icon-192.png" type="image/png" sizes="192x192">
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
@@ -29,6 +29,9 @@
       <symbol id="i-chart" viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></symbol>
       <symbol id="i-star" viewBox="0 0 24 24"><path d="M12 3l2.6 5.6 6.1.7-4.5 4.2 1.2 6L12 16.5 6.6 19.5l1.2-6L3.3 9.3l6.1-.7z"/></symbol>
       <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></symbol>
+      <symbol id="i-pause" viewBox="0 0 24 24"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></symbol>
+      <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 5l12 7-12 7z"/></symbol>
+      <symbol id="i-fast" viewBox="0 0 24 24"><path d="M3 6l9 6-9 6zM12 6l9 6-9 6z"/></symbol>
       <symbol id="i-map" viewBox="0 0 24 24"><path d="M3 6l6-3 6 3 6-3v15l-6 3-6-3-6 3z"/><path d="M9 3v15M15 6v15"/></symbol>
       <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5L18 18M18 6l-2.5 2.5M8.5 15.5L6 18"/></symbol>
     </defs>
@@ -43,6 +46,12 @@
       <div class="year" id="year">…</div>
       <div class="sub"><span id="month"></span> · <span id="era"></span></div>
       <div class="tick"><i id="tickBar"></i></div>
+      <div class="clock" role="group" aria-label="Speed of time">
+        <button id="clockPause" class="cbtn" title="Pause (Space)" aria-label="Pause"><svg class="ic"><use href="#i-pause"/></svg></button>
+        <button id="clockPlay" class="cbtn" title="Normal speed (Space)" aria-label="Normal speed"><svg class="ic"><use href="#i-play"/></svg></button>
+        <button id="clockFast" class="cbtn" title="Faster: each click speeds time up more" aria-label="Fast forward"><svg class="ic"><use href="#i-fast"/></svg></button>
+        <span id="clockLabel" class="clock-label">1×</span>
+      </div>
     </div>
     <div class="age-prog" id="ageProg" title="">
       <div class="age-line"><span id="ageLabel">Discoveries of this age</span><b id="ageCount">0/0</b></div>
@@ -92,7 +101,7 @@
   <div id="toasts"></div>
 
   <div id="card" class="card" hidden>
-    <button id="cardClose" class="btn round close" title="Затвори">×</button>
+    <button id="cardClose" class="btn round close" title="Close">×</button>
     <div id="cardBody"></div>
   </div>
 

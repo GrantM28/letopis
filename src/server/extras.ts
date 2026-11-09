@@ -7,7 +7,8 @@
 import type http from 'node:http';
 import type { DatabaseSync } from 'node:sqlite';
 import type { Simulation } from './sim/sim';
-import { ACTS, ACT_COOLDOWN_MIN, ActKind } from './sim/events';
+import { ACTS, ACT_COOLDOWN_MIN, ActKind, PRAYER_TTL_MS } from './sim/events';
+import { brainSummary, brainView } from './sim/brain';
 import { causeEn } from '../shared/i18n';
 import { relationCounts, relationsOf } from './sim/relations';
 
@@ -34,7 +35,18 @@ export class Extras {
       CREATE TABLE IF NOT EXISTS x_counts (world TEXT NOT NULL, kind TEXT NOT NULL, key TEXT NOT NULL, n INTEGER, PRIMARY KEY (world, kind, key));
       CREATE TABLE IF NOT EXISTS x_records (world TEXT PRIMARY KEY, json TEXT);
       CREATE TABLE IF NOT EXISTS x_acts (world TEXT NOT NULL, kind TEXT NOT NULL, at INTEGER, band TEXT, PRIMARY KEY (world, kind));
+      CREATE TABLE IF NOT EXISTS x_settings (key TEXT PRIMARY KEY, value TEXT);
     `);
+  }
+
+  /** a setting kept between restarts (the speed of time, ...) */
+  getSetting<T>(key: string, fallback: T): T {
+    const row = this.db.prepare('SELECT value FROM x_settings WHERE key = ?').get(key) as { value: string } | undefined;
+    try { return row ? (JSON.parse(row.value) as T) : fallback; } catch { return fallback; }
+  }
+
+  setSetting(key: string, value: unknown) {
+    this.db.prepare('INSERT OR REPLACE INTO x_settings VALUES (?, ?)').run(key, JSON.stringify(value));
   }
 
   /** after every month of the world, before the chronicle and the dead are written away */
@@ -139,7 +151,28 @@ export class Extras {
       });
       return true;
     }
-    if (p === '/api/acts') { json(res, this.acts(w)); return true; }
+    if (p === '/api/acts') {
+      const bands = new Map(sim.s.bands.map((b) => [b.id, b]));
+      const prayers = (sim.s.prayers ?? []).filter((x) => bands.has(x.band)).map((x) => ({
+        id: x.id, band: x.band, name: sim.bandEnLabel(bands.get(x.band)!, true), color: bands.get(x.band)!.color, want: x.want, year: x.year,
+        fadesIn: Math.max(0, x.at + PRAYER_TTL_MS - Date.now()),
+      }));
+      json(res, { acts: this.acts(w), prayers });
+      return true;
+    }
+    if (p.startsWith('/api/prayer/') && req.method === 'POST') {
+      // answering a prayer needs no waiting time: the clan asked for it
+      const r = sim.answerPrayer(Number(p.split('/').pop()));
+      if (!r) { json(res, { error: 'that prayer has faded' }, 404); return true; }
+      json(res, { ok: true, band: sim.bandEnLabel(r.band, true), bandId: r.band.id, want: r.want });
+      return true;
+    }
+    if (p === '/api/brains') { json(res, brainSummary(sim as never)); return true; }
+    if (p.startsWith('/api/brain/')) {
+      const b = sim.s.bands.find((x) => x.id === Number(p.split('/').pop()));
+      json(res, b ? { ...brainView(sim as never, b), inspired: !!sim.s.inspired?.[b.id] } : null, b ? 200 : 404);
+      return true;
+    }
     if (p.startsWith('/api/relations/')) {
       // a clan's friends and rivals, with their names
       const id = Number(p.split('/').pop());
@@ -180,8 +213,10 @@ export class Extras {
       if (!ACTS.includes(kind)) { json(res, { error: 'no such act' }, 404); return true; }
       const state = this.acts(w).find((a) => a.kind === kind)!;
       if (!state.ready) { json(res, { error: 'not ready', readyIn: state.readyIn }, 429); return true; }
-      const b = sim.watcherAct(kind);
-      if (!b) { json(res, { error: 'nobody to help' }, 409); return true; }
+      const url = new URL(req.url ?? '/', 'http://x');
+      const target = Number(url.searchParams.get('band') ?? 0) || undefined;
+      const b = sim.watcherAct(kind, target);
+      if (!b) { json(res, { error: kind === 'calm' ? 'no feud to calm' : 'nobody to help' }, 409); return true; }
       const band = sim.bandEnLabel(b, true);
       this.db.prepare('INSERT OR REPLACE INTO x_acts VALUES (?,?,?,?)').run(w, kind, Date.now(), band);
       json(res, { ok: true, band, bandId: b.id });

@@ -3,7 +3,7 @@
   "version": "1.32.0",
   "license": "MIT",
   "private": true,
-  "description": "Летопис – idle симулация на цивилизация, която живее сама",
+  "description": "Letopis: an idle civilization simulation that lives on its own",
   "type": "module",
   "scripts": {
     "build": "node build.mjs",

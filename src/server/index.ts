@@ -34,16 +34,16 @@ function loadOrCreate(): Simulation {
     try {
       const st = JSON.parse(gunzipSync(readFileSync(STATE_FILE)).toString('utf8')) as SimState;
       const sim = new Simulation(st);
-      log(`Продължава свят ${st.worldId}, година ${Math.floor(sim.year)}, ${st.people.length} души`);
+      log(`Continuing world ${st.worldId}, year ${Math.floor(sim.year)}, ${st.people.length} people`);
       return sim;
     } catch (e) {
-      log('Неуспешно зареждане, архивирам повредения файл и започвам нов свят', e);
+      log('Could not load the world: archiving the broken file and starting a new world', e);
       renameSync(STATE_FILE, path.join(DATA, 'archive', `broken-${Date.now()}.json.gz`));
     }
   }
   const seed = process.env.LETOPIS_SEED ? Number(process.env.LETOPIS_SEED) : undefined;
   const sim = new Simulation(null, seed);
-  log(`Нов свят ${sim.s.worldId}`);
+  log(`New world ${sim.s.worldId}`);
   return sim;
 }
 
@@ -91,11 +91,39 @@ const CHRONICLE_YEARS = 100;
 let lastSave = Date.now();
 let pendingEvents: TickMessage['events'] = [];
 
+// ---------- the watchers' clock (fork): pause, normal speed, fast forward ----------
+
+/** the speeds the page offers; 0 = paused */
+export const TIME_SCALES = [0, 1, 2, 5, 20, 100];
+let timeScale = extras.getSetting('timeScale', 1);
+if (!TIME_SCALES.includes(timeScale)) timeScale = 1;
+let lastBroadcast = 0;
+let tickTimer: NodeJS.Timeout | null = null;
+const timeInfo = () => ({ ...sim.timeInfo(SPEED * Math.max(1, timeScale)), scale: timeScale });
+
+function setTimeScale(v: number) {
+  timeScale = v;
+  extras.setSetting('timeScale', v);
+  log(v === 0 ? 'Time paused' : `Time runs at x${v}`);
+  // start at once on the new speed instead of waiting out the old (maybe very long) month
+  if (tickTimer) clearTimeout(tickTimer);
+  tickTimer = setTimeout(tick, 50);
+  const msg = JSON.stringify({ t: 'time', time: timeInfo() });
+  for (const ws of clients) if (ws.readyState === WebSocket.OPEN) ws.send(msg);
+}
+
 function tick() {
   const started = Date.now();
+  tickTimer = null;
+  if (timeScale === 0) {
+    // paused: nothing happens in the world; look again in a moment
+    tickTimer = setTimeout(tick, 500);
+    return;
+  }
   try {
     sim.step();
-    pendingEvents = sim.events;
+    // events gather up while broadcasts are thinned out at high speed
+    pendingEvents = pendingEvents.concat(sim.events);
     notify(sim.events, sim.s.worldId);
     extras.onTick(sim);
     flush();
@@ -108,22 +136,25 @@ function tick() {
         era: sim.s.era, techs: sim.s.discovered.length,
       });
     }
-    broadcast();
+    // at high speed the page gets a picture a few times a second, not every month
+    if (timeScale <= 5 || Date.now() - lastBroadcast >= 250) { broadcast(); lastBroadcast = Date.now(); }
     if (sim.extinct) return restartWorld();
     if (Date.now() - lastSave > SAVE_EVERY_MS) {
       save();
       lastSave = Date.now();
     }
   } catch (e) {
-    log('Грешка в симулацията', e);
+    log('Error in the simulation', e);
   }
-  const wait = Math.max(5, sim.tickMs(SPEED) - (Date.now() - started));
-  setTimeout(tick, wait);
+  // never run flat out: rest at least half as long as the month took, so the page and its clicks are answered at once
+  const spent = Date.now() - started;
+  const wait = Math.max(5, spent * 0.5, sim.tickMs(SPEED * timeScale) - spent);
+  tickTimer = setTimeout(tick, wait);
 }
 
 function restartWorld() {
   const old = sim.s.worldId;
-  const summary = `Угасна в ${Math.floor(sim.year)} г. след ${sim.s.totalBorn} родени.`;
+  const summary = `Died out in the year ${Math.floor(sim.year)} after ${sim.s.totalBorn} births.`;
   store.addEvents(old, [{
     id: sim.s.nextEventId++, tick: sim.s.tick, year: sim.year, kind: 'end', importance: 3,
     text: 'Последният човек на този свят си отиде. Летописът се затваря. Скоро ще започне нов свят.',
@@ -134,7 +165,7 @@ function restartWorld() {
   store.endWorld(old, summary);
   save();
   renameSync(STATE_FILE, path.join(DATA, 'archive', `${old}.json.gz`));
-  log(`Светът ${old} угасна. Започвам нов след 1 минута.`);
+  log(`World ${old} has died out. A new one starts in 1 minute.`);
   setTimeout(() => {
     sim = new Simulation(null);
     bindLookup();
@@ -185,7 +216,7 @@ function discoveries(): Discovery[] {
 
 function snapshot(): SnapshotMessage {
   return {
-    t: 'snapshot', time: sim.timeInfo(SPEED), bands: sim.bandViews(), people: sim.personRows(), explored: sim.exploredB64(), trees: sim.treesB64(), roads: sim.roadsB64(),
+    t: 'snapshot', time: timeInfo(), bands: sim.bandViews(), people: sim.personRows(), explored: sim.exploredB64(), trees: sim.treesB64(), roads: sim.roadsB64(),
     population: sim.s.people.length, totalBorn: sim.s.totalBorn, totalDied: sim.s.totalDied,
   };
 }
@@ -196,6 +227,14 @@ const server = http.createServer((req, res) => {
   const q = (k: string) => (url.searchParams.has(k) ? Number(url.searchParams.get(k)) : undefined);
   const world = sim.s.worldId;
   try {
+    if (p === '/api/time') {
+      if (req.method === 'POST') {
+        const v = Number(url.searchParams.get('scale'));
+        if (!TIME_SCALES.includes(v)) return json(res, { error: 'speed must be one of ' + TIME_SCALES.join(', ') }, 400);
+        setTimeScale(v);
+      }
+      return json(res, { scale: timeScale, scales: TIME_SCALES });
+    }
     if (extras.handle(req, res, p, sim, json, notifyEnabled)) return;
     if (p === '/api/health') return json(res, { ok: true, world, year: Math.floor(sim.year), population: sim.s.people.length });
     if (p === '/api/world') return json(res, worldInfo);
@@ -211,11 +250,11 @@ const server = http.createServer((req, res) => {
     if (p === '/api/secrets') return json(res, { found: sim.secretFinds() });
     if (p.startsWith('/api/secret/') && req.method === 'POST') {
       const r = sim.findSecret(Number(p.split('/').pop()));
-      return r ? json(res, r) : json(res, { error: 'няма такава тайна' }, 404);
+      return r ? json(res, r) : json(res, { error: 'no such secret' }, 404);
     }
     if (p.startsWith('/api/tree/')) {
       const t = sim.familyTree(Number(p.split('/').pop()));
-      return t ? json(res, t) : json(res, { error: 'няма такъв човек' }, 404);
+      return t ? json(res, t) : json(res, { error: 'no such person' }, 404);
     }
     if (p === '/api/discoveries') return json(res, discoveries());
     if (p.startsWith('/api/band/')) {
@@ -223,11 +262,11 @@ const server = http.createServer((req, res) => {
       const live = sim.bandViews().find((b) => b.id === id);
       if (live) return json(res, { live });
       const gone = store.getGoneBand(world, id);
-      return gone ? json(res, { gone }) : json(res, { error: 'няма такъв род' }, 404);
+      return gone ? json(res, { gone }) : json(res, { error: 'no such clan' }, 404);
     }
     if (p.startsWith('/api/person/')) {
       const d = sim.personDetail(Number(p.split('/').pop()));
-      return d ? json(res, d) : json(res, { error: 'няма такъв човек' }, 404);
+      return d ? json(res, d) : json(res, { error: 'no such person' }, 404);
     }
     // static files
     let file = path.normalize(path.join(PUBLIC, p === '/' ? 'index.html' : p));
@@ -243,14 +282,14 @@ const server = http.createServer((req, res) => {
       ...(zip ? { 'content-encoding': 'gzip', vary: 'accept-encoding' } : {}),
     });
     if (CHANNEL && file.endsWith('index.html')) {
-      // the test server says so in the browser tab: "Летопис - Dev"
-      const page = readFileSync(file, 'utf8').replace('<title>Летопис</title>', `<title>Летопис - ${CHANNEL[0].toUpperCase()}${CHANNEL.slice(1)}</title>`);
+      // the test server says so in the browser tab: "Letopis - Dev"
+      const page = readFileSync(file, 'utf8').replace('<title>Letopis</title>', `<title>Letopis - ${CHANNEL[0].toUpperCase()}${CHANNEL.slice(1)}</title>`);
       res.end(zip ? gzipSync(page) : page);
     } else if (zip) createReadStream(file).pipe(createGzip({ level: 6 })).pipe(res);
     else createReadStream(file).pipe(res);
   } catch (e) {
-    log('HTTP грешка', e);
-    json(res, { error: 'вътрешна грешка' }, 500);
+    log('HTTP error', e);
+    json(res, { error: 'internal error' }, 500);
   }
 });
 
@@ -272,7 +311,7 @@ function broadcast() {
     return;
   }
   const msg: TickMessage = {
-    t: 'tick', time: sim.timeInfo(SPEED), bands: sim.bandViews(), people: sim.personRows(), events: pendingEvents,
+    t: 'tick', time: timeInfo(), bands: sim.bandViews(), people: sim.personRows(), events: pendingEvents,
     population: sim.s.people.length,
   };
   if (sim.exploredDirty) {
@@ -289,12 +328,12 @@ function broadcast() {
 }
 
 function shutdown() {
-  log('Спирам, записвам света...');
+  log('Stopping, saving the world...');
   try {
     flush();
     save();
   } catch (e) {
-    log('Грешка при запис', e);
+    log('Error while saving', e);
   }
   process.exit(0);
 }
@@ -302,7 +341,7 @@ process.on('SIGTERM', shutdown);
 process.on('SIGINT', shutdown);
 
 server.listen(PORT, () => {
-  log(`Летопис слуша на порт ${PORT}, данни в ${DATA}, скорост x${SPEED}`);
+  log(`Letopis is listening on port ${PORT}, data in ${DATA}, speed x${SPEED}`);
   flush();
   sim.events = [];
   save();

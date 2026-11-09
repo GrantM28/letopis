@@ -186,6 +186,7 @@ function bandColors(): Map<number, number> {
 }
 
 function applyTime(t: TickMessage['time'], population: number) {
+  clockFromServer(t.scale ?? 1);
   tickMs = t.tickMs;
   lastTickAt = performance.now();
   r.month = t.month;
@@ -200,6 +201,50 @@ function applyTime(t: TickMessage['time'], population: number) {
   currentEra = t.era;
   updateAgeProgress();
 }
+
+// ---------- the speed of time (fork): pause, normal, fast forward ----------
+
+const SCALES = [0, 1, 2, 5, 20, 100];
+let timeScale = 1;
+/** the speed before pausing, so Space and Play bring it back */
+let lastRunning = 1;
+/** the speed we asked for and the server has not confirmed yet (months already on their way still carry the old one) */
+let wantedScale: number | null = null;
+let wantedAt = 0;
+function clockFromServer(scale: number) {
+  if (wantedScale !== null) {
+    if (scale !== wantedScale && performance.now() - wantedAt < 15000) return;
+    wantedScale = null;
+  }
+  showClock(scale);
+}
+function showClock(scale: number) {
+  timeScale = scale;
+  if (scale > 0) lastRunning = scale;
+  $('#clockPause').setAttribute('aria-pressed', String(scale === 0));
+  $('#clockPlay').setAttribute('aria-pressed', String(scale === 1));
+  $('#clockFast').setAttribute('aria-pressed', String(scale > 1));
+  $('#clockLabel').textContent = scale === 0 ? 'Paused' : `${scale}×`;
+  document.body.classList.toggle('paused', scale === 0);
+}
+async function setScale(scale: number) {
+  wantedScale = scale;
+  wantedAt = performance.now();
+  showClock(scale); // at once; the server confirms to everyone watching
+  await fetch(`/api/time?scale=${scale}`, { method: 'POST' }).catch(() => null);
+}
+$('#clockPause').onclick = () => void setScale(0);
+$('#clockPlay').onclick = () => void setScale(1);
+$('#clockFast').onclick = () => {
+  const next = SCALES.find((s) => s > Math.max(1, timeScale));
+  void setScale(next ?? 2);
+};
+document.addEventListener('keydown', (e) => {
+  const el = e.target instanceof Element ? e.target : null;
+  if (e.code !== 'Space' || el?.closest('input, textarea, button')) return;
+  e.preventDefault();
+  void setScale(timeScale === 0 ? lastRunning : 0);
+});
 
 // ---------- progress through the ages ----------
 
@@ -236,40 +281,82 @@ function updateAgeProgress() {
 
 // ---------- helping the world: a blessing, rain, a feast ----------
 
-const ACT_INFO: Record<string, { icon: string; name: string; text: string }> = {
-  bless: { icon: '🌟', name: 'Send a blessing', text: 'Food finds its way to the hungriest clan.' },
-  rain: { icon: '🌧️', name: 'Send rain', text: 'A long warm rain over the driest land around a clan.' },
-  feast: { icon: '🍖', name: 'Call a feast', text: 'The biggest clan invites its neighbours to a great feast.' },
+const ACT_INFO: Record<string, { icon: string; name: string; text: string; who: string }> = {
+  bless: { icon: '🌟', name: 'Send a blessing', text: 'Food finds its way to the clan.', who: 'the hungriest clan' },
+  rain: { icon: '🌧️', name: 'Send rain', text: 'A long warm rain over the land around the clan.', who: 'the driest land' },
+  feast: { icon: '🍖', name: 'Call a feast', text: 'The clan invites its neighbours to a great feast.', who: 'the biggest clan' },
+  inspire: { icon: '💭', name: 'Inspire an inventor', text: 'For two years the clan is four times as likely to discover something.', who: 'the biggest clan' },
+  calm: { icon: '🕊️', name: 'Calm a feud', text: 'The clan makes peace with its rivals.', who: 'the clan with the most rivals' },
 };
+const WANT_TEXT: Record<string, string> = { bless: 'pray for food', rain: 'pray for rain', calm: 'pray for peace' };
 type ActState = { kind: string; ready: boolean; readyIn: number; last: { at: number; band: string } | null };
+type PrayerView = { id: number; band: number; name: string; color: number; want: string; year: number; fadesIn: number };
+const mins = (ms: number) => (ms >= 3600000 ? `${Math.floor(ms / 3600000)} h ${Math.ceil((ms % 3600000) / 60000)} min` : `${Math.max(1, Math.ceil(ms / 60000))} min`);
+const ago = (t: number) => { const m = Math.round((Date.now() - t) / 60000); return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : `${Math.round(m / 60)} h ago`; };
+
+/** one power: on a chosen clan, or (without one) where it is needed most */
+async function useAct(kind: string, band?: number): Promise<string> {
+  const res = await fetch(`/api/act/${kind}${band ? `?band=${band}` : ''}`, { method: 'POST' }).then((x) => x.json()).catch(() => null) as
+    { ok?: boolean; band?: string; bandId?: number; error?: string; readyIn?: number } | null;
+  if (res?.ok && res.bandId) {
+    const b = bands.find((x) => x.id === res.bandId);
+    if (b) { stopTour(); lookAt(b.x, b.y, Math.max(cam.tz, 1.4)); }
+    return `Done: ${esc(res.band ?? '')} will remember it.`;
+  }
+  return res?.readyIn ? `Not yet: ready again in ${mins(res.readyIn)}.` : `Not now: ${esc(res?.error ?? 'the server did not answer')}.`;
+}
 
 async function showActs(note = '') {
-  const acts = await api<ActState[]>('/api/acts').catch(() => null);
-  if (!acts) return;
-  const mins = (ms: number) => `${Math.max(1, Math.ceil(ms / 60000))} min`;
-  const ago = (t: number) => { const m = Math.round((Date.now() - t) / 60000); return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : `${Math.round(m / 60)} h ago`; };
+  const data = await api<{ acts: ActState[]; prayers: PrayerView[] }>('/api/acts').catch(() => null);
+  if (!data) return;
+  const hex = (c: number) => `#${c.toString(16).padStart(6, '0')}`;
   openCard(`<h2>✨ Help the world</h2>
-    <p class="muted">The world lives on its own, but now and then you may lend a hand. Everyone watching this world shares the same waiting time, and each act is written in the chronicle.</p>
+    <p class="muted">The world lives on its own, but now and then you may lend a hand. Each power waits a while before it can be used again
+      (the same wait for everyone watching), and everything you do is written in the chronicle. To help one particular clan, open its card.</p>
     ${note ? `<p class="act-note">${note}</p>` : ''}
-    <div class="acts">${acts.map((a) => {
+    <h3>Prayers <small>${data.prayers.length}</small></h3>
+    ${data.prayers.length ? `<ul class="prayers">${data.prayers.map((p) => `<li>
+        <span class="dot" style="background:${hex(p.color)}"></span>
+        <span class="pr-body"><a href="#" class="ref" data-band="${p.band}">${esc(p.name)}</a> ${WANT_TEXT[p.want] ?? 'pray'}
+          <small>since ${fmtYear(p.year)} · fades in ${mins(p.fadesIn)}</small></span>
+        <button class="btn pr-answer" data-prayer="${p.id}">Answer</button></li>`).join('')}</ul>`
+      : '<p class="muted">No clan is praying right now. Clans in trouble pray now and then: a hungry clan for food, a dry one for rain, a feuding one for peace.</p>'}
+    <h3>Powers</h3>
+    <div class="acts">${data.acts.map((a) => {
       const i = ACT_INFO[a.kind];
+      if (!i) return '';
       return `<button class="act" data-act="${a.kind}" ${a.ready ? '' : 'disabled'}>
-        <span class="act-icon">${i.icon}</span><span class="act-body"><b>${i.name}</b><small>${i.text}</small>
+        <span class="act-icon">${i.icon}</span><span class="act-body"><b>${i.name}</b><small>${i.text} Goes to ${i.who}.</small>
         <small class="act-state">${a.ready ? 'Ready' : `Ready again in ${mins(a.readyIn)}`}${a.last ? ` · last: ${esc(a.last.band)}, ${ago(a.last.at)}` : ''}</small></span></button>`;
     }).join('')}</div>`);
   document.querySelectorAll<HTMLButtonElement>('#cardBody .act').forEach((btn) => {
+    btn.onclick = async () => { btn.disabled = true; void showActs(await useAct(btn.dataset.act!)); };
+  });
+  document.querySelectorAll<HTMLButtonElement>('#cardBody .pr-answer').forEach((btn) => {
     btn.onclick = async () => {
       btn.disabled = true;
-      const res = await fetch(`/api/act/${btn.dataset.act}`, { method: 'POST' }).then((x) => x.json()).catch(() => null) as { ok?: boolean; band?: string; bandId?: number; error?: string } | null;
-      if (res?.ok && res.bandId) {
-        const b = bands.find((x) => x.id === res.bandId);
-        if (b) { stopTour(); lookAt(b.x, b.y, Math.max(cam.tz, 1.4)); }
-      }
-      void showActs(res?.ok ? `Done: ${esc(res.band ?? '')} will remember it.` : `Not now: ${esc(res?.error ?? 'the server did not answer')}.`);
+      const res = await fetch(`/api/prayer/${btn.dataset.prayer}`, { method: 'POST' }).then((x) => x.json()).catch(() => null) as { ok?: boolean; band?: string; bandId?: number; error?: string } | null;
+      if (res?.ok && res.bandId) { const b = bands.find((x) => x.id === res.bandId); if (b) { stopTour(); lookAt(b.x, b.y, Math.max(cam.tz, 1.4)); } }
+      void showActs(res?.ok ? `Your answer reached ${esc(res.band ?? '')}.` : `Too late: ${esc(res?.error ?? 'the server did not answer')}.`);
+      void refreshPrayerBadge();
     };
   });
 }
 $('#actsBtn').onclick = () => void showActs();
+
+/** a small number on the Help button while clans are praying */
+async function refreshPrayerBadge() {
+  const data = await api<{ prayers: PrayerView[] }>('/api/acts').catch(() => null);
+  const n = data?.prayers.length ?? 0;
+  const btn = $('#actsBtn');
+  let badge = btn.querySelector<HTMLElement>('.count');
+  if (!badge) { badge = document.createElement('span'); badge.className = 'count'; btn.appendChild(badge); }
+  badge.textContent = String(n);
+  badge.hidden = n === 0;
+}
+setInterval(() => void refreshPrayerBadge(), 30_000);
+void refreshPrayerBadge();
+
 
 /** back to where the people are */
 function showAllBands() {
@@ -342,6 +429,7 @@ function connect() {
     if (m.t === 'snapshot') onSnapshot(m);
     else if (m.t === 'tick') onTick(m);
     else if (m.t === 'newworld') location.reload();
+    else if (m.t === 'time') { tickMs = m.time.tickMs; lastTickAt = performance.now(); clockFromServer(m.time.scale ?? 1); }
   };
   ws.onopen = () => { $('#conn').classList.remove('off'); void checkVersion(); };
   ws.onclose = () => {
@@ -394,6 +482,8 @@ const ICON: Record<string, string> = {
   expedition: '🧭', blessing: '🌟', rain: '🌧️', feast: '🍖',
   // clan relations (relations.ts)
   alliance: '🤝', rivalry: '😠', quarrel: '🗯️', aid: '🎁', peace: '🕊️', estranged: '🍂',
+  // learning clans and the watchers' help (brain.ts, events.ts)
+  learned: '🧠', inspired: '💭', prayer: '🙏',
 };
 
 function eventHtml(e: ChronicleEntry): string {
@@ -426,8 +516,8 @@ const FEED_KINDS: Record<string, { bg: string; en: string; kinds?: string[] }> =
   big: { bg: 'Важно', en: 'Important' },
   discovery: { bg: 'Открития', en: 'Discoveries', kinds: ['discovery', 'rediscovery', 'learn', 'era', 'lost'] },
   life: { bg: 'Живот', en: 'Life', kinds: ['death', 'twins', 'marriage', 'milestone', 'genesis', 'plague', 'festival', 'feast'] },
-  clans: { bg: 'Родове', en: 'Clans', kinds: ['settle', 'colony', 'split', 'meet', 'merge', 'extinct', 'end', 'wonder', 'expedition', 'alliance', 'rivalry', 'quarrel', 'aid', 'peace', 'estranged'] },
-  nature: { bg: 'Природа', en: 'Nature', kinds: ['hunt', 'winter', 'drought', 'secret', 'flood', 'harvest', 'comet', 'eclipse', 'quake', 'fire', 'blessing', 'rain'] },
+  clans: { bg: 'Родове', en: 'Clans', kinds: ['settle', 'colony', 'split', 'meet', 'merge', 'extinct', 'end', 'wonder', 'expedition', 'alliance', 'rivalry', 'quarrel', 'aid', 'peace', 'estranged', 'learned'] },
+  nature: { bg: 'Природа', en: 'Nature', kinds: ['hunt', 'winter', 'drought', 'secret', 'flood', 'harvest', 'comet', 'eclipse', 'quake', 'fire', 'blessing', 'rain', 'prayer', 'inspired'] },
 };
 let feedKind = store('letopis.feedKind', store('letopis.onlyBig', false) ? 'big' : 'all');
 if (!FEED_KINDS[feedKind]) feedKind = 'all';
@@ -664,6 +754,7 @@ const EVENT_NAMES: Record<string, string> = {
   expedition: 'Expeditions', secret: 'Secrets found', era: 'New ages', milestone: 'Population milestones', blessing: 'Blessings',
   rain: 'Rains sent', feast: 'Feasts', lost: 'Knowledge lost',
   alliance: 'Alliances sworn', rivalry: 'Rivalries', quarrel: 'Quarrels', aid: 'Food sent to friends', peace: 'Feuds ended', estranged: 'Friendships faded',
+  learned: 'Clans changing their way of life', inspired: 'Inventors inspired', prayer: 'Prayers',
 };
 
 const css = (v: string, fb: string) => getComputedStyle(document.documentElement).getPropertyValue(v).trim() || fb;
@@ -727,6 +818,7 @@ async function renderStats(body: HTMLElement, wide = false) {
         return `<li class="${reached ? 'done' : e === h.era + 1 ? 'next' : ''}"><b>${eraName(e)}</b><small>${note}</small></li>`;
       }).join('')}
     </ol></section>
+    <section><h3>How the clans learned</h3><div id="dashBrains" class="muted">Loading…</div></section>
     <section><h3>How people died</h3>${barList(Object.entries(h.causes), '#b48ead', 8)}</section>
     <section><h3>What happened most</h3>${barList(Object.entries(h.events).map(([k, v]) => [`${ICON[k] ?? '•'} ${EVENT_NAMES[k] ?? k}`, v] as [string, number]), 'var(--accent-2)', 12)}</section>
     <section class="span2"><h3>What people know</h3><div class="techs">${[...known].map((t) => `<span class="pill">${esc(techLabel(t))}</span>`).join('') || '<span class="muted">Nothing yet</span>'}</div></section>
@@ -747,6 +839,15 @@ async function renderStats(body: HTMLElement, wide = false) {
   lineChart(body.querySelector<HTMLElement>('#chTech')!, { xs, eras, fmtX: fmt, height: 120, series: [
     { name: 'Discoveries', color: '#b48ead', values: s.map((x) => x.techs), fill: true },
   ] });
+  api<{ clans: number; styles: Record<string, number>; avgGeneration: number; maxGeneration: number; tried: number; kept: number } | null>('/api/brains').then((bs) => {
+    const el = body.querySelector<HTMLElement>('#dashBrains');
+    if (!el || !bs) return;
+    el.classList.remove('muted');
+    el.innerHTML = `<p class="lead">Every clan learns by trying a slightly different way of spending its work each year and keeping it when the clan eats better;
+      daughter clans inherit their parents' way with small changes. Nobody wrote these strategies.</p>
+      ${barList(Object.entries(bs.styles), 'var(--accent)', 8)}
+      <p class="muted">Line generations: ${bs.avgGeneration} on average, up to ${bs.maxGeneration} · ${num(bs.kept)} of ${num(bs.tried)} tries kept by the clans alive now.</p>`;
+  }).catch(() => {});
   const wideBtn = body.querySelector<HTMLButtonElement>('#statsWide');
   if (wideBtn) wideBtn.onclick = () => { openCard('<div id="dashBody"><p class="muted">Loading…</p></div>', false, 'wide'); void renderStats($('#dashBody'), true); };
 }
@@ -947,11 +1048,45 @@ function showBand(b: BandView) {
     ${originHtml(b.founder, b.from)}
     <div class="kpis kpis-4"><div><span>People</span><b>${b.size}</b></div><div><span>Children</span><b>${kidsN}</b></div>
       <div><span>Elders</span><b>${eldersN}</b></div><div><span>Food</span><b>${b.food}</b></div></div>
+    <div class="help-row" id="bandHelp">
+      <button class="btn" data-help="bless" title="Food for this clan">🌟 Bless</button>
+      <button class="btn" data-help="rain" title="Rain over their land">🌧️ Rain</button>
+      <button class="btn" data-help="inspire" title="Four times the chance of a discovery for two years">💭 Inspire</button>
+      <button class="btn" data-help="feast" title="They invite their neighbours">🍖 Feast</button>
+      <button class="btn" data-help="calm" title="Make peace with their rivals">🕊️ Calm</button>
+    </div>
+    <p class="act-note" id="bandHelpNote" hidden></p>
+    <h3>Way of life <small id="bandStyleTag"></small></h3><div id="bandBrain" class="muted">Loading…</div>
     <h3>Friends and rivals</h3><div id="bandRel" class="muted">Loading…</div>
     <h3>What they are doing</h3><div class="barlist">${[...tasks].sort((a, c) => c[1] - a[1]).map(([t, n]) => `<div class="barrow"><span class="bl-k">${esc(t)}</span><span class="bl-v">${n}</span>
       <div class="bl-bar"><i style="width:${(n / taskTotal) * 100}%;background:${hex(b.color)}"></i></div></div>`).join('')}</div>
     <h3>What they know <small>${b.techs.length}</small></h3><div class="techs">${b.techs.map((t) => `<span class="pill">${esc(TECH(t))}</span>`).join('') || '<span class="muted">Nothing yet</span>'}</div>
     <h3>The people</h3><ul class="people" id="bandPeople"><li class="muted">Loading…</li></ul>`);
+  // help aimed at this clan
+  document.querySelectorAll<HTMLButtonElement>('#bandHelp [data-help]').forEach((btn) => {
+    btn.onclick = async () => {
+      btn.disabled = true;
+      const note = $('#bandHelpNote');
+      note.hidden = false;
+      note.innerHTML = await useAct(btn.dataset.help!, b.id);
+      btn.disabled = false;
+    };
+  });
+  // what the clan has learned (brain.ts on the server)
+  const JOB_NAMES: Record<string, string> = { farm: 'Farming', herd: 'Herding', fish: 'Fishing', craft: 'Crafting', build: 'Building', forage: 'Hunting and gathering' };
+  api<{ style: string; weights: Record<string, number>; give: number; generation: number; tried: number; kept: number; trying: boolean; inspired: boolean } | null>(`/api/brain/${b.id}`).then((br) => {
+    const el = document.getElementById('bandBrain');
+    if (!el || !br) { if (el) el.textContent = 'Still finding its way.'; return; }
+    el.classList.remove('muted');
+    $('#bandStyleTag').textContent = br.style + (br.inspired ? ' · inspired' : '');
+    const max = Math.max(...Object.values(br.weights));
+    el.innerHTML = `<p class="lead">How this clan has learned to spend its work: every year it tries a slightly different way and keeps it if the clan eats better.
+        Generation ${br.generation} of its line · ${br.kept} of ${br.tried} tries kept${br.trying ? ' · trying something new this year' : ''}.</p>
+      <div class="barlist">${Object.entries(br.weights).sort((x, y) => y[1] - x[1]).map(([k, v]) => `<div class="barrow"><span class="bl-k">${JOB_NAMES[k] ?? k}</span><span class="bl-v">×${v.toFixed(2)}</span>
+        <div class="bl-bar"><i style="width:${(v / max) * 100}%;background:${hex(b.color)}"></i></div></div>`).join('')}
+        <div class="barrow"><span class="bl-k">Generosity to friends</span><span class="bl-v">${Math.round(br.give * 100)}%</span>
+        <div class="bl-bar"><i style="width:${br.give * 100}%;background:var(--good)"></i></div></div></div>`;
+  }).catch(() => { const el = document.getElementById('bandBrain'); if (el) el.textContent = 'Could not load.'; });
   // friends and rivals, and everyone in the clan, each in one request
   api<{ id: number; name: string; color: number; score: number; kind: string }[]>(`/api/relations/${b.id}`).then((rs) => {
     const el = document.getElementById('bandRel');
