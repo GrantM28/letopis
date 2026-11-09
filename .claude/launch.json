@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "letopis-dev",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["--disable-warning=ExperimentalWarning", "dist/server.js"],
+      "env": { "LETOPIS_DATA": "./data", "LETOPIS_SPEED": "200", "LETOPIS_PORT": "2222" },
+      "port": 2222
+    }
+  ]
+}

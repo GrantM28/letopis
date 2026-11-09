@@ -35,7 +35,7 @@ Each discovery has a target date, and its chance rises or falls when the world r
 ### Docker
 
 ```sh
-docker run -d --name letopis -p 2222:2222 -v /path/to/letopis-data:/data --restart unless-stopped ghcr.io/leppermesiah/letopis:latest
+docker run -d --name letopis -p 2222:2222 -v /path/to/letopis-data:/data --restart unless-stopped ghcr.io/grantm28/letopis:latest
 ```
 
 Then open `http://<host>:2222/`.
@@ -45,7 +45,7 @@ Then open `http://<host>:2222/`.
 Install **Letopis** from the **Apps** tab (Community Applications). The template lives in
 [leppermesiah/unraid-templates](https://github.com/leppermesiah/unraid-templates). To add it by hand instead:
 
-- Repository: `ghcr.io/leppermesiah/letopis:latest`
+- Repository: `ghcr.io/grantm28/letopis:latest`
 - Port: `2222` → `2222`
 - Path: `/data` → `/mnt/user/appdata/letopis`
 
