@@ -7,7 +7,7 @@ import { SECRET_COUNT, SECRET_HEROES, SECRET_KINDS, SecretFind } from '../../sha
 import { FEMALE, MALE, bandColor, bandName, fixBandName, familyFrom, nickname, placeName } from './names';
 import { ERAS, TECHS, TECH_BY_ID, Tech, eraOf } from './tech';
 import { LATER_ERA_WHY } from '../../shared/later_techs';
-import { ActKind, EventHost, act, answerPrayer, prayersStep, worldEvents } from './events';
+import { ActKind, EventHost, MoveWhy, act, announceMove, answerPrayer, prayersStep, worldEvents } from './events';
 import { RelationHost, relationsStep } from './relations';
 import { BrainHost, brainStep, steerJobs, wantsToMove } from './brain';
 import { BIG, startStage, treeKinds } from '../../shared/trees';
@@ -73,7 +73,7 @@ export interface Band {
   /** wood the band still needs to cut (one unit = one young tree) */
   wood?: number;
   /** nomads: the chief went ahead to look at a new place; the band follows when he gets there */
-  scout?: { x: number; y: number; px?: number; py?: number } | null;
+  scout?: { x: number; y: number; px?: number; py?: number; why?: MoveWhy } | null;
 }
 
 /** Everything in here is saved to disk. */
@@ -1200,7 +1200,7 @@ export class Simulation {
         const starving = (b.fed ?? 1) < 0.7 && this.rng.chance(0.08);
         // or the clan's brain (brain.ts) judges it time to go on
         const restless = !noWood && !starving && wantsToMove(this as unknown as BrainHost, b);
-        if (noWood || starving || restless) this.moveCamp(b, m, noWood ? 22 : 16);
+        if (noWood || starving || restless) this.moveCamp(b, m, noWood ? 22 : 16, noWood ? 'wood' : starving ? 'hunger' : 'restless');
       }
       // split: rare, a band has to grow big first
       // a walled town holds more people before some leave to found a new village
@@ -1320,6 +1320,7 @@ export class Simulation {
       // he is there and likes it: the camp, the banner and everyone follow
       chief.x = sc.x;
       chief.y = sc.y;
+      announceMove(this as unknown as EventHost, b, b.cx, b.cy, sc.x, sc.y, sc.why ?? 'other', chief);
       b.cx = sc.x;
       b.cy = sc.y;
       b.scout = null;
@@ -1336,7 +1337,7 @@ export class Simulation {
     chief.y = b.cy + this.rng.range(-0.3, 0.3);
   }
 
-  private moveCamp(b: Band, m: Person[], range: number) {
+  private moveCamp(b: Band, m: Person[], range: number, why: MoveWhy = 'other') {
     if (b.scout) return; // the chief is still looking
     let best = { x: b.cx, y: b.cy }, bestS = this.campScore(Math.round(b.cx), Math.round(b.cy), 4, b) * 1.05;
     for (let k = 0; k < 24; k++) {
@@ -1349,9 +1350,11 @@ export class Simulation {
     if (best.x === b.cx && best.y === b.cy) return;
     // the chief goes first to look at the place; without one the whole band just goes
     if (b.chiefId && this.byId.get(b.chiefId)?.bandId === b.id) {
-      b.scout = best;
+      b.scout = { ...best, why };
       return;
     }
+    // the chronicle tells where they went (fork: events.ts)
+    announceMove(this as unknown as EventHost, b, b.cx, b.cy, best.x, best.y, why);
     b.cx = best.x; b.cy = best.y;
     this.clearAround(b.cx, b.cy, 1);
     for (const p of m) p.task = 'travel';

@@ -19,7 +19,9 @@ and a reworked, English-only interface. Upstream changes are merged in from time
 - A generated world with relief, rivers, forests, mountains, seasons and snow, drawn in a cozy isometric pixel-art style.
 - Every person has a name, parents, children and traits (strength, wit, curiosity, sociability, health, longevity) that are inherited with small mutations.
 - Clans wander, split, meet, learn from each other, settle into villages and sometimes die out together with their knowledge.
-- Trees grow and get cut for fires and huts; a clan moves on when the wood around its camp is gone.
+- Trees grow and get cut for fires and huts; a clan moves on when the wood around its camp is gone, when hunger drives it,
+  or when its brain judges it time for fresh land. Every move goes into the chronicle: which way, how far, to what land, why,
+  and who led them (a minor entry: the Important filter hides moves, the Clans filter shows them).
 - **Nine ages and 185 discoveries**: Stone, New Stone and Bronze Age, then the Iron Age, Middle Ages, Early Modern, Industrial,
   Information and Space Age. Each age opens with one discovery (iron, the watermill, the printing press, the steam engine,
   the computer, a Moon base), and every age has its smaller ones too: the bone needle and flute, irrigation, brewing and

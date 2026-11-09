@@ -370,3 +370,47 @@ function plantsAround(h: EventHost, b: Band): number {
   }
   return cap ? s / cap : 1;
 }
+
+// ---------- a clan moves its camp (fork): the chronicle says where and why ----------
+
+export type MoveWhy = 'wood' | 'hunger' | 'restless' | 'other';
+
+/** the land at a tile, in words */
+function landAt(h: EventHost, x: number, y: number): string {
+  const xi = Math.round(x), yi = Math.round(y);
+  if (!inBounds(xi, yi)) return 'new land';
+  const i = idx(xi, yi);
+  if (h.t.river[i] > 40) return 'the riverbank';
+  // Biome numbers (shared/types.ts): 2 beach, 3 grassland, 4 plains, 5 forest, 6 taiga, 7 hills, 8 mountain, 9 snow, 10 desert, 11 tundra, 12 marsh
+  const words: Record<number, string> = {
+    2: 'the seashore', 3: 'the green meadows', 4: 'the open plains', 5: 'the forest', 6: 'the pine woods', 7: 'the hills',
+    8: 'the foot of the mountains', 9: 'the snowfields', 10: 'the dry lands', 11: 'the cold tundra', 12: 'the marshes',
+  };
+  return words[h.t.biome[i]] ?? 'new land';
+}
+
+/** north, south-east, ... as it looks on the map (the world is drawn turned 45 degrees) */
+function compass(dx: number, dy: number): string {
+  const sx = dx - dy, sy = dx + dy; // screen right and down
+  const a = Math.atan2(-sy, sx); // up is north
+  const names = ['east', 'north-east', 'north', 'north-west', 'west', 'south-west', 'south', 'south-east'];
+  return names[(Math.round(a / (Math.PI / 4)) + 8) % 8];
+}
+
+export function announceMove(h: EventHost, b: Band, fromX: number, fromY: number, toX: number, toY: number, why: MoveWhy, chief?: Person) {
+  const d = Math.hypot(toX - fromX, toY - fromY);
+  if (d < 1.5) return;
+  const far = d < 6 ? 'a short way' : d < 14 ? "a few days' walk" : 'far';
+  const dir = compass(toX - fromX, toY - fromY);
+  const reasons: Record<MoveWhy, string[]> = {
+    wood: ['There was no wood left around the old camp.', 'The last trees around the old camp had gone into the fire.', 'They had burned every tree within reach.'],
+    hunger: ['Hunger drove them on.', 'The old camp could no longer feed them.', 'Empty bellies made the choice for them.'],
+    restless: ['They went looking for fresh land before the old one ran thin.', 'The elders felt it was time to move on.', 'Word had come of better hunting there.', 'They follow the herds with the seasons.'],
+    other: [''],
+  };
+  const reason = { [why]: h.rng.pick(reasons[why]) } as Record<MoveWhy, string>;
+  const led = chief ? ` ${h.nameEn(chief)} led the way.` : '';
+  h.emit('move', 1, `${h.bandLabel(b, true)} премести стана си.`, undefined, chief?.id, b.id, [],
+    [`${h.bandEnLabel(b, true)} moved their camp ${far} ${dir}, to ${landAt(h, toX, toY)}. ${reason[why]}${led}`.replace(/ +/g, ' ').trim(),
+      `${h.bandEnLabel(b, true)} packed up and walked ${dir} to ${landAt(h, toX, toY)}!`]);
+}
