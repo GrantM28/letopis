@@ -12,15 +12,16 @@ export class Rng {
   }
 
   next(): number {
-    let [a, b, c, d] = this.s;
-    a >>>= 0; b >>>= 0; c >>>= 0; d >>>= 0;
-    const t = (((a + b) | 0) + d) | 0;
-    d = (d + 1) | 0;
-    a = b ^ (b >>> 9);
-    b = (c + (c << 3)) | 0;
-    c = (c << 21) | (c >>> 11);
-    c = (c + t) | 0;
-    this.s = [a, b, c, d];
+    // the state is updated in place (fork): the same numbers as before, without a new array for every draw,
+    // which was the busiest line of the whole simulation
+    const s = this.s;
+    const a0 = s[0] >>> 0, b0 = s[1] >>> 0, c0 = s[2] >>> 0, d0 = s[3] >>> 0;
+    const t = (((a0 + b0) | 0) + d0) | 0;
+    s[3] = (d0 + 1) | 0;
+    s[0] = b0 ^ (b0 >>> 9);
+    s[1] = (c0 + (c0 << 3)) | 0;
+    const c = (c0 << 21) | (c0 >>> 11);
+    s[2] = (c + t) | 0;
     return (t >>> 0) / 4294967296;
   }
 

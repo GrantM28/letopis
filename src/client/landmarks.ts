@@ -6,6 +6,7 @@ import { Container, Graphics } from 'pixi.js';
 
 /** [discovery, landmark] in the order history found them: a town shows its newest few */
 export const LANDMARKS: [string, string][] = [
+  ['megaliths', 'stones'],
   ['iron', 'forge'],
   ['philosophy', 'academy'],
   ['aqueduct', 'aqueduct'],
@@ -13,6 +14,7 @@ export const LANDMARKS: [string, string][] = [
   ['castle', 'castle'],
   ['university', 'academy'],
   ['windmill', 'windmill'],
+  ['lighthouse', 'lighthouse'],
   ['ocean_ships', 'ship'],
   ['telescope', 'observatory'],
   ['steam_engine', 'factory'],
@@ -20,10 +22,14 @@ export const LANDMARKS: [string, string][] = [
   ['electricity', 'pylon'],
   ['radio', 'mast'],
   ['computer', 'office'],
+  ['nuclear_power', 'cooling'],
   ['solar_power', 'solar'],
+  ['wind_farms', 'turbines'],
   ['spaceflight', 'rocket'],
   ['moon_base', 'dome'],
   ['fusion', 'fusion'],
+  ['vertical_farms', 'towerfarm'],
+  ['space_elevator', 'elevator'],
   ['starship', 'starship'],
 ];
 
@@ -56,6 +62,25 @@ export function makeLandmark(kind: string): Container {
   const g = new Graphics();
   c.addChild(g);
   switch (kind) {
+    case 'stones': {
+      // a ring of standing stones
+      for (let k = 0; k < 7; k++) {
+        const a = (k / 7) * Math.PI * 2;
+        const x = Math.cos(a) * 11, y = Math.sin(a) * 5;
+        g.rect(x - 1.6, y - 9, 3.2, 9).fill(k % 2 ? 0x9a948c : 0x8a847c).stroke(line);
+      }
+      g.rect(-6, -11, 12, 2.2).fill(0x8f8981).stroke(line);
+      break;
+    }
+    case 'lighthouse': {
+      g.poly([-4.5, 0, 4.5, 0, 3, -26, -3, -26]).fill(0xeee6d6).stroke(line);
+      for (let i = 0; i < 3; i++) g.poly([-4.2 + i * 0.5, -6 - i * 8, 4.2 - i * 0.5, -6 - i * 8, 4 - i * 0.5, -9 - i * 8, -4 + i * 0.5, -9 - i * 8]).fill(0xc8392f);
+      g.rect(-3.5, -31, 7, 5).fill(0x3d4555).stroke(line);
+      g.circle(0, -28.5, 2.2).fill(0xfff1a8);
+      g.circle(0, -28.5, 6).fill({ color: 0xfff1a8, alpha: 0.18 });
+      g.poly([-4, -31, 0, -35, 4, -31]).fill(0xc8392f).stroke(line);
+      break;
+    }
     case 'forge': {
       box(g, 7, 7, 0x8a5a3c, 0x6e452c, 0x9b6b48);
       roof(g, 7, 7, 5, 0x5b4a3e, 0x46392f);
@@ -175,6 +200,41 @@ export function makeLandmark(kind: string): Container {
         g.poly([x, y - 4, x + 7, y - 7.5, x + 8, y - 11, x + 1, y - 7.5]).fill(0x2e5fa8).stroke(line);
         g.moveTo(x + 0.5, y - 5.8).lineTo(x + 7.5, y - 9.3).stroke({ color: 0x8fb7ec, width: 0.5 });
       }
+      break;
+    }
+    case 'cooling': {
+      // a cooling tower with a plume of steam
+      g.poly([-10, 0, 10, 0, 6.5, -14, 8, -24, -8, -24, -6.5, -14]).fill(0xc9ccd2).stroke(line);
+      g.ellipse(0, -24, 8, 2).fill(0x8d929b).stroke(line);
+      for (let i = 0; i < 4; i++) g.circle(-2 + i * 2.5, -28 - i * 3.5, 3 + i * 0.8).fill({ color: 0xf2f2f2, alpha: 0.6 - i * 0.12 });
+      break;
+    }
+    case 'turbines': {
+      for (let k = 0; k < 2; k++) {
+        const x = -6 + k * 12, y = k * -3;
+        g.moveTo(x, y).lineTo(x, y - 24).stroke({ color: 0xe8ecf0, width: 1.4 });
+        for (let b = 0; b < 3; b++) {
+          const a = (b / 3) * Math.PI * 2 + 0.3 + k;
+          g.moveTo(x, y - 24).lineTo(x + Math.cos(a) * 9, y - 24 + Math.sin(a) * 9).stroke({ color: 0xf6f8fa, width: 1.6 });
+        }
+        g.circle(x, y - 24, 1.2).fill(0xb0b6bf);
+      }
+      break;
+    }
+    case 'towerfarm': {
+      box(g, 7, 30, 0x6d8fa8, 0x587a93, 0x88a9c1);
+      for (let i = 0; i < 6; i++) {
+        g.rect(-6.5, -5 - i * 4.6, 6, 2).fill(0x5aa65a);
+        g.rect(0.5, -3 - i * 4.6, 6, 2).fill(0x4f9a52);
+      }
+      break;
+    }
+    case 'elevator': {
+      // a cable to the sky with a climber on it
+      g.rect(-6, -3, 12, 3).fill(0x6b6f78).stroke(line);
+      g.moveTo(0, -3).lineTo(0, -60).stroke({ color: 0xdfe6ee, width: 1 });
+      g.moveTo(0, -60).lineTo(0, -80).stroke({ color: 0xdfe6ee, width: 1, alpha: 0.4 });
+      g.rect(-2.2, -36, 4.4, 5).fill(0xe0a84f).stroke(line);
       break;
     }
     case 'rocket': {

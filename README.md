@@ -29,8 +29,9 @@ and a reworked, English-only interface. Upstream changes are merged in from time
   the spinning wheel and quarantine, calculus and the hot-air balloon, cinema and X-rays, lasers and wind farms, tower farms and star probes). Discoveries change
   the world: better tools and farming, medicine, hospitals and gene medicines against disease, food that keeps, bigger castle towns,
   railways that bring clans together, universities and printing that speed up new ideas.
-- **Later-age buildings on the map**: villages that know them show a forge, castle, mills, a ship, an observatory, a factory, a train,
-  radio masts, office blocks, solar panels, rockets, a dome on the Moon and more.
+- **Later-age buildings on the map**: villages that know them show standing stones, a forge, castle, mills, a lighthouse, a ship,
+  an observatory, a factory, a train, radio masts, office blocks, a cooling tower, solar panels, wind turbines, rockets, a dome on
+  the Moon, a tower farm, the space elevator and more.
 - **World events**: floods, plagues (milder with medicine), rich harvests, comets, eclipses, earthquakes, town fires, festivals,
   great buildings of each age and expeditions, alongside great hunts, hard winters and droughts.
 - **Friends and rivals**: neighbouring clans warm or cool towards each other. Clans that split from one another, trade or
