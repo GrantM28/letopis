@@ -26,8 +26,13 @@ export const SENSES = ['season (spring–autumn)', 'season (winter–summer)', '
   'fish around', 'settled', 'clan size', 'age of the world', 'warmth'] as const;
 const IN = SENSES.length;
 const HID = 8;
-const OUT = JOBS.length + 1; // the jobs and generosity
+/** outputs after the jobs: generosity, a liking for the hunt (unused, see below), and restlessness (moving camp early) */
+const O_GIVE = JOBS.length, O_HUNT = JOBS.length + 1, O_ROAM = JOBS.length + 2;
+const OUT = JOBS.length + 3;
 const PARAMS = IN * HID + HID + HID * OUT + OUT;
+/** the size of the networks before hunting and moving were theirs to decide (v1.33) */
+const OUT_V133 = JOBS.length + 1;
+const PARAMS_V133 = IN * HID + HID + HID * OUT_V133 + OUT_V133;
 
 export interface Brain {
   /** the network's weights: input->hidden, hidden biases, hidden->output, output biases */
@@ -37,8 +42,13 @@ export interface Brain {
   /** the job weights and generosity averaged over the last year (for showing and naming the way of life) */
   w: number[];
   give: number;
-  /** the network being tried this year, or null */
-  trial: { net: number[] } | null;
+  /** the network being tried this year, or null; 'from' when it was copied from a neighbour */
+  trial: { net: number[]; from?: number } | null;
+  /** how big a change this clan tries (self-tuning: grows while tries succeed, shrinks while they fail) */
+  sigma?: number;
+  /** tries copied from neighbours, and how many of them were kept */
+  copied?: number;
+  copiedKept?: number;
   /** how well fed the clan was with the kept network (smoothed), and this year's sum and count */
   score: number;
   acc: number;
@@ -47,6 +57,10 @@ export interface Brain {
   wAcc?: number[];
   /** clan size when this year began (growth is part of how well a network did) */
   size0?: number;
+  /** people who left this year to found daughter clans: they count as the clan's growth, not its loss */
+  founded?: number;
+  /** years the current try has run: a try is judged after two years, so slow payoffs (moving to fresh land) count */
+  trialYears?: number;
   /** what the clan sensed last month (for explaining the brain) */
   senses?: number[];
   /** generation of the brain: 0 for the first clans, +1 with every split */
@@ -80,9 +94,18 @@ function newNet(h: EventHost, w?: number[], give?: number): number[] {
   for (let i = 0; i < HID; i++) net.push(r3(gauss(h) * 0.1));
   for (let i = 0; i < HID * OUT; i++) net.push(r3(gauss(h) * 0.2));
   for (let o = 0; o < OUT; o++) {
-    const base = o < JOBS.length ? Math.log(Math.max(0.2, w?.[o] ?? 1)) : Math.log((give ?? 0.5) / Math.max(0.01, 1 - (give ?? 0.5)));
+    const base = o < JOBS.length ? Math.log(Math.max(0.2, w?.[o] ?? 1)) : o === O_GIVE ? Math.log((give ?? 0.5) / Math.max(0.01, 1 - (give ?? 0.5))) : o === O_ROAM ? -1.5 : 0;
     net.push(r3(w ? base : base + gauss(h) * 0.3));
   }
+  return net;
+}
+
+/** a v1.33 network (jobs and generosity only) grown to decide hunting and moving too, keeping all it learned */
+function growNet(h: EventHost, old: number[]): number[] {
+  const net = old.slice(0, IN * HID + HID);
+  const base = IN * HID + HID;
+  for (let o = 0; o < OUT; o++) for (let j = 0; j < HID; j++) net.push(o < OUT_V133 ? old[base + o * HID + j] : r3(gauss(h) * 0.15));
+  for (let o = 0; o < OUT; o++) net.push(o < OUT_V133 ? old[base + HID * OUT_V133 + o] : o === O_ROAM ? -1.5 : 0);
   return net;
 }
 
@@ -150,10 +173,20 @@ export function steerJobs(h: BrainHost, b: Band, jobs: [string, number][]) {
   }
 }
 
+// (v1.34 tried letting the brain choose between hunting and gathering: every clan learned to hunt more, the game ran out
+// for all of them and worlds ended up smaller - a tragedy of the commons - so that output is kept but not used)
+
+/** called from bandDynamics(): a wandering clan whose brain says it is time to go moves on before it must */
+export function wantsToMove(h: BrainHost, b: Band): boolean {
+  const v = h.s.brains?.[b.id]?.out?.[O_ROAM];
+  // every wandering clan moves on now and then (fresh land pays off later); the brain can only add to that
+  return v !== undefined && !b.settled && h.rng.chance(0.012 + v * 0.05);
+}
+
 /** how generous a clan is right now (relations.ts uses it for food sent to friends) */
 export function generosity(h: { s: { brains?: Record<number, Brain> } }, id: number): number {
   const br = h.s.brains?.[id];
-  return br ? (br.out?.[JOBS.length] ?? br.give) : 0.5;
+  return br ? (br.out?.[O_GIVE] ?? br.give) : 0.5;
 }
 
 /** a name for a way of life, from the jobs a clan leaned on most over the year */
@@ -178,9 +211,13 @@ export function brainStep(h: BrainHost, members: Map<number, Person[]>) {
     if (!br) {
       // a daughter clan takes after the clan it came from, with small mutations
       const net = parent?.net ? mutate(h, parent.net, SIGMA_BIRTH) : newNet(h, parent?.w, parent?.give);
+      // and the people who left with it are the parent's success
+      if (parent) parent.founded = (parent.founded ?? 0) + (members.get(b.id)?.length ?? 0);
       br = brains[b.id] = { net, w: JOBS.map(() => 1), give: 0.5, trial: null, score: parent?.score ?? 1, acc: 0, n: 0, gen: parent ? parent.gen + 1 : 0, tried: 0, kept: 0 };
     }
     // brains from before the networks: their fixed preferences become the network's starting point
+    if (br.net && br.net.length === PARAMS_V133) br.net = growNet(h, br.net);
+    if (br.trial && br.trial.net.length === PARAMS_V133) br.trial.net = growNet(h, br.trial.net);
     if (!br.net || br.net.length !== PARAMS) br.net = newNet(h, br.w, br.give);
     // decide for this month from what the clan senses now
     const x = sense(h, b, members.get(b.id)?.length ?? 0);
@@ -197,35 +234,65 @@ export function brainStep(h: BrainHost, members: Map<number, Person[]>) {
   for (const b of h.s.bands) {
     const br = brains[b.id];
     if (!br || br.n < 6) continue;
+    // a try runs two years before it is judged: keep adding up the first year
+    if (br.trial && (br.trialYears ?? 0) < 1) {
+      br.trialYears = (br.trialYears ?? 0) + 1;
+      continue;
+    }
+    br.trialYears = 0;
     // what the learning tries to make better: eating well and growing (natural selection rewards the same)
     const size = members.get(b.id)?.length ?? 0;
-    const grow = Math.max(-0.3, Math.min(0.3, (size - (br.size0 ?? size)) / Math.max(5, br.size0 ?? size)));
+    const grow = Math.max(-0.3, Math.min(0.5, (size + (br.founded ?? 0) - (br.size0 ?? size)) / Math.max(5, br.size0 ?? size)));
+    br.founded = 0;
     const year = br.acc / br.n + grow * 2;
     // the decisions of the year, on average: the clan's way of life
     if (br.wAcc) {
       br.w = br.wAcc.slice(0, JOBS.length).map((v) => r3(v / br.n));
-      br.give = r3(br.wAcc[JOBS.length] / br.n);
+      br.give = r3(br.wAcc[O_GIVE] / br.n);
     }
     br.wAcc = new Array(OUT).fill(0);
     br.acc = 0;
     br.n = 0;
+    br.sigma ??= SIGMA_TRIAL;
     if (br.trial) {
       br.tried++;
+      const from = br.trial.from;
       // keep the new network only if it fed the clan better (a little noise is forgiven: the weather differs)
       if (year > br.score + 0.01) {
         br.net = br.trial.net;
         br.kept++;
         br.score = year;
+        if (from === undefined) {
+          // the one-fifth rule: while its own tries succeed, a clan tries bolder changes
+          br.sigma = Math.min(0.3, br.sigma * 1.25);
+        } else {
+          br.copiedKept = (br.copiedKept ?? 0) + 1;
+          const teacher = h.s.bands.find((x) => x.id === from);
+          if (teacher && (members.get(b.id)?.length ?? 0) >= 10 && h.rng.chance(0.3)) {
+            h.emit('imitate', 1, `${h.bandLabel(b, true)} се научи от ${h.bandLabel(teacher)} как да живее по-добре.`, undefined, undefined, b.id, [],
+              [`${h.bandEnLabel(b, true)} learned better ways from watching ${h.bandEnLabel(teacher)}.`]);
+          }
+        }
       } else {
         // what the old way scores drifts with the land: remember it softly
         br.score = br.score * 0.7 + year * 0.3;
+        if (from === undefined) br.sigma = Math.max(0.02, br.sigma * 0.95);
       }
       br.trial = null;
     } else {
       br.score = br.score * 0.5 + year * 0.5;
     }
-    // try something new next year
-    if (LEARN) br.trial = { net: mutate(h, br.net!, SIGMA_TRIAL) };
+    if (!LEARN) continue;
+    // next year's try: now and then a blend with a neighbour that does better (learning from others),
+    // otherwise a small change of its own
+    const teacher = h.rng.chance(0.2) ? betterNeighbour(h, b, br) : null;
+    if (teacher) {
+      const t = brains[teacher.id].net!;
+      br.trial = { net: br.net!.map((x, i) => r3(x * 0.7 + t[i] * 0.3)), from: teacher.id };
+      br.copied = (br.copied ?? 0) + 1;
+    } else {
+      br.trial = { net: mutate(h, br.net!, br.sigma) };
+    }
     // a clan whose way of life changed is news, now and then
     const style = styleOf(br, (t) => h.hasTech(b, t));
     if (br.style && style.key !== br.style && (members.get(b.id)?.length ?? 0) >= 12 && h.rng.chance(0.35)) {
@@ -239,6 +306,20 @@ export function brainStep(h: BrainHost, members: Map<number, Person[]>) {
     const alive = new Set(h.s.bands.map((b) => b.id));
     for (const id of Object.keys(brains)) if (!alive.has(Number(id))) delete brains[Number(id)];
   }
+}
+
+/** a neighbour within sight whose brain is doing clearly better, if any */
+function betterNeighbour(h: BrainHost, b: Band, br: Brain): Band | null {
+  const brains = h.s.brains ?? {};
+  let best: Band | null = null, bestScore = br.score + 0.05;
+  for (const o of h.s.bands) {
+    if (o.id === b.id) continue;
+    const ob = brains[o.id];
+    if (!ob?.net || ob.net.length !== PARAMS || ob.score <= bestScore) continue;
+    if (Math.hypot(o.cx - b.cx, o.cy - b.cy) > 18) continue;
+    best = o; bestScore = ob.score;
+  }
+  return best;
 }
 
 const STYLE_BG: Record<string, string> = {
@@ -265,7 +346,7 @@ export function brainSummary(h: BrainHost) {
   const brains = h.s.brains ?? {};
   const styles: Record<string, number> = {};
   const avg = JOBS.map(() => 0);
-  let gen = 0, maxGen = 0, tried = 0, kept = 0, n = 0, score = 0;
+  let gen = 0, maxGen = 0, tried = 0, kept = 0, n = 0, score = 0, copied = 0, copiedKept = 0, sigma = 0;
   for (const b of h.s.bands) {
     const br = brains[b.id];
     if (!br) continue;
@@ -274,10 +355,12 @@ export function brainSummary(h: BrainHost) {
     styles[st.name] = (styles[st.name] ?? 0) + 1;
     br.w.forEach((x, i) => { avg[i] += x; });
     gen += br.gen; maxGen = Math.max(maxGen, br.gen); tried += br.tried; kept += br.kept; score += br.score;
+    copied += br.copied ?? 0; copiedKept += br.copiedKept ?? 0; sigma += br.sigma ?? SIGMA_TRIAL;
   }
   return {
     clans: n, styles, avgWeights: Object.fromEntries(JOBS.map((j, i) => [j, n ? +(avg[i] / n).toFixed(2) : 1])),
     avgGeneration: n ? +(gen / n).toFixed(1) : 0, maxGeneration: maxGen, tried, kept, avgScore: n ? +(score / n).toFixed(3) : 0,
+    copied, copiedKept, avgStep: n ? +(sigma / n).toFixed(3) : 0,
     network: { inputs: IN, hidden: HID, outputs: OUT, weights: PARAMS },
   };
 }
@@ -292,9 +375,11 @@ export function brainView(h: BrainHost, b: Band) {
     style: st.name,
     weights: Object.fromEntries(JOBS.map((j, i) => [j, +br.w[i].toFixed(2)])),
     now: Object.fromEntries(JOBS.map((j, i) => [j, +now[i].toFixed(2)])),
-    give: +(br.out?.[JOBS.length] ?? br.give).toFixed(2),
+    give: +(br.out?.[O_GIVE] ?? br.give).toFixed(2),
+    roam: +(br.out?.[O_ROAM] ?? 0).toFixed(2),
+    copied: br.copied ?? 0, copiedKept: br.copiedKept ?? 0, step: +(br.sigma ?? SIGMA_TRIAL).toFixed(3),
     generation: br.gen, tried: br.tried, kept: br.kept, score: +br.score.toFixed(2), trying: !!br.trial,
     reactsTo: whatMatters(br).slice(0, 3).map((x) => x.sense),
-    network: `${IN} senses → ${HID} neurons → ${OUT} decisions (${PARAMS} weights)`,
+    network: `${IN} senses → ${HID} neurons → ${OUT} outputs (${PARAMS} weights)`,
   };
 }

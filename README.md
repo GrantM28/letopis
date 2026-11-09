@@ -20,10 +20,15 @@ and a reworked, English-only interface. Upstream changes are merged in from time
 - Every person has a name, parents, children and traits (strength, wit, curiosity, sociability, health, longevity) that are inherited with small mutations.
 - Clans wander, split, meet, learn from each other, settle into villages and sometimes die out together with their knowledge.
 - Trees grow and get cut for fires and huts; a clan moves on when the wood around its camp is gone.
-- **Nine ages and 80 discoveries**: Stone, New Stone and Bronze Age, then the Iron Age, Middle Ages, Early Modern, Industrial,
+- **Nine ages and 185 discoveries**: Stone, New Stone and Bronze Age, then the Iron Age, Middle Ages, Early Modern, Industrial,
   Information and Space Age. Each age opens with one discovery (iron, the watermill, the printing press, the steam engine,
-  the computer, a Moon base). Discoveries change the world: better tools and farming, medicine and vaccines against disease,
-  bigger castle towns, railways that bring clans together, universities and printing that speed up new ideas.
+  the computer, a Moon base), and every age has its smaller ones too: the bone needle and flute, irrigation, brewing and
+  standing stones, mathematics and astronomy, the arch, concrete and theatre, hospitals and eyeglasses, the scientific method,
+  canned food, refrigeration and the tractor, the transistor and satellites, the space elevator and terraforming, and many
+  more small steps between them (ochre paint and shell beads, salt and beekeeping, canals and sundials, steel and lighthouses,
+  the spinning wheel and quarantine, calculus and the hot-air balloon, cinema and X-rays, lasers and wind farms, tower farms and star probes). Discoveries change
+  the world: better tools and farming, medicine, hospitals and gene medicines against disease, food that keeps, bigger castle towns,
+  railways that bring clans together, universities and printing that speed up new ideas.
 - **Later-age buildings on the map**: villages that know them show a forge, castle, mills, a ship, an observatory, a factory, a train,
   radio masts, office blocks, solar panels, rockets, a dome on the Moon and more.
 - **World events**: floods, plagues (milder with medicine), rich harvests, comets, eclipses, earthquakes, town fires, festivals,
@@ -34,13 +39,22 @@ and a reworked, English-only interface. Upstream changes are merged in from time
 - **Time controls** next to the year: pause, normal speed, and fast forward (2×, 5×, 20×, 100×; each click goes faster).
   Space pauses and resumes. The speed is the world's own: it holds for everyone watching and is kept across restarts.
 - **Clans that learn** (machine learning inside the simulation, nothing leaves your server): every clan carries a small
-  neural network, its brain (11 senses → 8 neurons → 7 decisions, 159 weights). Each month it senses the season, hunger, food stores,
+  neural network, its brain (11 senses → 8 neurons → 9 outputs, 177 weights). Each month it senses the season, hunger, food stores,
   the fruit, game and fish around, the cold, the clan's size, whether it is settled and the age of the world, and decides how the clan
-  shares its work between farming, herding, fishing, crafting, building and foraging, and how generous it is with its friends.
-  Each year the clan tries a slightly changed network and keeps it only if the clan ate better and grew (an evolution strategy, a
-  gradient-free kind of reinforcement learning). Daughter clans inherit their parents' network with small mutations, and clans whose
-  network fails go hungry and die out (neuroevolution). Each clan card shows what its brain decided this month and what it reacts to
-  most; the dashboard shows the learning curve and the ways of life that emerged.
+  shares its work between farming, herding, fishing, crafting, building and foraging, how generous it is with its friends, and
+  (for wanderers) whether to move on to fresh land before it must.
+  - *Learning in a lifetime*: every two years the clan judges a slightly changed network and keeps it only if the clan ate better and
+    grew, counting the people who left to found daughter clans as success (an evolution strategy, a gradient-free kind of
+    reinforcement learning). Each clan tunes its own daring: bigger changes while its tries succeed, smaller while they fail.
+  - *Learning from others*: now and then a clan tries a blend of a neighbour's brain that does clearly better, and keeps it only if it works.
+  - *Learning over generations*: daughter clans inherit their parents' network with small mutations, and clans whose network fails go
+    hungry and die out (neuroevolution).
+  - It is tested: the same worlds with learning switched off grow about 15% fewer people. An early version also let brains choose
+    between hunting and gathering, but every clan learned to over-hunt and the game ran out for all (a tragedy of the commons),
+    so that decision was taken back. Brains also found that herding and fishing had no limit and grew villages of 30,000; a pasture
+    and a river now feed only so many.
+  Each clan card shows what its brain decided this month, what it reacts to most, and how much it learned from neighbours; the
+  dashboard shows the learning curve and the ways of life that emerged.
 - **Help the world** (the Help button, or the buttons on a clan's card to help that clan): send a blessing (food), rain,
   call a feast, inspire an inventor (four times the chance of a discovery for two years) or calm a feud. Each power has a
   waiting time shared by everyone watching, and everything is written in the chronicle.

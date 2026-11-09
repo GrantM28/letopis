@@ -483,7 +483,7 @@ const ICON: Record<string, string> = {
   // clan relations (relations.ts)
   alliance: '🤝', rivalry: '😠', quarrel: '🗯️', aid: '🎁', peace: '🕊️', estranged: '🍂',
   // learning clans and the watchers' help (brain.ts, events.ts)
-  learned: '🧠', inspired: '💭', prayer: '🙏',
+  learned: '🧠', inspired: '💭', prayer: '🙏', imitate: '🎓',
 };
 
 function eventHtml(e: ChronicleEntry): string {
@@ -516,7 +516,7 @@ const FEED_KINDS: Record<string, { bg: string; en: string; kinds?: string[] }> =
   big: { bg: 'Важно', en: 'Important' },
   discovery: { bg: 'Открития', en: 'Discoveries', kinds: ['discovery', 'rediscovery', 'learn', 'era', 'lost'] },
   life: { bg: 'Живот', en: 'Life', kinds: ['death', 'twins', 'marriage', 'milestone', 'genesis', 'plague', 'festival', 'feast'] },
-  clans: { bg: 'Родове', en: 'Clans', kinds: ['settle', 'colony', 'split', 'meet', 'merge', 'extinct', 'end', 'wonder', 'expedition', 'alliance', 'rivalry', 'quarrel', 'aid', 'peace', 'estranged', 'learned'] },
+  clans: { bg: 'Родове', en: 'Clans', kinds: ['settle', 'colony', 'split', 'meet', 'merge', 'extinct', 'end', 'wonder', 'expedition', 'alliance', 'rivalry', 'quarrel', 'aid', 'peace', 'estranged', 'learned', 'imitate'] },
   nature: { bg: 'Природа', en: 'Nature', kinds: ['hunt', 'winter', 'drought', 'secret', 'flood', 'harvest', 'comet', 'eclipse', 'quake', 'fire', 'blessing', 'rain', 'prayer', 'inspired'] },
 };
 let feedKind = store('letopis.feedKind', store('letopis.onlyBig', false) ? 'big' : 'all');
@@ -755,7 +755,7 @@ const EVENT_NAMES: Record<string, string> = {
   expedition: 'Expeditions', secret: 'Secrets found', era: 'New ages', milestone: 'Population milestones', blessing: 'Blessings',
   rain: 'Rains sent', feast: 'Feasts', lost: 'Knowledge lost',
   alliance: 'Alliances sworn', rivalry: 'Rivalries', quarrel: 'Quarrels', aid: 'Food sent to friends', peace: 'Feuds ended', estranged: 'Friendships faded',
-  learned: 'Clans changing their way of life', inspired: 'Inventors inspired', prayer: 'Prayers',
+  learned: 'Clans changing their way of life', inspired: 'Inventors inspired', prayer: 'Prayers', imitate: 'Clans learning from neighbours',
 };
 
 const css = (v: string, fb: string) => getComputedStyle(document.documentElement).getPropertyValue(v).trim() || fb;
@@ -840,16 +840,17 @@ async function renderStats(body: HTMLElement, wide = false) {
   lineChart(body.querySelector<HTMLElement>('#chTech')!, { xs, eras, fmtX: fmt, height: 120, series: [
     { name: 'Discoveries', color: '#b48ead', values: s.map((x) => x.techs), fill: true },
   ] });
-  api<{ clans: number; styles: Record<string, number>; avgGeneration: number; maxGeneration: number; tried: number; kept: number; network: { inputs: number; hidden: number; outputs: number; weights: number } } | null>('/api/brains').then((bs) => {
+  api<{ clans: number; styles: Record<string, number>; avgGeneration: number; maxGeneration: number; tried: number; kept: number; copied?: number; copiedKept?: number; avgStep?: number; network: { inputs: number; hidden: number; outputs: number; weights: number } } | null>('/api/brains').then((bs) => {
     const el = body.querySelector<HTMLElement>('#dashBrains');
     if (!el || !bs) return;
     el.classList.remove('muted');
-    el.innerHTML = `<p class="lead">Every clan carries a small neural network (${bs.network.inputs} senses → ${bs.network.hidden} neurons → ${bs.network.outputs} decisions)
-      that decides each month how the clan shares its work. Each year a clan tries a slightly changed network and keeps it when the clan eats better,
+    el.innerHTML = `<p class="lead">Every clan carries a small neural network (${bs.network.inputs} senses → ${bs.network.hidden} neurons → ${bs.network.outputs} outputs)
+      that decides each month how the clan shares its work. Every two years a clan judges a slightly changed network and keeps it when the clan eats better and grows, now and then copying a neighbour that does better,
       and daughter clans inherit their parents' network with small mutations. Nobody wrote these strategies.</p>
       <div id="chLearn"></div>
       <h4>Ways of life now</h4>${barList(Object.entries(bs.styles), 'var(--accent)', 8)}
-      <p class="muted">Line generations: ${bs.avgGeneration} on average, up to ${bs.maxGeneration} · ${num(bs.kept)} of ${num(bs.tried)} tries kept by the clans alive now.</p>`;
+      <p class="muted">Line generations: ${bs.avgGeneration} on average, up to ${bs.maxGeneration} · ${num(bs.kept)} of ${num(bs.tried)} tries kept by the clans alive now
+        · ${num(bs.copiedKept ?? 0)} of ${num(bs.copied ?? 0)} lessons from neighbours kept · average daring ${Math.round((bs.avgStep ?? 0) * 100)}%.</p>`;
     const L = h.learning ?? [];
     lineChart(el.querySelector<HTMLElement>('#chLearn')!, { xs: L.map((x) => x.year), fmtX: fmt, height: 130, fmtY: (y) => y.toFixed(2), series: [
       { name: 'How well clans do (food and growth)', color: '#6cc38a', values: L.map((x) => x.score), fill: true },
@@ -1082,18 +1083,21 @@ function showBand(b: BandView) {
   });
   // what the clan has learned (brain.ts on the server)
   const JOB_NAMES: Record<string, string> = { farm: 'Farming', herd: 'Herding', fish: 'Fishing', craft: 'Crafting', build: 'Building', forage: 'Hunting and gathering' };
-  api<{ style: string; weights: Record<string, number>; now: Record<string, number>; give: number; generation: number; tried: number; kept: number; trying: boolean; inspired: boolean; reactsTo: string[]; network: string } | null>(`/api/brain/${b.id}`).then((br) => {
+  api<{ style: string; weights: Record<string, number>; now: Record<string, number>; give: number; generation: number; tried: number; kept: number; trying: boolean; inspired: boolean; reactsTo: string[]; network: string; roam: number; copied: number; copiedKept: number; step: number } | null>(`/api/brain/${b.id}`).then((br) => {
     const el = document.getElementById('bandBrain');
     if (!el || !br) { if (el) el.textContent = 'Still finding its way.'; return; }
     el.classList.remove('muted');
     $('#bandStyleTag').textContent = br.style + (br.inspired ? ' · inspired' : '');
     const max = Math.max(...Object.values(br.now), ...Object.values(br.weights));
     el.innerHTML = `<p class="lead">This clan's brain is a small neural network (${esc(br.network)}). Every month it looks at the clan's situation and
-        decides how to share the work; every year it tries a slightly changed network and keeps it only if the clan ate better.
-        Generation ${br.generation} of its line · ${br.kept} of ${br.tried} tries kept${br.trying ? ' · trying something new this year' : ''}.</p>
+        decides how to share the work and when to move on; every two years it judges a slightly changed network and keeps it only if the clan ate better and grew.
+        Generation ${br.generation} of its line · ${br.kept} of ${br.tried} tries kept${br.trying ? ' · trying something new this year' : ''}
+        · learned from neighbours ${br.copiedKept} of ${br.copied} times · daring ${Math.round(br.step * 100)}%.</p>
       ${br.reactsTo?.length ? `<p class="muted">It reacts most to: <b>${br.reactsTo.map(esc).join('</b>, <b>')}</b>.</p>` : ''}
       <div class="barlist">${Object.entries(br.now).sort((x, y) => y[1] - x[1]).map(([k, v]) => `<div class="barrow"><span class="bl-k">${JOB_NAMES[k] ?? k}</span><span class="bl-v">×${v.toFixed(2)} now · ×${(br.weights[k] ?? 0).toFixed(2)} this year</span>
         <div class="bl-bar"><i style="width:${(v / max) * 100}%;background:${hex(b.color)}"></i></div></div>`).join('')}
+        ${b.settled ? '' : `<div class="barrow"><span class="bl-k">Restlessness (moving on before they must)</span><span class="bl-v">${Math.round(br.roam * 100)}%</span>
+        <div class="bl-bar"><i style="width:${br.roam * 100}%;background:var(--accent-2)"></i></div></div>`}
         <div class="barrow"><span class="bl-k">Generosity to friends</span><span class="bl-v">${Math.round(br.give * 100)}%</span>
         <div class="bl-bar"><i style="width:${br.give * 100}%;background:var(--good)"></i></div></div></div>`;
   }).catch(() => { const el = document.getElementById('bandBrain'); if (el) el.textContent = 'Could not load.'; });

@@ -1,5 +1,8 @@
 // Discoveries after the Bronze Age: the Iron Age up to the stars.
 // Kept in their own file (one record per discovery, both languages together) so the upstream files only need a few small hooks.
+import { MORE_TECHS } from './more_techs';
+import { MORE_TECHS_2 } from './more_techs2';
+
 // Placeholders: {name} the person, {band} the band, {Band} the band at the start of a sentence. Each one at most once per text.
 
 export interface LaterTech {
@@ -303,3 +306,7 @@ export const LATER_TECHS: LaterTech[] = [
     en: { name: 'Starship', text: '{name} of {band} led the first ship towards another star. The journey will last generations, but the chronicle goes on.',
       kids: '{name} flew off in a big ship towards another star. Goodbye, Earth!', desc: 'A voyage to another star, generations long.' } },
 ];
+
+// more discoveries in every age (more_techs.ts), all in the order history found them
+LATER_TECHS.push(...MORE_TECHS, ...MORE_TECHS_2);
+LATER_TECHS.sort((a, b) => a.era - b.era || a.target - b.target);

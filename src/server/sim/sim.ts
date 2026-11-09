@@ -9,7 +9,7 @@ import { ERAS, TECHS, TECH_BY_ID, Tech, eraOf } from './tech';
 import { LATER_ERA_WHY } from '../../shared/later_techs';
 import { ActKind, EventHost, act, answerPrayer, prayersStep, worldEvents } from './events';
 import { RelationHost, relationsStep } from './relations';
-import { BrainHost, brainStep, steerJobs } from './brain';
+import { BrainHost, brainStep, steerJobs, wantsToMove } from './brain';
 import { BIG, startStage, treeKinds } from '../../shared/trees';
 import { findRoad } from './roads';
 import { BEAST_EN, ERAS_EN, FEATURE_EN, SECRET_HEROES_EN, SECRET_KINDS_EN, TECH_EN, bandEn, bandLabelEn, bandThe, causeEn, chiefEn, deedEn, personEn, translit } from '../../shared/i18n';
@@ -781,6 +781,12 @@ export class Simulation {
     }
     let prod = 0;
     let gatherWant = 0, huntWant = 0, farmWant = 0;
+    // a pasture feeds only so many flocks and a river only so many nets: each extra herder or fisher brings in a bit
+    // less (fork: learning clans found that these two jobs had no limit and grew villages of 30,000)
+    const herders = workers.filter((p) => p.task === 'herd').length;
+    const fishers = workers.filter((p) => p.task === 'fish').length;
+    const herdF = 1 / (1 + herders / 18);
+    const fishF = 1 / (1 + fishers / 15);
     const craftBonus = 1 + Math.min(0.25, workers.filter((p) => p.task === 'craft').length * 0.04);
     for (const p of workers) {
       const skill = 0.8 + Math.min(0.4, (this.ageOf(p) - 12) * 0.015) + (p.genes.str - 0.5) * 0.3;
@@ -803,12 +809,12 @@ export class Simulation {
           if (this.rng.chance(this.hasTech(b, 'spear') ? 0.0002 : 0.0004)) this.die(p, 'загина на лов', m);
           break;
         }
-        case 'fish': got = 1.4 * skill * (this.hasTech(b, 'boats') ? 1.3 : 1) * (this.hasTech(b, 'sailing') ? 1.25 : 1) * (0.7 + season * 0.3); break;
+        case 'fish': got = 1.4 * skill * fishF * (this.hasTech(b, 'boats') ? 1.3 : 1) * (this.hasTech(b, 'sailing') ? 1.25 : 1) * (0.7 + season * 0.3); break;
         case 'farm': {
           farmWant += 2.4 * this.farmSeason() * skill * tool * (this.hasTech(b, 'plough') ? 1.35 : 1) * (this.hasTech(b, 'calendar') ? 1.1 : 1) * this.laterFarming(b);
           break;
         }
-        case 'herd': got = 1.7 * skill; break;
+        case 'herd': got = 1.7 * skill * herdF; break;
         case 'craft': got = 0.4; break;
         case 'build': got = 0.3; break;
       }
@@ -831,7 +837,7 @@ export class Simulation {
     // the plough turns more land into fields, the calendar sows it at the right time
     const land = (this.hasTech(b, 'plough') ? 1.4 : 1) * (this.hasTech(b, 'calendar') ? 1.1 : 1) * this.laterFarming(b);
     if (farmWant > 0) prod += Math.min(farmWant, this.arable(b) * land * this.farmSeason()) * craftBonus;
-    const spoil = this.hasTech(b, 'pottery') ? 0.05 : this.hasTech(b, 'grinding') ? 0.08 : 0.12;
+    const spoil = this.hasTech(b, 'refrigeration') ? 0.02 : this.hasTech(b, 'canning') ? 0.03 : this.hasTech(b, 'pottery') ? 0.05 : this.hasTech(b, 'grinding') ? 0.08 : 0.12;
     b.food = Math.max(0, b.food * (1 - spoil) + prod - need);
     // how well fed the band has been lately (smoothed over about a year)
     const cover = need > 0 ? Math.min(2, (prod + Math.min(b.food, need * 2)) / need) : 1;
@@ -843,7 +849,10 @@ export class Simulation {
   /** iron ploughs, resting fields, new crops and fertilizer: each makes the same land feed more people */
   private laterFarming(b: Band): number {
     return (this.hasTech(b, 'iron_plough') ? 1.2 : 1) * (this.hasTech(b, 'crop_rotation') ? 1.15 : 1)
-      * (this.hasTech(b, 'new_crops') ? 1.1 : 1) * (this.hasTech(b, 'fertilizer') ? 1.3 : 1);
+      * (this.hasTech(b, 'new_crops') ? 1.1 : 1) * (this.hasTech(b, 'fertilizer') ? 1.3 : 1)
+      * (this.hasTech(b, 'irrigation') ? 1.12 : 1) * (this.hasTech(b, 'tractor') ? 1.25 : 1)
+      * (this.hasTech(b, 'heavy_plough') ? 1.08 : 1) * (this.hasTech(b, 'horse_collar') ? 1.08 : 1) * (this.hasTech(b, 'seed_drill') ? 1.1 : 1)
+      * (this.hasTech(b, 'green_revolution') ? 1.3 : 1) * (this.hasTech(b, 'vertical_farms') ? 1.2 : 1);
   }
 
   private farmSeason(): number {
@@ -1014,8 +1023,8 @@ export class Simulation {
       const temp = this.t.temp[idx(Math.round(b.cx), Math.round(b.cy))];
       const winter = this.month === 11 || this.month <= 1;
       const coldRisk = winter && temp < 0.4 ? (0.4 - temp) * (this.hasTech(b, 'clothing') ? 0.15 : 1) * (this.hasTech(b, 'fire') ? 0.4 : 1) * 0.02 : 0;
-      const medicine = this.hasTech(b, 'genetics') ? 0.3 : this.hasTech(b, 'antibiotics') ? 0.35 : this.hasTech(b, 'vaccination') ? 0.5
-        : this.hasTech(b, 'medicine') ? 0.7 : this.hasTech(b, 'herb_lore') ? 0.8 : 1;
+      const medicine = this.hasTech(b, 'longevity') ? 0.2 : this.hasTech(b, 'gene_medicine') ? 0.25 : this.hasTech(b, 'genetics') ? 0.3 : this.hasTech(b, 'antibiotics') ? 0.35
+        : this.hasTech(b, 'vaccination') ? 0.5 : this.hasTech(b, 'hospital') ? 0.6 : this.hasTech(b, 'medicine') ? 0.7 : this.hasTech(b, 'herb_lore') ? 0.8 : 1;
       const settledDisease = b.settled ? 1.4 : 1;
       for (const p of m) {
         const a = this.ageOf(p);
@@ -1189,7 +1198,9 @@ export class Simulation {
       if (!b.settled && !b.scout) {
         const noWood = this.treesNear(b.cx, b.cy, 4, 2) === 0;
         const starving = (b.fed ?? 1) < 0.7 && this.rng.chance(0.08);
-        if (noWood || starving) this.moveCamp(b, m, noWood ? 22 : 16);
+        // or the clan's brain (brain.ts) judges it time to go on
+        const restless = !noWood && !starving && wantsToMove(this as unknown as BrainHost, b);
+        if (noWood || starving || restless) this.moveCamp(b, m, noWood ? 22 : 16);
       }
       // split: rare, a band has to grow big first
       // a walled town holds more people before some leave to found a new village
