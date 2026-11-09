@@ -112,6 +112,8 @@ export interface SimState {
   roadPairs?: string[];
   /** how two neighbouring clans feel about each other, 'a-b' -> -100..100 (fork: relations.ts) */
   relations?: Record<string, number>;
+  /** sworn alliances and rivalries, 'a-b' -> 'ally' | 'rival' */
+  relState?: Record<string, 'ally' | 'rival'>;
 }
 
 export interface DeadRecord {

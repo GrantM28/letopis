@@ -9,7 +9,7 @@ import type { DatabaseSync } from 'node:sqlite';
 import type { Simulation } from './sim/sim';
 import { ACTS, ACT_COOLDOWN_MIN, ActKind } from './sim/events';
 import { causeEn } from '../shared/i18n';
-import { ALLY, RIVAL, relationCounts, relationsOf } from './sim/relations';
+import { relationCounts, relationsOf } from './sim/relations';
 
 type Json = (res: http.ServerResponse, data: unknown, status?: number) => void;
 
@@ -146,7 +146,7 @@ export class Extras {
       const byId = new Map(sim.s.bands.map((b) => [b.id, b]));
       json(res, relationsOf(sim as never, id).filter((r) => byId.has(r.id)).map((r) => {
         const b = byId.get(r.id)!;
-        return { id: r.id, name: sim.bandEnLabel(b, true), color: b.color, score: r.score, kind: r.score >= ALLY ? 'ally' : r.score <= RIVAL ? 'rival' : r.score > 15 ? 'friendly' : r.score < -15 ? 'cool' : 'neutral' };
+        return { id: r.id, name: sim.bandEnLabel(b, true), color: b.color, score: r.score, kind: r.state ?? (r.score > 15 ? 'friendly' : r.score < -15 ? 'cool' : 'neutral') };
       }));
       return true;
     }

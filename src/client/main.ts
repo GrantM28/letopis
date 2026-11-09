@@ -393,7 +393,7 @@ const ICON: Record<string, string> = {
   flood: '🌊', plague: '🦠', harvest: '🌾', comet: '☄️', eclipse: '🌘', quake: '🌋', fire: '🔥', festival: '🎉', wonder: '🏛️',
   expedition: '🧭', blessing: '🌟', rain: '🌧️', feast: '🍖',
   // clan relations (relations.ts)
-  alliance: '🤝', rivalry: '😠', quarrel: '🗯️', aid: '🎁', peace: '🕊️',
+  alliance: '🤝', rivalry: '😠', quarrel: '🗯️', aid: '🎁', peace: '🕊️', estranged: '🍂',
 };
 
 function eventHtml(e: ChronicleEntry): string {
@@ -426,7 +426,7 @@ const FEED_KINDS: Record<string, { bg: string; en: string; kinds?: string[] }> =
   big: { bg: 'Важно', en: 'Important' },
   discovery: { bg: 'Открития', en: 'Discoveries', kinds: ['discovery', 'rediscovery', 'learn', 'era', 'lost'] },
   life: { bg: 'Живот', en: 'Life', kinds: ['death', 'twins', 'marriage', 'milestone', 'genesis', 'plague', 'festival', 'feast'] },
-  clans: { bg: 'Родове', en: 'Clans', kinds: ['settle', 'colony', 'split', 'meet', 'merge', 'extinct', 'end', 'wonder', 'expedition', 'alliance', 'rivalry', 'quarrel', 'aid', 'peace'] },
+  clans: { bg: 'Родове', en: 'Clans', kinds: ['settle', 'colony', 'split', 'meet', 'merge', 'extinct', 'end', 'wonder', 'expedition', 'alliance', 'rivalry', 'quarrel', 'aid', 'peace', 'estranged'] },
   nature: { bg: 'Природа', en: 'Nature', kinds: ['hunt', 'winter', 'drought', 'secret', 'flood', 'harvest', 'comet', 'eclipse', 'quake', 'fire', 'blessing', 'rain'] },
 };
 let feedKind = store('letopis.feedKind', store('letopis.onlyBig', false) ? 'big' : 'all');
@@ -663,7 +663,7 @@ const EVENT_NAMES: Record<string, string> = {
   comet: 'Comets', eclipse: 'Eclipses', quake: 'Earthquakes', fire: 'Town fires', festival: 'Festivals', wonder: 'Great buildings',
   expedition: 'Expeditions', secret: 'Secrets found', era: 'New ages', milestone: 'Population milestones', blessing: 'Blessings',
   rain: 'Rains sent', feast: 'Feasts', lost: 'Knowledge lost',
-  alliance: 'Alliances sworn', rivalry: 'Rivalries', quarrel: 'Quarrels', aid: 'Food sent to friends', peace: 'Feuds ended',
+  alliance: 'Alliances sworn', rivalry: 'Rivalries', quarrel: 'Quarrels', aid: 'Food sent to friends', peace: 'Feuds ended', estranged: 'Friendships faded',
 };
 
 const css = (v: string, fb: string) => getComputedStyle(document.documentElement).getPropertyValue(v).trim() || fb;
