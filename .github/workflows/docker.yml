@@ -42,6 +42,7 @@ jobs:
           python3 -I tools/slice_sprites.py
           python3 -I tools/build_atlas.py
       - name: Commit the rebuilt atlas
+        continue-on-error: true
         if: steps.sprites.outputs.changed == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
           git config user.name "github-actions[bot]"
@@ -49,7 +50,12 @@ jobs:
           git add art/cut public/sprites
           if git diff --cached --quiet; then echo "atlas unchanged"; exit 0; fi
           git commit -m "Rebuild the sprite atlas from art/sheets [skip ci]"
-          git push origin HEAD:main
+          # a sheet uploaded meanwhile moves main on: take it and try again (its own run rebuilds the atlas with it)
+          for try in 1 2 3; do
+            if git push origin HEAD:main; then exit 0; fi
+            git pull --rebase origin main || { git rebase --abort; echo "atlas left for the next run"; exit 0; }
+          done
+          echo "could not push the atlas; the next run will"
       - uses: actions/setup-node@v4
         with:
           node-version: 22
