@@ -421,8 +421,19 @@ def road_frames() -> list:
     return items
 
 
+def load_pixel_cells() -> set[str]:
+    """cells cut from pixel-art sheets (written by slice_sprites.py)"""
+    path = os.path.join(CUT, 'pixel.json')
+    if not os.path.exists(path):
+        return set()
+    with open(path, encoding='utf-8') as fh:
+        return set(json.load(fh))
+
+
 def main() -> int:
     items = []  # (name, image, ax, ay, s)
+    pixel_cells = load_pixel_cells()
+    pixel_names: set[str] = set()
     for prefix, ids, kind, world, tex in GROUPS:
         if not all(os.path.exists(os.path.join(CUT, f'{c}.png')) for c in ids):
             continue  # sheet not made yet
@@ -466,10 +477,22 @@ def main() -> int:
             if kind == 'symbol':
                 a[..., :3] = 255  # black silhouettes -> white, tinted in game
                 src = Image.fromarray(a)
-            img = resize(src, w, h)
+            if cid in pixel_cells:
+                # pixel art: grow only by a whole number with nearest-neighbour so every pixel stays a square,
+                # and keep the size in the world by changing the world units per texture pixel instead
+                k = max(1, round(w / w0))
+                s = s * w / (w0 * k)
+                w, h = w0 * k, h0 * k
+                img = src.resize((w, h), Image.NEAREST)
+                before = len(items)
+            else:
+                img = resize(src, w, h)
+                before = None
             if kind == 'tile':
                 items.append((name, img, 0.5, ay, s))
                 items.append((name + '_t', top_only(img, ay * h), 0.5, ay, s))
+                if before is not None:
+                    pixel_names.update(it[0] for it in items[before:])
                 continue
             if kind == 'pose' and cid[:2] in ('AB', 'AC', 'AD', 'AE'):
                 # sleeping people lie down (no head on top); the storyteller's long beard reaches half way down
@@ -477,6 +500,8 @@ def main() -> int:
                 base, cloth = split_fur(img, head)
                 items.append((name, base, 0.5, ay, s))
                 items.append((name + '_c', cloth, 0.5, ay, s))
+                if before is not None:
+                    pixel_names.update(it[0] for it in items[before:])
                 continue
             if kind == 'pose' and cid[:2] in ('AI', 'AJ'):
                 # bronze age linen: only the bright cloth is tinted (grey anvils and stones stay)
@@ -484,12 +509,16 @@ def main() -> int:
                 base, cloth = split_cloth(img, head, 0.66)
                 items.append((name, base, 0.5, ay, s))
                 items.append((name + '_c', cloth, 0.5, ay, s))
+                if before is not None:
+                    pixel_names.update(it[0] for it in items[before:])
                 continue
             if kind == 'person' and cid[:2] in ('AN', 'AO'):
                 # guards: only the light tunic takes the clan colour, the grey wolf fur and the metal stay
                 base, cloth = split_fur(img, 0.3) if cid[:2] == 'AN' else split_cloth(img, 0.3, 0.72, 0.3)
                 items.append((name, base, 0.5, ay, s))
                 items.append((name + '_c', cloth, 0.5, ay, s))
+                if before is not None:
+                    pixel_names.update(it[0] for it in items[before:])
                 continue
             if kind in ('person', 'cloth'):
                 base, cloth = split_cloth(img, head=0.48 if cid == 'I13' else 1.0 if (cid[0] in 'STUV' and cid[1].isdigit()) else 0.3 if kind == 'person' else 0)
@@ -497,6 +526,8 @@ def main() -> int:
                 items.append((name + '_c', cloth, 0.5, ay, s))
             else:
                 items.append((name, img, 0.5, ay, s))
+            if before is not None:
+                pixel_names.update(it[0] for it in items[before:])
 
     items += road_frames()
 
@@ -505,7 +536,24 @@ def main() -> int:
     frames = {}
     pages = []
     os.makedirs(OUT, exist_ok=True)
-    rest = items
+    painted = [it for it in items if it[0] not in pixel_names]
+    pixels = [it for it in items if it[0] in pixel_names]
+    # painted sprites first (smooth filtering), then the pixel-art ones on their own pages (drawn without smoothing)
+    for batch, is_pixel in ((painted, False), (pixels, True)):
+        if pack(batch, is_pixel, frames, pages):
+            return 1
+    for old in os.listdir(OUT):
+        # pages left over from an earlier, bigger atlas
+        if old.startswith('atlas') and old.endswith('.png') and old not in {p['file'] for p in pages}:
+            os.remove(os.path.join(OUT, old))
+    with open(os.path.join(OUT, 'atlas.json'), 'w', encoding='utf-8') as f:
+        json.dump({'size': pages[0]['size'], 'pages': pages, 'frames': dict(sorted(frames.items()))}, f, separators=(',', ':'))
+    print(f'{len(frames)} frames on {len(pages)} pages ({len(pixels)} pixel-art frames)')
+    return 0
+
+
+def pack(rest: list, is_pixel: bool, frames: dict, pages: list) -> int:
+    """shelf packing, tallest first; a new page (atlas1.png, ...) when one is full"""
     while rest:
         rest.sort(key=lambda it: -it[1].size[1])
         atlas = Image.new('RGBA', (ATLAS, ATLAS), (0, 0, 0, 0))
@@ -534,15 +582,12 @@ def main() -> int:
             height *= 2
         fname = 'atlas.png' if not pages else f'atlas{len(pages)}.png'
         atlas.crop((0, 0, ATLAS, height)).save(os.path.join(OUT, fname), optimize=True)
-        pages.append({'file': fname, 'size': [ATLAS, height]})
-        print(f'page {fname}: {len(rest) - len(left)} frames, used {used} rows')
+        pages.append({'file': fname, 'size': [ATLAS, height], **({'pixel': True} if is_pixel else {})})
+        print(f'page {fname}: {len(rest) - len(left)} frames, used {used} rows{" (pixel art)" if is_pixel else ""}')
         if len(left) == len(rest):
             print('a sprite does not fit on an empty page', file=sys.stderr)
             return 1
         rest = left
-    with open(os.path.join(OUT, 'atlas.json'), 'w', encoding='utf-8') as f:
-        json.dump({'size': pages[0]['size'], 'pages': pages, 'frames': dict(sorted(frames.items()))}, f, separators=(',', ':'))
-    print(f'{len(frames)} frames on {len(pages)} pages')
     return 0
 
 

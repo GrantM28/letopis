@@ -4,6 +4,7 @@
 Usage: python3 -I tools/slice_sprites.py
 Needs Pillow and numpy. Output is committed, so the game build does not need Python.
 """
+import json
 import os
 import sys
 from collections import deque
@@ -20,6 +21,22 @@ ERODE = 3         # px eaten from the outline: removes the coloured halo the gen
 MIN_PART = 0.04
 # sheets that are not 4x4: letter -> (rows, columns); their cells are named <letter><row><column, two digits>
 GRIDS = {'AQ': (5, 10), 'AR': (5, 10)}   # parts smaller than this share of the biggest part are specks and are dropped
+# pixel-art sheets (fork): few colours and hard edges. They are cut without eroding the outline, and
+# build_atlas.py scales them by whole numbers with nearest-neighbour onto their own atlas pages.
+# A sheet counts as pixel art when its name contains "8bit" or "pixel", or when it uses at most this many colours.
+PIXEL_MAX_COLOURS = 512
+PIXEL_LIST = os.path.join(OUT, 'pixel.json')
+
+
+def is_pixel_sheet(name: str, img: np.ndarray) -> bool:
+    low = name.lower()
+    if '8bit' in low or 'pixel' in low:
+        return True
+    opaque = img[img[..., 3] >= ALPHA_CUT][:, :3]
+    if not len(opaque):
+        return False
+    packed = (opaque[:, 0].astype(np.int64) << 16) | (opaque[:, 1].astype(np.int64) << 8) | opaque[:, 2]
+    return len(np.unique(packed)) <= PIXEL_MAX_COLOURS
 
 
 def find_cuts(mask: np.ndarray, axis: int, n: int = 4, search: int = 60) -> list[int]:
@@ -80,9 +97,11 @@ def dilate(mask: np.ndarray, r: int) -> np.ndarray:
     return ~erode(~mask, r)
 
 
-def clean_cell(rgba: np.ndarray, symbol: bool = False) -> np.ndarray | None:
+def clean_cell(rgba: np.ndarray, symbol: bool = False, pixel: bool = False) -> np.ndarray | None:
     mask = rgba[..., 3] >= ALPHA_CUT
-    if symbol:
+    if pixel:
+        pass  # pixel art has no halo: every outline pixel is drawn on purpose
+    elif symbol:
         # thin stamped symbols: no eroding (it eats spears, legs and stars); close the speckles inside instead
         mask = erode(dilate(mask, 2), 2) & (rgba[..., 3] > 0) | mask
         mask = erode(dilate(mask, 2), 2)
@@ -121,6 +140,7 @@ def key_magenta(img: np.ndarray) -> np.ndarray:
 
 def main() -> int:
     os.makedirs(OUT, exist_ok=True)
+    pixel_cells: list[str] = []
     for name in sorted(os.listdir(SHEETS)):
         if not name.endswith('.png'):
             continue
@@ -128,6 +148,7 @@ def main() -> int:
         img = np.array(Image.open(os.path.join(SHEETS, name)).convert('RGBA'))
         if img[..., 3].min() == 255:
             img = key_magenta(img)
+        pixel = is_pixel_sheet(name, img)
         mask = img[..., 3] >= ALPHA_CUT
         nr, nc = GRIDS.get(letter, (4, 4))
         rows = find_cuts(mask, 0, nr, search=40 if nr > 4 else 60)
@@ -136,12 +157,16 @@ def main() -> int:
             for c in range(nc):
                 cid = f'{letter}{r + 1}{c + 1:02}' if letter in GRIDS else f'{letter}{r + 1}{c + 1}'
                 cell = img[rows[r]:rows[r + 1], cols[c]:cols[c + 1]]
-                sprite = clean_cell(cell, symbol=letter in GRIDS)
+                sprite = clean_cell(cell, symbol=letter in GRIDS, pixel=pixel)
                 if sprite is None:
                     print(f'{cid}: empty', file=sys.stderr)
                     continue
                 Image.fromarray(sprite).save(os.path.join(OUT, f'{cid}.png'))
-        print(name, 'rows', rows, 'cols', cols)
+                if pixel:
+                    pixel_cells.append(cid)
+        print(name, 'rows', rows, 'cols', cols, '(pixel art)' if pixel else '')
+    with open(PIXEL_LIST, 'w', encoding='utf-8') as fh:
+        json.dump(sorted(pixel_cells), fh)
     return 0
 
 

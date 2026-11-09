@@ -45,7 +45,9 @@ export class Atlas {
     const v = version ? `?v=${version}` : '';
     const meta = await fetch(`${base}/atlas.json${v}`).then((r) => r.json());
     const files: string[] = meta.pages ? meta.pages.map((p: { file: string }) => p.file) : ['atlas.png'];
-    const sources = await Promise.all(files.map(async (file) => {
+    // pages of pixel-art sprites (fork: tools/build_atlas.py) are drawn without smoothing, so the pixels stay crisp
+    const pixelPage: boolean[] = meta.pages ? meta.pages.map((p: { pixel?: boolean }) => !!p.pixel) : [false];
+    const sources = await Promise.all(files.map(async (file, i) => {
       const blob = await fetch(`${base}/${file}${v}`).then((r) => r.blob());
       // WebGL ignores its premultiply flag for ImageBitmaps, so premultiply here and tell Pixi it is done;
       // otherwise half-transparent edges are drawn too bright (light halos around every sprite)
@@ -54,9 +56,10 @@ export class Atlas {
         resource: bitmap,
         alphaMode: 'premultiplied-alpha',
         autoGenerateMipmaps: true,
-        scaleMode: 'linear',
+        // pixel art: square pixels close up, smooth mipmaps only when zoomed far out (no shimmering)
+        scaleMode: pixelPage[i] ? 'nearest' : 'linear',
         mipmapFilter: 'linear',
-        maxAnisotropy: 4,
+        maxAnisotropy: pixelPage[i] ? 1 : 4,
       });
     }));
     a.frames = meta.frames;

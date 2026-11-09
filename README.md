@@ -129,11 +129,23 @@ The fork keeps its additions in their own files where it can, so upstream update
 
 ### Graphics
 
-The sprite sheets live in `art/sheets/`.
-After changing or adding a sheet (needs Python, Pillow and NumPy):
+The sprite sheets live in `art/sheets/`. Each sheet is a grid (4×4 cells for almost all of them) and every cell is
+one sprite; `tools/build_atlas.py` names the cells (for example `I11` is the man, `I12` the woman on `I-people.png`).
+
+**Changing a sheet:** replace the PNG in `art/sheets/` with one that keeps the same file name and the same grid,
+with the same thing in each cell, on a transparent or solid magenta (`#FF00FF`) background. Push it (or upload it on GitHub):
+the GitHub workflow cuts the sheets, packs `public/sprites/atlas*.png` again, builds the image with them and commits the
+new atlas back to the repository as "Rebuild the sprite atlas". Pull afterwards to have it locally too.
+
+**Pixel art (8-bit) sheets** are recognised by themselves: a sheet with at most 512 colours, or with `8bit` or `pixel`
+in its file name. Their outlines are kept exactly (the painted sheets lose 3 px of halo), they are scaled only by whole
+numbers with nearest-neighbour, and they go on their own atlas pages that the game draws without smoothing, so every
+pixel stays square. Painted and pixel sheets can be mixed while you redraw them one by one.
+
+To do the same by hand (needs Python, Pillow and NumPy):
 
 ```sh
-python3 -I tools/slice_sprites.py   # cuts the sheets into single sprites in art/cut/ and cleans the halos
+python3 -I tools/slice_sprites.py   # cuts the sheets into single sprites in art/cut/ (pixel.json lists the pixel-art cells)
 python3 -I tools/build_atlas.py     # builds public/sprites/atlas*.png and atlas.json
 ```
 

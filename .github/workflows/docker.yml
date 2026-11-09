@@ -7,7 +7,8 @@ on:
   pull_request:
 
 permissions:
-  contents: read
+  # write: the rebuilt sprite atlas is committed back (fork)
+  contents: write
   packages: write
 
 jobs:
@@ -15,6 +16,40 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      # fork: when a sprite sheet (art/sheets) or the sprite tools change, cut the sheets and pack the atlas again,
+      # build the image with it, and commit the new atlas back so the repository stays in step
+      - name: Did the sprite sheets change?
+        id: sprites
+        run: |
+          before="${{ github.event.before }}"
+          if [ -z "$before" ] || [ "$before" = "0000000000000000000000000000000000000000" ] || ! git cat-file -e "$before^{commit}" 2>/dev/null; then
+            changed=$(git diff --name-only HEAD~1 HEAD -- art/sheets tools || true)
+          else
+            changed=$(git diff --name-only "$before" HEAD -- art/sheets tools || true)
+          fi
+          echo "$changed"
+          if [ -n "$changed" ]; then echo "changed=true" >> "$GITHUB_OUTPUT"; else echo "changed=false" >> "$GITHUB_OUTPUT"; fi
+      - uses: actions/setup-python@v5
+        if: steps.sprites.outputs.changed == 'true'
+        with:
+          python-version: '3.12'
+      - name: Rebuild the sprite atlas
+        if: steps.sprites.outputs.changed == 'true'
+        run: |
+          pip install --quiet pillow numpy
+          python3 -I tools/slice_sprites.py
+          python3 -I tools/build_atlas.py
+      - name: Commit the rebuilt atlas
+        if: steps.sprites.outputs.changed == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add art/cut public/sprites
+          if git diff --cached --quiet; then echo "atlas unchanged"; exit 0; fi
+          git commit -m "Rebuild the sprite atlas from art/sheets [skip ci]"
+          git push origin HEAD:main
       - uses: actions/setup-node@v4
         with:
           node-version: 22
