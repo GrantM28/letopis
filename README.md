@@ -7,9 +7,12 @@
 <p align="center"><img src="art/screenshot.png" alt="A Stone Age world in Letopis" width="800"></p>
 
 Letopis (Bulgarian for *chronicle*) is a self-hosted idle simulation. A few families start in the Stone Age
-and, with nobody pressing a button, discover fire, tools, farming and everything after. Open the page whenever
-you like and see how far they got. The whole game runs in the browser; the world keeps living on the server
-while nobody is watching.
+and, with nobody pressing a button, discover fire, tools, farming and everything after, all the way to the stars.
+Open the page whenever you like and see how far they got. The world keeps living on the server while nobody is watching.
+
+This is [GrantM28's fork](https://github.com/GrantM28/letopis) of [leppermesiah/letopis](https://github.com/leppermesiah/letopis).
+It adds the ages after the Bronze Age, more world events, a statistics dashboard, notifications, a few ways to lend the world a hand,
+and a reworked, English-only interface. Upstream changes are merged in from time to time.
 
 ## Features
 
@@ -17,8 +20,24 @@ while nobody is watching.
 - Every person has a name, parents, children and traits (strength, wit, curiosity, sociability, health, longevity) that are inherited with small mutations.
 - Clans wander, split, meet, learn from each other, settle into villages and sometimes die out together with their knowledge.
 - Trees grow and get cut for fires and huts; a clan moves on when the wood around its camp is gone.
-- A living chronicle of everything that happens, with clickable people and clans, family trees back to the first humans and a list of first discoveries.
-- English and Bulgarian, switchable at any time with the language button.
+- **Nine ages and 80 discoveries**: Stone, New Stone and Bronze Age, then the Iron Age, Middle Ages, Early Modern, Industrial,
+  Information and Space Age. Each age opens with one discovery (iron, the watermill, the printing press, the steam engine,
+  the computer, a Moon base). Discoveries change the world: better tools and farming, medicine and vaccines against disease,
+  bigger castle towns, railways that bring clans together, universities and printing that speed up new ideas.
+- **Later-age buildings on the map**: villages that know them show a forge, castle, mills, a ship, an observatory, a factory, a train,
+  radio masts, office blocks, solar panels, rockets, a dome on the Moon and more.
+- **World events**: floods, plagues (milder with medicine), rich harvests, comets, eclipses, earthquakes, town fires, festivals,
+  great buildings of each age and expeditions, alongside great hunts, hard winters and droughts.
+- **Help the world**: now and then you may send a blessing (food for the hungriest clan), rain (over the driest land) or call a feast.
+  Each has a cooldown shared by everyone watching, and each is written in the chronicle.
+- A living chronicle with filters (important, discoveries, life, clans, nature), clickable people and clans,
+  family trees back to the first humans, and every discovery grouped by age with progress bars.
+- **Statistics dashboard**: population and clans over time with the ages marked, births and deaths per year, discoveries over time,
+  the age make-up of the living, records (most people, largest clan, oldest person), how people died, what happened most, and the timeline of the ages.
+- **People tab**: everyone alive, searchable and sortable (oldest, youngest, name, most deeds, most children), plus the notable ones.
+- **Clans tab**: search, sort by size, knowledge or name, with each clan's chief and size.
+- The top bar shows how far the world is through the discoveries of its age and which age comes next.
+- **Notifications** to your phone (ntfy) or Home Assistant (webhook) when a new age begins or a great first discovery is made.
 - Kids mode with bigger letters and simpler explanations.
 - "While you were away": the highlights since your last visit.
 - Tour mode: the camera wanders the world by itself and stops where something happens. Nice on a TV.
@@ -42,15 +61,16 @@ Then open `http://<host>:2222/`.
 
 ### Unraid
 
-Install **Letopis** from the **Apps** tab (Community Applications). The template lives in
-[leppermesiah/unraid-templates](https://github.com/leppermesiah/unraid-templates). To add it by hand instead:
+In the **Docker** tab choose **Add Container** and fill in:
 
 - Repository: `ghcr.io/grantm28/letopis:latest`
 - Port: `2222` → `2222`
 - Path: `/data` → `/mnt/user/appdata/letopis`
+- WebUI (optional): `http://[IP]:[PORT:2222]/`
 
-The world is saved every 2 minutes and when the container stops, and continues where it left off after a restart.
-If humanity dies out, the world is archived in `/data/archive/` and a new one begins a minute later.
+To update, use **Force update** on the container. The world is saved every 2 minutes and when the container stops,
+and continues where it left off after a restart. If humanity dies out, the world is archived in `/data/archive/`
+and a new one begins a minute later.
 
 ### Settings (environment)
 
@@ -60,7 +80,12 @@ If humanity dies out, the world is archived in `/data/archive/` and a new one be
 | `LETOPIS_DATA` | `/data` | where the world, the chronicle (SQLite) and the archive live |
 | `LETOPIS_SPEED` | `1` | time multiplier, only for testing |
 | `LETOPIS_SEED` | random | seed of the first world |
+| `LETOPIS_NTFY_URL` | – | an [ntfy](https://ntfy.sh) topic URL (e.g. `https://ntfy.sh/my-letopis`) for phone notifications |
+| `LETOPIS_WEBHOOK_URL` | – | a URL that gets a JSON `POST` for each great moment (e.g. a Home Assistant webhook) |
+| `LETOPIS_NOTIFY_MIN` | `3` | the least importance that is sent: 3 = new ages and first discoveries, 2 = also plagues, wonders, comets and the like |
 | `TZ` | `Europe/Sofia` | time zone |
+
+The webhook body is `{ "title", "message", "kind", "importance", "year", "world" }`. At most four notifications go out per minute.
 
 ## Building from source
 
@@ -68,9 +93,31 @@ Requires Node.js 22.
 
 ```sh
 npm ci
-npm run dev     # runs at x200 speed with data in ./data, http://localhost:2222
+npm run dev     # runs at x200 speed with data in ./data, http://localhost:2222 (macOS/Linux shell syntax)
 npm run build   # production build into dist/
+npm run typecheck
+npm run simtest -- 42 6000 500   # simulate 6000 years of world 42 without the server, printing every 500 years
 ```
+
+On Windows, start the dev server from `.claude/launch.json` or set `LETOPIS_DATA=./data` and `LETOPIS_SPEED=200` yourself
+before `node --disable-warning=ExperimentalWarning dist/server.js`.
+
+Pushing to `main` builds the Docker image with GitHub Actions and publishes it as `ghcr.io/grantm28/letopis:latest`.
+
+### Where things are
+
+| Path | What |
+|---|---|
+| `src/server/sim/sim.ts` | the simulation (upstream) |
+| `src/server/sim/tech.ts`, `src/shared/later_techs.ts` | the discoveries; the Iron Age and later live in `later_techs.ts` |
+| `src/server/sim/events.ts`, `src/shared/event_words.ts` | the world events and the acts of the watchers |
+| `src/server/extras.ts` | yearly history, records, people list and acts (`/api/history`, `/api/people`, `/api/acts`) |
+| `src/server/notify.ts` | ntfy and webhook notifications |
+| `src/client/main.ts`, `public/` | the page: panels, tabs, cards |
+| `src/client/render.ts`, `src/client/landmarks.ts` | the map; later-age buildings are drawn in code in `landmarks.ts` |
+| `src/client/charts.ts` | the charts of the statistics dashboard |
+
+The fork keeps its additions in their own files where it can, so upstream updates merge with few conflicts.
 
 ### Graphics
 
@@ -88,19 +135,22 @@ The finished atlas is in git, so Python is not needed to build the game.
 
 `/api/health`, `/api/world`, `/api/snapshot`, `/api/chronicle?before=&after=&min=&limit=`, `/api/since?after=`,
 `/api/person/:id`, `/api/tree/:id`, `/api/band/:id`, `/api/heroes`, `/api/discoveries`, `/api/stats`, `/api/worlds`, WebSocket `/ws`.
+
+Added in this fork: `/api/history` (yearly series, causes of death, event counts, records, the ages),
+`/api/people?q=&sort=old|young|name|deeds|children&offset=&limit=` (everyone alive), `/api/acts` and `POST /api/act/bless|rain|feast`.
+
 `/api/health` works well as a sensor for Home Assistant or any uptime monitor.
 
 ## Roadmap
 
-1. **World and people** (now): terrain, people, clans, the Stone Age up to the first villages, isometric view, chronicle.
-2. Settlements and discoveries up to the Iron Age, richer villages.
-3. States, trade, wars without on-screen violence, diseases, disasters.
-4. Middle Ages to modern times, portraits, more for kids.
-5. Space and colonies on other worlds.
+- Sprite-sheet art for the later ages, to replace the code-drawn buildings.
+- States, trade routes and alliances between clans.
+- A longer test of the pacing of the later ages.
 
 ## Credits
 
 Everything taken from outside, with its author and license, is listed in [CREDITS.md](CREDITS.md).
+The game was created by [leppermesiah](https://github.com/leppermesiah/letopis).
 
 ## License
 

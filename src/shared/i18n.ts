@@ -3,6 +3,7 @@
 
 import { CLAN_EN, clanBase } from './clans';
 import { LATER_TECHS } from './later_techs';
+import { eventDeedEn } from './event_words';
 
 export type Lang = 'bg' | 'en';
 
@@ -257,6 +258,11 @@ export const CAUSE_EN: Record<string, string> = {
   'почина от старост': 'died of old age',
   'почина като дете': 'died as a child',
   'почина от болест': 'died of illness',
+  // world events (events.ts)
+  'почина от мор': 'died of the plague',
+  'загина в наводнението': 'drowned in the flood',
+  'загина при земетресението': 'died in the earthquake',
+  'загина в пожара': 'died in the fire',
 };
 export const causeEn = (bg: string) => CAUSE_EN[bg] ?? bg;
 

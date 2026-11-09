@@ -9,12 +9,9 @@ import { MONTHS, formatYear } from '../shared/types';
 import { clanBase } from '../shared/clans';
 import { SECRET_HEROES, SECRET_KINDS } from '../shared/secrets';
 
+/** this version of the game is English only (the server still writes Bulgarian beside the English) */
 function initial(): Lang {
-  try {
-    const v = localStorage.getItem('letopis.lang');
-    if (v === '"bg"' || v === '"en"') return JSON.parse(v);
-  } catch { /* private mode */ }
-  return /^bg\b/i.test(navigator.language || '') ? 'bg' : 'en';
+  return 'en';
 }
 
 export const LANG: Lang = initial();
@@ -78,13 +75,13 @@ export function translatePage() {
   const brand = document.querySelector('.brand');
   if (brand?.firstChild) brand.firstChild.textContent = 'Letopis ';
   document.title = document.title.replace('Летопис', 'Letopis');
-  const stats: [string, string][] = [['#pop', 'People'], ['#bandsCount', 'Clans'], ['#born', 'Born'], ['#died', 'Died'], ['#age', 'World age']];
+  const stats: [string, string][] = [['#pop', 'People'], ['#bandsCount', 'Clans'], ['#born', 'Born'], ['#died', 'Died'], ['#age', 'Running for']];
   for (const [id, label] of stats) {
     const span = document.querySelector(id)?.previousElementSibling;
     if (span) span.textContent = label;
   }
   set('#sideHandle', undefined, 'Hide or show the panel');
-  const tabs: Record<string, string> = { chronicle: 'Chronicle', discoveries: 'Discoveries', bands: 'Clans', heroes: 'People', stats: 'Statistics', secrets: 'Secrets' };
+  const tabs: Record<string, string> = { chronicle: 'Chronicle', discoveries: 'Discoveries', bands: 'Clans', heroes: 'People', stats: 'Stats', secrets: 'Secrets' };
   for (const [k, v] of Object.entries(tabs)) { set(`.tab[data-tab="${k}"] .lbl`, v); set(`.tab[data-tab="${k}"]`, undefined, v); }
   set('#zoomIn', undefined, 'Zoom in');
   set('#zoomOut', undefined, 'Zoom out');

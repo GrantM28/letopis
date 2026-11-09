@@ -6,8 +6,9 @@ import {
 import { SECRET_COUNT, SecretFind, SecretSpot } from '../shared/secrets';
 import { ERAS_BG, ERAS_EN, TECH_DESC, TECH_EN, TECH_LIST } from '../shared/i18n';
 import { ERA_GATES } from '../shared/later_techs';
+import { barList, lineChart } from './charts';
 import {
-  B, BL, CAUSE, CHIEF, DEED, EN, ERA, GENE, HERO, P, SECRET_KIND, T, TASK, TECH, TECH_ID, TITLE, VILLAGE, fmtYear, monthName, num, refName, setLang, translatePage,
+  B, BL, CAUSE, CHIEF, DEED, EN, ERA, GENE, HERO, P, SECRET_KIND, T, TASK, TECH, TECH_ID, TITLE, VILLAGE, fmtYear, monthName, num, refName, translatePage,
 } from './lang';
 
 translatePage();
@@ -232,6 +233,43 @@ function updateAgeProgress() {
   }
 }
 
+// ---------- helping the world: a blessing, rain, a feast ----------
+
+const ACT_INFO: Record<string, { icon: string; name: string; text: string }> = {
+  bless: { icon: '🌟', name: 'Send a blessing', text: 'Food finds its way to the hungriest clan.' },
+  rain: { icon: '🌧️', name: 'Send rain', text: 'A long warm rain over the driest land around a clan.' },
+  feast: { icon: '🍖', name: 'Call a feast', text: 'The biggest clan invites its neighbours to a great feast.' },
+};
+type ActState = { kind: string; ready: boolean; readyIn: number; last: { at: number; band: string } | null };
+
+async function showActs(note = '') {
+  const acts = await api<ActState[]>('/api/acts').catch(() => null);
+  if (!acts) return;
+  const mins = (ms: number) => `${Math.max(1, Math.ceil(ms / 60000))} min`;
+  const ago = (t: number) => { const m = Math.round((Date.now() - t) / 60000); return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : `${Math.round(m / 60)} h ago`; };
+  openCard(`<h2>✨ Help the world</h2>
+    <p class="muted">The world lives on its own, but now and then you may lend a hand. Everyone watching this world shares the same waiting time, and each act is written in the chronicle.</p>
+    ${note ? `<p class="act-note">${note}</p>` : ''}
+    <div class="acts">${acts.map((a) => {
+      const i = ACT_INFO[a.kind];
+      return `<button class="act" data-act="${a.kind}" ${a.ready ? '' : 'disabled'}>
+        <span class="act-icon">${i.icon}</span><span class="act-body"><b>${i.name}</b><small>${i.text}</small>
+        <small class="act-state">${a.ready ? 'Ready' : `Ready again in ${mins(a.readyIn)}`}${a.last ? ` · last: ${esc(a.last.band)}, ${ago(a.last.at)}` : ''}</small></span></button>`;
+    }).join('')}</div>`);
+  document.querySelectorAll<HTMLButtonElement>('#cardBody .act').forEach((btn) => {
+    btn.onclick = async () => {
+      btn.disabled = true;
+      const res = await fetch(`/api/act/${btn.dataset.act}`, { method: 'POST' }).then((x) => x.json()).catch(() => null) as { ok?: boolean; band?: string; bandId?: number; error?: string } | null;
+      if (res?.ok && res.bandId) {
+        const b = bands.find((x) => x.id === res.bandId);
+        if (b) { stopTour(); lookAt(b.x, b.y, Math.max(cam.tz, 1.4)); }
+      }
+      void showActs(res?.ok ? `Done: ${esc(res.band ?? '')} will remember it.` : `Not now: ${esc(res?.error ?? 'the server did not answer')}.`);
+    };
+  });
+}
+$('#actsBtn').onclick = () => void showActs();
+
 /** back to where the people are */
 function showAllBands() {
   stopTour();
@@ -349,6 +387,9 @@ function linkedText(e: ChronicleEntry): string {
 const ICON: Record<string, string> = {
   discovery: '💡', rediscovery: '🔁', settle: '🏘️', colony: '🏘️', split: '🚶', death: '🕯️', twins: '👶', hunt: '🦣',
   winter: '❄️', secret: '✨', drought: '☀️', extinct: '🌑', lost: '📜', meet: '🤝', learn: '📚', era: '⭐', milestone: '👥', genesis: '🌅', merge: '🔗', marriage: '💞', end: '🌑',
+  // world events (events.ts)
+  flood: '🌊', plague: '🦠', harvest: '🌾', comet: '☄️', eclipse: '🌘', quake: '🌋', fire: '🔥', festival: '🎉', wonder: '🏛️',
+  expedition: '🧭', blessing: '🌟', rain: '🌧️', feast: '🍖',
 };
 
 function eventHtml(e: ChronicleEntry): string {
@@ -380,9 +421,9 @@ const FEED_KINDS: Record<string, { bg: string; en: string; kinds?: string[] }> =
   all: { bg: 'Всичко', en: 'All' },
   big: { bg: 'Важно', en: 'Important' },
   discovery: { bg: 'Открития', en: 'Discoveries', kinds: ['discovery', 'rediscovery', 'learn', 'era', 'lost'] },
-  life: { bg: 'Живот', en: 'Life', kinds: ['death', 'twins', 'marriage', 'milestone', 'genesis'] },
-  clans: { bg: 'Родове', en: 'Clans', kinds: ['settle', 'colony', 'split', 'meet', 'merge', 'extinct', 'end'] },
-  nature: { bg: 'Природа', en: 'Nature', kinds: ['hunt', 'winter', 'drought', 'secret'] },
+  life: { bg: 'Живот', en: 'Life', kinds: ['death', 'twins', 'marriage', 'milestone', 'genesis', 'plague', 'festival', 'feast'] },
+  clans: { bg: 'Родове', en: 'Clans', kinds: ['settle', 'colony', 'split', 'meet', 'merge', 'extinct', 'end', 'wonder', 'expedition'] },
+  nature: { bg: 'Природа', en: 'Nature', kinds: ['hunt', 'winter', 'drought', 'secret', 'flood', 'harvest', 'comet', 'eclipse', 'quake', 'fire', 'blessing', 'rain'] },
 };
 let feedKind = store('letopis.feedKind', store('letopis.onlyBig', false) ? 'big' : 'all');
 if (!FEED_KINDS[feedKind]) feedKind = 'all';
@@ -417,6 +458,29 @@ let openAgesTouched = false;
 /** the clans tab: search text and sort order */
 let bandQuery = '';
 let bandSort = store<'size' | 'knowledge' | 'name'>('letopis.bandSort', 'size');
+/** the people tab: everyone alive (searchable, a page at a time) or only the notable ones */
+let peopleView = store<'all' | 'notable'>('letopis.peopleView', 'all');
+let peopleSort = store('letopis.peopleSort', 'old');
+let peopleQuery = '';
+let peopleShown = 0;
+
+type PersonListRow = { id: number; name: string; age: number; sex: number; band: string; bandId: number; task: string; chief: boolean; deeds: number; children: number; gen: number };
+async function loadPeople(more: boolean) {
+  const list = document.getElementById('peopleList');
+  if (!list) return;
+  if (!more) peopleShown = 0;
+  const res = await api<{ total: number; people: PersonListRow[] }>(`/api/people?q=${encodeURIComponent(peopleQuery)}&sort=${peopleSort}&offset=${peopleShown}&limit=100`).catch(() => null);
+  if (!res || activeTab !== 'heroes' || peopleView !== 'all') return;
+  const color = new Map(bands.map((b) => [b.id, `#${b.color.toString(16).padStart(6, '0')}`]));
+  const html = res.people.map((p) => `<li data-person="${p.id}">
+      <span class="avatar sm ${p.sex ? 'f' : 'm'}">${p.age < 12 ? '🧒' : p.age >= 60 ? (p.sex ? '👵' : '👴') : p.sex ? '👩' : '👨'}</span>
+      <div><b>${esc(p.name)}</b>${p.chief ? ' <span class="badge village">chief</span>' : ''}${p.deeds ? ` <span class="badge">${p.deeds} deed${p.deeds > 1 ? 's' : ''}</span>` : ''}
+        <div class="muted"><span class="dot sm" style="background:${color.get(p.bandId) ?? '#888'}"></span>${esc(p.band)} · ${p.age} y · ${esc(TASK(TASK_NAMES[p.task as keyof typeof TASK_NAMES] ?? p.task))}${p.children ? ` · ${p.children} children` : ''}</div></div></li>`).join('');
+  if (more) list.insertAdjacentHTML('beforeend', html); else list.innerHTML = html || '<li class="empty-note">Nobody by that name.</li>';
+  peopleShown += res.people.length;
+  $('#peopleCount').textContent = `${num(res.total)} ${peopleQuery ? 'found' : 'people alive'} · showing ${num(peopleShown)}`;
+  ($('#peopleMore') as HTMLElement).hidden = peopleShown >= res.total;
+}
 
 function renderSide() {
   document.querySelectorAll<HTMLButtonElement>('.tab').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === activeTab)));
@@ -487,15 +551,43 @@ function renderSide() {
     });
     renderBandList();
   } else if (activeTab === 'heroes') {
-    body.innerHTML = `<p class="muted">${T('Зареждам...', 'Loading...')}</p>`;
-    api<{ id: number; name: string; age: number; band: string; deeds: string[] }[]>('/api/heroes').then((hs) => {
-      if (activeTab !== 'heroes') return;
-      body.innerHTML = hs.length ? `<ul class="heroes">${hs.map((h) => `<li data-person="${h.id}"><b>${esc(P(h.name))}</b>
-        <span class="muted">${h.age} ${T('г.', 'y')} · ${esc(BL(h.band))}</span>${h.deeds.length ? `<div>${h.deeds.map((x) => esc(DEED(x))).join('<br>')}</div>` : ''}</li>`).join('')}</ul>`
-        : `<p class="muted">${T('Още никой не е направил нещо велико. Търпение.', 'Nobody has done anything great yet. Patience.')}</p>`;
-    }).catch(() => {
-      if (activeTab === 'heroes') body.innerHTML = `<p class="muted">${T('Не успях да заредя личностите. Опитай пак след малко.', 'Could not load the people. Try again in a moment.')}</p>`;
+    const sorts: [string, string][] = [['old', 'Oldest'], ['young', 'Youngest'], ['name', 'Name'], ['deeds', 'Most deeds'], ['children', 'Most children']];
+    body.innerHTML = `<div class="chips seg">
+        <button class="chip" data-pview="all" aria-pressed="${peopleView === 'all'}">Everyone</button>
+        <button class="chip" data-pview="notable" aria-pressed="${peopleView === 'notable'}">Notable</button></div>
+      <div id="peopleBody"></div>`;
+    body.querySelectorAll<HTMLButtonElement>('[data-pview]').forEach((c) => {
+      c.onclick = () => { peopleView = c.dataset.pview as typeof peopleView; save('letopis.peopleView', peopleView); renderSide(); };
     });
+    const pb = $('#peopleBody');
+    if (peopleView === 'notable') {
+      pb.innerHTML = '<p class="muted">Loading...</p>';
+      api<{ id: number; name: string; age: number; band: string; deeds: string[] }[]>('/api/heroes').then((hs) => {
+        if (activeTab !== 'heroes' || peopleView !== 'notable') return;
+        pb.innerHTML = `<p class="lead">People with deeds to their name, and the old ones who have seen the most.</p>` + (hs.length ? `<ul class="heroes">${hs.map((h) => `<li data-person="${h.id}"><b>${esc(P(h.name))}</b>
+          <span class="muted">${h.age} y · ${esc(BL(h.band))}</span>${h.deeds.length ? `<div>${h.deeds.map((x) => esc(DEED(x))).join('<br>')}</div>` : ''}</li>`).join('')}</ul>`
+          : '<p class="muted">Nobody has done anything great yet. Patience.</p>');
+      }).catch(() => { if (activeTab === 'heroes') pb.innerHTML = '<p class="muted">Could not load the people. Try again in a moment.</p>'; });
+    } else {
+      pb.innerHTML = `<label class="search"><svg class="ic"><use href="#i-search"/></svg>
+          <input id="peopleSearch" type="search" placeholder="Find a person or clan" value="${esc(peopleQuery)}" autocomplete="off"></label>
+        <div class="chips">${sorts.map(([k, n]) => `<button class="chip" data-psort="${k}" aria-pressed="${k === peopleSort}">${n}</button>`).join('')}</div>
+        <p class="lead" id="peopleCount"></p><ul class="people" id="peopleList"></ul>
+        <button class="btn ghost" id="peopleMore" hidden>Show more</button>`;
+      const input = $('#peopleSearch') as HTMLInputElement;
+      let timer = 0;
+      input.oninput = () => { clearTimeout(timer); timer = window.setTimeout(() => { peopleQuery = input.value; void loadPeople(false); }, 250); };
+      pb.querySelectorAll<HTMLButtonElement>('[data-psort]').forEach((c) => {
+        c.onclick = () => {
+          peopleSort = c.dataset.psort!; save('letopis.peopleSort', peopleSort);
+          pb.querySelectorAll('[data-psort]').forEach((x) => x.setAttribute('aria-pressed', String(x === c)));
+          void loadPeople(false);
+        };
+      });
+      $('#peopleMore').onclick = () => void loadPeople(true);
+      void loadPeople(false);
+    }
+
   } else if (activeTab === 'stats') {
     renderStats(body);
   } else if (activeTab === 'secrets') {
@@ -543,42 +635,112 @@ function renderBandList() {
 }
 
 let statsAt = 0;
-async function renderStats(body: HTMLElement) {
-  if (performance.now() - statsAt < 15000 && body.querySelector('canvas')) return;
-  statsAt = performance.now();
-  const rows = await api<{ year: number; population: number; bands: number; era: number; techs: number }[]>('/api/stats');
-  if (activeTab !== 'stats') return;
-  const techsKnown = new Set(bands.flatMap((b) => b.techs));
+
+interface History {
+  series: { year: number; population: number; bands: number; villages: number; births: number; deaths: number; techs: number; era: number; avgAge: number; children: number; elders: number; span?: number }[];
+  causes: Record<string, number>;
+  events: Record<string, number>;
+  eras: { year: number; text: string }[];
+  records: {
+    largestBand?: { size: number; name: string; year: number };
+    oldest?: { age: number; name: string; id: number; year: number };
+    peak?: { population: number; year: number };
+    mostClans?: { bands: number; year: number };
+  };
+  gone: { extinct: number; merged: number };
+  totalBorn: number; totalDied: number; year: number; era: number; notify: boolean;
+}
+
+const EVENT_NAMES: Record<string, string> = {
+  discovery: 'First discoveries', rediscovery: 'Rediscoveries', learn: 'Knowledge shared', death: 'Notable deaths', twins: 'Twins born',
+  marriage: 'Marriages between clans', meet: 'Clans meeting', merge: 'Clans merging', extinct: 'Clans dying out', settle: 'Villages founded',
+  hunt: 'Great hunts', winter: 'Hard winters', drought: 'Droughts', flood: 'Floods', plague: 'Plagues', harvest: 'Rich harvests',
+  comet: 'Comets', eclipse: 'Eclipses', quake: 'Earthquakes', fire: 'Town fires', festival: 'Festivals', wonder: 'Great buildings',
+  expedition: 'Expeditions', secret: 'Secrets found', era: 'New ages', milestone: 'Population milestones', blessing: 'Blessings',
+  rain: 'Rains sent', feast: 'Feasts', lost: 'Knowledge lost',
+};
+
+const css = (v: string, fb: string) => getComputedStyle(document.documentElement).getPropertyValue(v).trim() || fb;
+
+/** the statistics tab; `wide` lays the same out on two columns in a big card */
+async function renderStats(body: HTMLElement, wide = false) {
+  if (!wide && performance.now() - statsAt < 15000 && body.querySelector('.chart')) return;
+  if (!wide) statsAt = performance.now();
+  const h = await api<History>('/api/history').catch(() => null);
+  if (!wide && activeTab !== 'stats') return;
+  if (!h) { body.innerHTML = '<p class="muted">Could not load the statistics. Try again in a moment.</p>'; return; }
+  const s = h.series;
+  const last = s[s.length - 1];
+  const known = knownNow();
+  const villages = bands.filter((b) => b.settled).length;
+  const kpi = (label: string, value: string, sub = '') => `<div><span>${label}</span><b>${value}</b>${sub ? `<small>${sub}</small>` : ''}</div>`;
+  const prev = s.length > 10 ? s[s.length - 11] : s[0];
+  const trend = (a?: number, b?: number) => (a === undefined || b === undefined || !b ? '' : `${a >= b ? '▲' : '▼'} ${Math.abs(Math.round(((a - b) / b) * 100))}% in 10 years`);
+  const r = h.records;
+  const ageStruct = last ? [last.children, last.population - last.children - last.elders, last.elders] : [0, 0, 0];
+  const total = ageStruct.reduce((a, b) => a + b, 0) || 1;
+  const fmt = (y: number) => fmtYear(y);
+  const pc = (k: number) => Math.round((ageStruct[k] / total) * 100);
   body.innerHTML = `
-    <div class="kpis">
-      <div><span>${T('Родени', 'Born')}</span><b id="born2">${$('#born').textContent}</b></div>
-      <div><span>${T('Починали', 'Died')}</span><b>${$('#died').textContent}</b></div>
-      <div><span>${T('Знания', 'Knowledge')}</span><b>${techsKnown.size}</b></div>
-    </div>
-    <h3>${T('Население', 'Population')}</h3><canvas id="popChart" height="160"></canvas>
-    <h3>${T('Какво знаят хората', 'What people know')}</h3><div class="techs">${[...techsKnown].map((t) => `<span class="pill">${esc(TECH(t))}</span>`).join('') || `<span class="muted">${T('Нищо още', 'Nothing yet')}</span>`}</div>`;
-  const c = $('#popChart') as HTMLCanvasElement;
-  const w = (c.width = c.clientWidth * 2), h = (c.height = 320);
-  const g = c.getContext('2d')!;
-  if (rows.length < 2) return;
-  const max = Math.max(...rows.map((r2) => r2.population)) * 1.1;
-  const styles = getComputedStyle(document.documentElement);
-  g.strokeStyle = styles.getPropertyValue('--accent').trim() || '#e0a84f';
-  g.fillStyle = (styles.getPropertyValue('--accent').trim() || '#e0a84f') + '33';
-  g.lineWidth = 4;
-  g.beginPath();
-  rows.forEach((r2, i) => {
-    const x = (i / (rows.length - 1)) * w, y = h - (r2.population / max) * (h - 20);
-    i ? g.lineTo(x, y) : g.moveTo(x, y);
-  });
-  g.stroke();
-  g.lineTo(w, h); g.lineTo(0, h); g.closePath(); g.fill();
-  g.fillStyle = styles.getPropertyValue('--muted').trim();
-  g.font = '22px system-ui';
-  g.fillText(fmtYear(rows[0].year), 8, h - 8);
-  const endLabel = fmtYear(rows[rows.length - 1].year);
-  g.fillText(endLabel, w - g.measureText(endLabel).width - 8, h - 8);
-  g.fillText(`${T('макс.', 'max')} ${num(Math.round(max / 1.1))}`, 8, 26);
+    ${wide ? '<h2>The state of the world</h2>' : '<button class="btn ghost" id="statsWide">Open the full dashboard</button>'}
+    <div class="${wide ? 'dash' : 'dash-narrow'}">
+    <section class="span2">
+      <div class="kpis kpis-4">
+        ${kpi('People', num(people.length || last?.population || 0), trend(last?.population, prev?.population))}
+        ${kpi('Clans', num(bands.length), `${villages} villages`)}
+        ${kpi('Discoveries', `${known.size}/${TECH_LIST.length}`, eraName(currentEra))}
+        ${kpi('Avg. age', last ? last.avgAge.toFixed(1) : '–', 'years')}
+        ${kpi('Born', num(h.totalBorn))}
+        ${kpi('Died', num(h.totalDied))}
+        ${kpi('Clans gone', num(h.gone.extinct), `${num(h.gone.merged)} merged`)}
+        ${kpi('Years recorded', num(Math.max(0, h.year - (s[0]?.year ?? h.year))))}
+      </div>
+    </section>
+    <section class="span2"><h3>Population and clans</h3><div id="chPop"></div></section>
+    <section><h3>Births and deaths per year</h3><div id="chLife"></div></section>
+    <section><h3>Discoveries over time</h3><div id="chTech"></div></section>
+    <section><h3>Who lives now</h3>
+      <div class="stack"><i style="flex:${ageStruct[0]};background:var(--accent-2)" title="Children"></i><i style="flex:${ageStruct[1]};background:var(--accent)" title="Adults"></i><i style="flex:${ageStruct[2]};background:#b48ead" title="Elders"></i></div>
+      <div class="legend"><span><i style="background:var(--accent-2)"></i>Children ${pc(0)}%</span><span><i style="background:var(--accent)"></i>Adults ${pc(1)}%</span><span><i style="background:#b48ead"></i>Elders ${pc(2)}%</span></div>
+    </section>
+    <section><h3>Records</h3><dl class="records">
+      ${r.peak ? `<dt>Most people at once</dt><dd>${num(r.peak.population)} <small>in ${fmt(r.peak.year)}</small></dd>` : ''}
+      ${r.largestBand ? `<dt>Largest clan</dt><dd>${esc(r.largestBand.name)}, ${r.largestBand.size} people <small>in ${fmt(r.largestBand.year)}</small></dd>` : ''}
+      ${r.oldest ? `<dt>Oldest person</dt><dd><a href="#" class="ref" data-person="${r.oldest.id}">${esc(r.oldest.name)}</a>, ${r.oldest.age} years <small>in ${fmt(r.oldest.year)}</small></dd>` : ''}
+      ${r.mostClans ? `<dt>Most clans</dt><dd>${r.mostClans.bands} <small>in ${fmt(r.mostClans.year)}</small></dd>` : ''}
+    </dl>${r.peak ? '' : '<p class="muted">Records are kept from now on.</p>'}</section>
+    <section><h3>The ages</h3><ol class="timeline">
+      <li class="done"><b>${eraName(0)}</b><small>${fmt(-12000)}</small></li>
+      ${ERAS_EN.slice(1).map((_, i) => {
+        const e = i + 1;
+        const reached = e <= h.era;
+        const ev = h.eras[e - 1];
+        const note = reached ? (ev ? fmt(ev.year) : 'reached') : e === h.era + 1 ? `opens with ${techLabel(GATES.get(e) ?? '')}` : 'still ahead';
+        return `<li class="${reached ? 'done' : e === h.era + 1 ? 'next' : ''}"><b>${eraName(e)}</b><small>${note}</small></li>`;
+      }).join('')}
+    </ol></section>
+    <section><h3>How people died</h3>${barList(Object.entries(h.causes), '#b48ead', 8)}</section>
+    <section><h3>What happened most</h3>${barList(Object.entries(h.events).map(([k, v]) => [`${ICON[k] ?? '•'} ${EVENT_NAMES[k] ?? k}`, v] as [string, number]), 'var(--accent-2)', 12)}</section>
+    <section class="span2"><h3>What people know</h3><div class="techs">${[...known].map((t) => `<span class="pill">${esc(techLabel(t))}</span>`).join('') || '<span class="muted">Nothing yet</span>'}</div></section>
+    <section class="span2"><h3>Notifications</h3><p class="muted">${h.notify ? 'On: the server sends the great moments to your phone or Home Assistant.'
+      : 'Off. Set <code>LETOPIS_NTFY_URL</code> (an ntfy topic) or <code>LETOPIS_WEBHOOK_URL</code> (for example a Home Assistant webhook) on the container to get the great moments on your phone.'}</p></section>
+    </div>`;
+  const xs = s.map((x) => x.year);
+  const eras = s.map((x) => x.era);
+  const accent = css('--accent', '#e0a84f'), accent2 = css('--accent-2', '#7fb2d9');
+  lineChart(body.querySelector<HTMLElement>('#chPop')!, { xs, eras, eraNames: ERAS_EN, fmtX: fmt, series: [
+    { name: 'People', color: accent, values: s.map((x) => x.population), fill: true },
+    { name: 'Clans ×10', color: accent2, values: s.map((x) => x.bands * 10), dashed: true },
+  ] });
+  lineChart(body.querySelector<HTMLElement>('#chLife')!, { xs, eras, fmtX: fmt, height: 140, fmtY: (y) => y.toFixed(1), series: [
+    { name: 'Births', color: '#6cc38a', values: s.map((x) => x.births / (x.span ?? 1)) },
+    { name: 'Deaths', color: '#d9776f', values: s.map((x) => x.deaths / (x.span ?? 1)) },
+  ] });
+  lineChart(body.querySelector<HTMLElement>('#chTech')!, { xs, eras, fmtX: fmt, height: 120, series: [
+    { name: 'Discoveries', color: '#b48ead', values: s.map((x) => x.techs), fill: true },
+  ] });
+  const wideBtn = body.querySelector<HTMLButtonElement>('#statsWide');
+  if (wideBtn) wideBtn.onclick = () => { openCard('<div id="dashBody"><p class="muted">Loading…</p></div>', false, 'wide'); void renderStats($('#dashBody'), true); };
 }
 
 async function loadOlder() {
@@ -845,9 +1007,6 @@ $('#nightBtn').onclick = () => {
 const toggleSide = () => save('letopis.sideHidden', document.body.classList.toggle('side-hidden'));
 if (store('letopis.sideHidden', false)) document.body.classList.add('side-hidden');
 $('#sideToggle').onclick = toggleSide;
-$('#langBtn').textContent = EN ? 'БГ' : 'EN';
-$('#langBtn').title = EN ? 'Български' : 'English';
-$('#langBtn').onclick = () => setLang(EN ? 'bg' : 'en');
 $('#sideHandle').onclick = toggleSide;
 
 // ---------- frame loop ----------

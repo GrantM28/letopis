@@ -8,6 +8,8 @@ import { Simulation, SimState } from './sim/sim';
 import { Store } from './db';
 import { Discovery, SnapshotMessage, TickMessage, WorldInfo, b64encode } from '../shared/types';
 import { TECHS } from './sim/tech';
+import { notify, notifyEnabled } from './notify';
+import { Extras } from './extras';
 
 const PORT = Number(process.env.LETOPIS_PORT ?? 2222);
 const DATA = path.resolve(process.env.LETOPIS_DATA ?? '/data');
@@ -21,6 +23,7 @@ const PUBLIC = path.join(here, 'public');
 mkdirSync(path.join(DATA, 'archive'), { recursive: true });
 const STATE_FILE = path.join(DATA, 'world.json.gz');
 const store = new Store(path.join(DATA, 'letopis.db'));
+const extras = new Extras(store.db);
 
 function log(...a: unknown[]) {
   console.log(new Date().toISOString(), ...a);
@@ -93,6 +96,8 @@ function tick() {
   try {
     sim.step();
     pendingEvents = sim.events;
+    notify(sim.events, sim.s.worldId);
+    extras.onTick(sim);
     flush();
     sim.events = [];
     // a short chronicle: the last 100 years, plus the great discoveries and moments for ever
@@ -191,6 +196,7 @@ const server = http.createServer((req, res) => {
   const q = (k: string) => (url.searchParams.has(k) ? Number(url.searchParams.get(k)) : undefined);
   const world = sim.s.worldId;
   try {
+    if (extras.handle(req, res, p, sim, json, notifyEnabled)) return;
     if (p === '/api/health') return json(res, { ok: true, world, year: Math.floor(sim.year), population: sim.s.people.length });
     if (p === '/api/world') return json(res, worldInfo);
     if (p === '/api/snapshot') return json(res, snapshot());

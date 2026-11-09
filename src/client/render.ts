@@ -3,6 +3,7 @@ import {
 } from 'pixi.js';
 import { Simplex } from '../shared/noise';
 import { Fauna } from './animals';
+import { LANDMARKS, makeLandmark } from './landmarks';
 import { SECRET_KINDS, SecretSpot, secretSpots } from '../shared/secrets';
 import { B, VILLAGE } from './lang';
 import { Rng } from '../shared/rng';
@@ -1645,7 +1646,9 @@ export class CampSprite {
     // walls make a village a town: stone houses, and a temple once it keeps a calendar
     const town = b.dwelling === 'house' && techs.has('walls') && this.r.atlas.has('townb3');
     const cold = this.r.tempAt(b.x, b.y) < 0.35;
-    const key = `${b.dwelling}${town ? 'T' : ''}:${n}:${b.settled}:${cold}:${props.join(',')}:${Math.round(b.x)},${Math.round(b.y)}`;
+    // the newest few buildings of the later ages (landmarks.ts), only in villages
+    const marks = b.settled ? [...new Set(LANDMARKS.filter(([tech]) => techs.has(tech)).map(([, m]) => m))].slice(-4) : [];
+    const key = `${b.dwelling}${town ? 'T' : ''}:${n}:${b.settled}:${cold}:${props.join(',')}:${marks.join(',')}:${Math.round(b.x)},${Math.round(b.y)}`;
     if (key === this.key) return;
     // homes added since last time are built in four steps; the first look at a camp shows it finished
     const sameKind = this.key.split(':')[0] === `${b.dwelling}${town ? 'T' : ''}` && this.key !== '';
@@ -1690,6 +1693,15 @@ export class CampSprite {
       const q = this.ringSpot(a, rad);
       if (!q) return;
       const s = A.sprite(name);
+      s.position.set(q.x, q.y);
+      s.zIndex = s.y;
+      this.homes.addChild(s);
+    });
+    // landmarks of the later ages stand furthest out, where there is room for them
+    marks.forEach((name, k) => {
+      const q = this.ringSpot((k / Math.max(4, marks.length)) * Math.PI * 2 + 0.9, 54 + (k % 2) * 6);
+      if (!q) return;
+      const s = makeLandmark(name);
       s.position.set(q.x, q.y);
       s.zIndex = s.y;
       this.homes.addChild(s);

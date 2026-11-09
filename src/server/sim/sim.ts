@@ -7,6 +7,7 @@ import { SECRET_COUNT, SECRET_HEROES, SECRET_KINDS, SecretFind } from '../../sha
 import { FEMALE, MALE, bandColor, bandName, fixBandName, familyFrom, nickname, placeName } from './names';
 import { ERAS, TECHS, TECH_BY_ID, Tech, eraOf } from './tech';
 import { LATER_ERA_WHY } from '../../shared/later_techs';
+import { ActKind, EventHost, act, worldEvents } from './events';
 import { BIG, startStage, treeKinds } from '../../shared/trees';
 import { findRoad } from './roads';
 import { BEAST_EN, ERAS_EN, FEATURE_EN, SECRET_HEROES_EN, SECRET_KINDS_EN, TECH_EN, bandEn, bandLabelEn, bandThe, causeEn, chiefEn, deedEn, personEn, translit } from '../../shared/i18n';
@@ -1467,8 +1468,17 @@ export class Simulation {
     }
   }
 
+  /** a small act of a watcher (a blessing, rain, a feast): see events.ts */
+  watcherAct(kind: ActKind): Band | null {
+    const members = new Map<number, Person[]>();
+    for (const b of this.s.bands) members.set(b.id, []);
+    for (const p of this.s.people) members.get(p.bandId)?.push(p);
+    return act(this as unknown as EventHost, kind, members);
+  }
+
   private randomEvents(members: Map<number, Person[]>) {
     if (!this.s.bands.length) return;
+    worldEvents(this as unknown as EventHost, members);
     // a great hunt
     if (this.rng.chance(0.004)) {
       const b = this.rng.pick(this.s.bands);
