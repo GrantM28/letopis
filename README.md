@@ -17,6 +17,8 @@ and a reworked, English-only interface. Upstream changes are merged in from time
 ## Features
 
 - A generated world with relief, rivers, forests, mountains, seasons and snow, drawn in a cozy isometric pixel-art style.
+- **Pixel look** (on by default, the grid button in the toolbar): the map is drawn in chunky pixels with a warm 32-colour palette
+  for a retro 8-bit feel, while names and panels stay sharp. Turn it off for the smooth painted look.
 - Every person has a name, parents, children and traits (strength, wit, curiosity, sociability, health, longevity) that are inherited with small mutations.
 - Clans wander, split, meet, learn from each other, settle into villages and sometimes die out together with their knowledge.
 - Trees grow and get cut for fires and huts; a clan moves on when the wood around its camp is gone.
@@ -119,6 +121,7 @@ Pushing to `main` builds the Docker image with GitHub Actions and publishes it a
 | `src/server/sim/events.ts`, `src/shared/event_words.ts` | the world events and the acts of the watchers |
 | `src/server/sim/relations.ts` | friendship and rivalry between neighbouring clans |
 | `src/client/minimap.ts` | the world map in the corner |
+| `src/client/pixel.ts` | the pixel look: a shader that draws the map in big pixels and pulls colours to the palette |
 | `src/server/extras.ts` | yearly history, records, people list and acts (`/api/history`, `/api/people`, `/api/acts`) |
 | `src/server/notify.ts` | ntfy and webhook notifications |
 | `src/client/main.ts`, `public/` | the page: panels, tabs, cards |

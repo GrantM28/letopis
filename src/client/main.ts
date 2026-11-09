@@ -1023,6 +1023,16 @@ $('#kidsBtn').onclick = () => {
 };
 document.body.classList.toggle('kids', kids);
 $('#kidsBtn').setAttribute('aria-pressed', String(kids));
+// the cozy 8-bit pixel look (pixel.ts), on unless turned off
+let pixelLook = store('letopis.pixel', true);
+r.setPixelLook(pixelLook);
+$('#pixelBtn').setAttribute('aria-pressed', String(pixelLook));
+$('#pixelBtn').onclick = () => {
+  pixelLook = !pixelLook;
+  save('letopis.pixel', pixelLook);
+  r.setPixelLook(pixelLook);
+  $('#pixelBtn').setAttribute('aria-pressed', String(pixelLook));
+};
 let night = store('letopis.night', true);
 r.night = night;
 $('#nightBtn').setAttribute('aria-pressed', String(night));

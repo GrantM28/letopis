@@ -24,6 +24,7 @@ Notes:
 |---|---|---|---|
 | Seasonal snow, fog over unexplored land, night, firelight, trodden ground in camps | Drawn by code in `src/client/render.ts` | the project | own code |
 | Later-age buildings (castle, mills, factory, train, rocket, Moon dome...) | Drawn by code in `src/client/landmarks.ts` | the project (fork) | own code |
+| Pixel look shader and its 32-colour palette | Own GLSL and palette in `src/client/pixel.ts` | the project (fork) | own code |
 | Interface icons | Drawn as inline SVG in `public/index.html` | the project (fork) | own code |
 | Water shader | Own GLSL in `src/client/render.ts` (`WATER_FRAG`) | the project | own code |
 | Simplex noise | Own implementation of Ken Perlin's published algorithm (`src/shared/noise.ts`) | the project | own code |
