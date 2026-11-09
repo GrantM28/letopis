@@ -382,3 +382,10 @@ body.paused .clock-label { color: var(--accent); font-weight: 600; }
 body.paused .tick i { background: var(--muted); }
 
 .dash h4, .dash-narrow h4 { margin: 12px 0 6px; font-size: 13px; color: var(--muted); font-weight: 600; }
+
+/* ---------- the brain, drawn; discovery cards ---------- */
+.brain-net { width: 100%; height: auto; margin: 6px 0 2px; background: rgba(255, 255, 255, 0.02); border-radius: 10px; }
+.brain-net text { font-size: 8.5px; fill: var(--muted); font-family: var(--font); }
+.discoveries li[data-tech] { cursor: pointer; border-radius: 6px; }
+.discoveries li[data-tech]:hover { background: rgba(255, 255, 255, 0.035); }
+.tech-chip.done { color: var(--good); border-color: rgba(108, 195, 138, 0.45); }

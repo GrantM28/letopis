@@ -381,5 +381,8 @@ export function brainView(h: BrainHost, b: Band) {
     generation: br.gen, tried: br.tried, kept: br.kept, score: +br.score.toFixed(2), trying: !!br.trial,
     reactsTo: whatMatters(br).slice(0, 3).map((x) => x.sense),
     network: `${IN} senses → ${HID} neurons → ${OUT} outputs (${PARAMS} weights)`,
+    // the network itself and what it senses now, for drawing it
+    net: br.net, senses: br.senses, shape: { inputs: IN, hidden: HID, outputs: OUT }, senseNames: SENSES,
+    outputNames: [...JOBS, 'give', 'hunt', 'roam'],
   };
 }

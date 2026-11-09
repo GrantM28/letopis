@@ -9,7 +9,8 @@ import type { DatabaseSync } from 'node:sqlite';
 import type { Simulation } from './sim/sim';
 import { ACTS, ACT_COOLDOWN_MIN, ActKind, PRAYER_TTL_MS } from './sim/events';
 import { brainSummary, brainView } from './sim/brain';
-import { causeEn } from '../shared/i18n';
+import { causeEn, personEn, bandTextEn } from '../shared/i18n';
+import { TECHS } from './sim/tech';
 import { relationCounts, relationsOf } from './sim/relations';
 
 type Json = (res: http.ServerResponse, data: unknown, status?: number) => void;
@@ -179,6 +180,22 @@ export class Extras {
       return true;
     }
     if (p === '/api/brains') { json(res, brainSummary(sim as never)); return true; }
+    if (p === '/api/techtree') {
+      // every discovery: what it needs, how many clans know it now, and who found it first
+      const knownBy = new Map<string, number>();
+      for (const b of sim.s.bands) for (const t of b.techs) knownBy.set(t, (knownBy.get(t) ?? 0) + 1);
+      const firsts = new Map((sim.s.firsts ?? []).map((f) => [f.tech, f]));
+      json(res, {
+        clans: sim.s.bands.length,
+        techs: TECHS.map((t) => {
+          const f = firsts.get(t.id);
+          return { id: t.id, era: t.era, year: t.target, prereq: t.prereq, need: t.need, knownBy: knownBy.get(t.id) ?? 0,
+            discovered: sim.s.discovered.includes(t.id),
+            first: f ? { who: personEn(f.name), pid: f.pid, band: bandTextEn(f.band), year: f.year } : null };
+        }),
+      });
+      return true;
+    }
     if (p.startsWith('/api/brain/')) {
       const b = sim.s.bands.find((x) => x.id === Number(p.split('/').pop()));
       json(res, b ? { ...brainView(sim as never, b), inspired: !!sim.s.inspired?.[b.id] } : null, b ? 200 : 404);

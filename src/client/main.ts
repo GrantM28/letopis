@@ -593,40 +593,65 @@ function renderSide() {
     // a narrow filter over only the latest entries can come up empty: reach back a few pages by itself
     if (shown.length < 15 && autoLoads < 4) { autoLoads++; void loadOlder(); }
   } else if (activeTab === 'discoveries') {
-    body.innerHTML = `<p class="muted">${T('Зареждам...', 'Loading...')}</p>`;
-    api<Discovery[]>('/api/discoveries').then((ds) => {
-      if (activeTab !== 'discoveries') return;
-      const known = new Set(ds.map((d) => d.tech));
-      const done = (d: Discovery) => `<li><b>${esc(TECH_ID(d.tech, d.name))}</b> - ${T('открито от', 'discovered by')} ${d.pid ? `<a href="#" class="ref" data-person="${d.pid}">${esc(P(d.who))}</a>` : esc(P(d.who))}${d.band ? ` <span class="muted">(${esc(BL(d.band.replace(/^рода/, 'Родът').replace(/^селото/, 'Селото')))})</span>` : ''} ${T('през', 'in')} <span class="yr">${fmtYear(d.year)}</span></li>`;
-      const byId = new Map(ds.map((d) => [d.tech, d]));
-      // every age with all its discoveries, like the secrets: the ones still to come are grey and only described
-      const eras = [...new Set(TECH_LIST.map(([, , e]) => e))];
-      const todo = ([id, bg]: [string, string, number]) => `<li class="todo"><b>${esc(TECH_ID(id, bg))}</b> - ${esc(TECH_DESC[id]?.[EN ? 1 : 0] ?? T('още не е открито', 'not discovered yet'))}</li>`;
+    body.innerHTML = '<p class="muted">Loading...</p>';
+    void loadTree().then((tree) => {
+      if (activeTab !== 'discoveries' || !tree) return;
+      const known = new Set(tree.techs.filter((t) => t.discovered).map((t) => t.id));
+      const reach = (t: TreeTech) => !t.discovered && t.prereq.every((r) => known.has(r));
+      const filters: [typeof discFilter, string][] = [['all', 'All'], ['done', 'Discovered'], ['reach', 'Within reach'], ['todo', 'Not yet']];
       const pct = (a: number, b: number) => (b ? Math.round((a / b) * 100) : 0);
       body.innerHTML = `<div class="overall">
-          <div class="age-line"><span>${T('Открити знания', 'Discoveries made')}</span><b>${known.size}/${TECH_LIST.length}</b></div>
-          <div class="meter"><i style="width:${pct(known.size, TECH_LIST.length)}%"></i></div>
+          <div class="age-line"><span>Discoveries made</span><b>${known.size}/${tree.techs.length}</b></div>
+          <div class="meter"><i style="width:${pct(known.size, tree.techs.length)}%"></i></div>
+          <div class="age-line" style="margin-top:6px"><span>Within reach now</span><b>${tree.techs.filter(reach).length}</b></div>
         </div>
-        <p class="lead">${T('Всяко знание е открито за първи път от някого в този свят. Сивите още чакат своя откривател.', 'Each one was first found by someone in this world. The grey ones are still waiting for their discoverer.')}</p>
-        ${eras.map((e) => {
-          const list = TECH_LIST.filter(([, , x]) => x === e);
-          const n = list.filter(([id]) => byId.has(id)).length;
-          const state = e === currentEra ? 'current' : n === list.length ? 'done' : n ? 'started' : '';
-          const open = openAges.has(e) || (!openAgesTouched && e === currentEra);
+        <label class="search"><svg class="ic"><use href="#i-search"/></svg>
+          <input id="discSearch" type="search" placeholder="Find a discovery" value="${esc(discQuery)}" autocomplete="off"></label>
+        <div class="chips">${filters.map(([k, n]) => `<button class="chip" data-dfilter="${k}" aria-pressed="${k === discFilter}">${n}</button>`).join('')}</div>
+        <div id="discList"></div>`;
+      const draw = () => {
+        const q = discQuery.trim().toLowerCase();
+        const pass = (t: TreeTech) => (discFilter === 'all' || (discFilter === 'done' && t.discovered) || (discFilter === 'reach' && reach(t)) || (discFilter === 'todo' && !t.discovered))
+          && (!q || techLabel(t.id).toLowerCase().includes(q) || (TECH_DESC[t.id]?.[1] ?? '').toLowerCase().includes(q));
+        const eras = [...new Set(TECH_LIST.map(([, , e]) => e))];
+        const order = new Map(TECH_LIST.map(([id], i) => [id, i]));
+        const searching = !!q || discFilter !== 'all';
+        $('#discList').innerHTML = eras.map((e) => {
+          const all = tree.techs.filter((t) => t.era === e).sort((a, c) => (order.get(a.id) ?? 0) - (order.get(c.id) ?? 0));
+          const list = all.filter(pass);
+          if (!list.length) return '';
+          const n = all.filter((t) => t.discovered).length;
+          const state = e === currentEra ? 'current' : n === all.length ? 'done' : n ? 'started' : '';
+          const open = searching || openAges.has(e) || (!openAgesTouched && e === currentEra);
           return `<details class="tech-age ${state}" data-era="${e}"${open ? ' open' : ''}><summary>
-              <span class="tech-era">${esc(EN ? ERAS_EN[e] : ERAS_BG[e])}${e === currentEra ? ` <span class="tag">${T('сега', 'now')}</span>` : ''}</span>
-              <span class="tech-count">${n}/${list.length}</span>
-              <div class="meter"><i style="width:${pct(n, list.length)}%"></i></div></summary>
-            <ul class="discoveries">${list.map((t) => (byId.has(t[0]) ? done(byId.get(t[0])!) : todo(t))).join('')}</ul></details>`;
-        }).join('')}`;
-      body.querySelectorAll<HTMLDetailsElement>('details.tech-age').forEach((d) => {
-        d.addEventListener('toggle', () => {
-          openAgesTouched = true;
-          const e = Number(d.dataset.era);
-          if (d.open) openAges.add(e); else openAges.delete(e);
+              <span class="tech-era">${esc(eraName(e))}${e === currentEra ? ' <span class="tag">now</span>' : ''}</span>
+              <span class="tech-count">${n}/${all.length}</span>
+              <div class="meter"><i style="width:${pct(n, all.length)}%"></i></div></summary>
+            <ul class="discoveries">${list.map((t) => `<li class="${t.discovered ? '' : reach(t) ? 'todo next' : 'todo'}" data-tech="${t.id}">
+              <b>${esc(techLabel(t.id))}</b>${t.discovered && t.first ? ` - discovered by ${t.first.pid ? `<a href="#" class="ref" data-person="${t.first.pid}">${esc(t.first.who)}</a>` : esc(t.first.who)} in <span class="yr">${fmtYear(t.first.year)}</span>`
+                : ` - ${esc(TECH_DESC[t.id]?.[1] ?? 'not discovered yet')}`}</li>`).join('')}</ul></details>`;
+        }).join('') || '<p class="empty-note">No discovery matches.</p>';
+        $('#discList').querySelectorAll<HTMLDetailsElement>('details.tech-age').forEach((d) => {
+          d.addEventListener('toggle', () => {
+            if (searching) return;
+            openAgesTouched = true;
+            const e = Number(d.dataset.era);
+            if (d.open) openAges.add(e); else openAges.delete(e);
+          });
         });
+      };
+      draw();
+      const input = $('#discSearch') as HTMLInputElement;
+      input.oninput = () => { discQuery = input.value; draw(); };
+      body.querySelectorAll<HTMLButtonElement>('[data-dfilter]').forEach((c) => {
+        c.onclick = () => {
+          discFilter = c.dataset.dfilter as typeof discFilter;
+          body.querySelectorAll('[data-dfilter]').forEach((x) => x.setAttribute('aria-pressed', String(x === c)));
+          draw();
+        };
       });
     });
+
   } else if (activeTab === 'bands') {
     const sorts: [typeof bandSort, string, string][] = [['size', 'Най-големи', 'Largest'], ['knowledge', 'Най-учени', 'Most knowledge'], ['name', 'По име', 'By name']];
     body.innerHTML = `<label class="search"><svg class="ic"><use href="#i-search"/></svg>
@@ -872,6 +897,8 @@ document.querySelectorAll<HTMLButtonElement>('.tab').forEach((b) => {
   b.onclick = () => { activeTab = b.dataset.tab!; save('letopis.tab', activeTab); statsAt = 0; renderSide(); };
 });
 $('#sideBody').addEventListener('click', (e) => {
+  const tech = (e.target as HTMLElement).closest<HTMLElement>('li[data-tech]');
+  if (tech && !(e.target as HTMLElement).closest('[data-person]')) { e.preventDefault(); void showTech(tech.dataset.tech!); return; }
   const el = (e.target as HTMLElement).closest<HTMLElement>('[data-person],[data-band]');
   if (!el) return;
   e.preventDefault();
@@ -1094,6 +1121,7 @@ function showBand(b: BandView) {
         Generation ${br.generation} of its line · ${br.kept} of ${br.tried} tries kept${br.trying ? ' · trying something new this year' : ''}
         · learned from neighbours ${br.copiedKept} of ${br.copied} times · daring ${Math.round(br.step * 100)}%.</p>
       ${br.reactsTo?.length ? `<p class="muted">It reacts most to: <b>${br.reactsTo.map(esc).join('</b>, <b>')}</b>.</p>` : ''}
+      ${brainSvg(br as unknown as BrainNet)}
       <div class="barlist">${Object.entries(br.now).sort((x, y) => y[1] - x[1]).map(([k, v]) => `<div class="barrow"><span class="bl-k">${JOB_NAMES[k] ?? k}</span><span class="bl-v">×${v.toFixed(2)} now · ×${(br.weights[k] ?? 0).toFixed(2)} this year</span>
         <div class="bl-bar"><i style="width:${(v / max) * 100}%;background:${hex(b.color)}"></i></div></div>`).join('')}
         ${b.settled ? '' : `<div class="barrow"><span class="bl-k">Restlessness (moving on before they must)</span><span class="bl-v">${Math.round(br.roam * 100)}%</span>
@@ -1120,6 +1148,80 @@ function showBand(b: BandView) {
       <div><b>${esc(p.name)}</b>${p.chief ? ' <span class="badge village">chief</span>' : ''}<div class="muted">${p.age} y · ${esc(TASK(TASK_NAMES[p.task as keyof typeof TASK_NAMES] ?? p.task))}${p.deeds ? ` · ${p.deeds} deed${p.deeds > 1 ? 's' : ''}` : ''}</div></div></li>`).join('')
       || '<li class="muted">Nobody.</li>';
   }).catch(() => { const el = document.getElementById('bandPeople'); if (el) el.innerHTML = '<li class="muted">Could not load.</li>'; });
+}
+
+// ---------- the discovery tree (fork): a card for every discovery ----------
+
+type TreeTech = { id: string; era: number; year: number; prereq: string[]; need: string | null; knownBy: number; discovered: boolean;
+  first: { who: string; pid: number; band: string; year: number } | null };
+let discQuery = '';
+let discFilter: 'all' | 'done' | 'reach' | 'todo' = 'all';
+async function loadTree() {
+  return api<{ clans: number; techs: TreeTech[] }>('/api/techtree').catch(() => null);
+}
+const NEED_TEXT: Record<string, string> = {
+  flint: 'good stone nearby', clay: 'clay nearby', grain: 'wild grain nearby', wildHerd: 'wild herds nearby', fish: 'a river or the sea', forest: 'a forest', ore: 'ore in the ground',
+};
+
+async function showTech(id: string) {
+  const tree = await loadTree();
+  const t = tree?.techs.find((x) => x.id === id);
+  if (!tree || !t) return;
+  const byId = new Map(tree.techs.map((x) => [x.id, x]));
+  const chip = (x: TreeTech) => `<button class="chip tech-chip ${x.discovered ? 'done' : ''}" data-tech="${x.id}">${x.discovered ? '✓ ' : ''}${esc(techLabel(x.id))}</button>`;
+  const needs = t.prereq.map((r) => byId.get(r)).filter(Boolean) as TreeTech[];
+  const unlocks = tree.techs.filter((x) => x.prereq.includes(id));
+  const ready = needs.every((x) => x.discovered);
+  const share = tree.clans ? t.knownBy / tree.clans : 0;
+  openCard(`<h2>💡 ${esc(techLabel(id))}</h2>
+    <div class="muted">${esc(eraName(t.era))} · in history around ${fmtYear(t.year)}</div>
+    <p class="lead" style="margin-top:10px">${esc(TECH_DESC[id]?.[1] ?? '')}</p>
+    ${t.discovered && t.first ? `<p>First discovered by ${t.first.pid ? `<a href="#" data-person="${t.first.pid}">${esc(t.first.who)}</a>` : esc(t.first.who)}
+        of ${esc(t.first.band)} in <b>${fmtYear(t.first.year)}</b>.</p>`
+      : `<p class="act-note">${ready ? 'Within reach: every clan that knows what it needs may find it any day now.' : 'Not yet: the world still needs what is listed below.'}</p>`}
+    <div class="barrow" style="margin:10px 0"><span class="bl-k">Known by ${t.knownBy} of ${tree.clans} clans</span><span class="bl-v">${Math.round(share * 100)}%</span>
+      <div class="bl-bar"><i style="width:${share * 100}%;background:var(--accent)"></i></div></div>
+    <h3>Needs</h3>${needs.length ? `<div class="chips">${needs.map(chip).join('')}</div>` : '<p class="muted">Nothing: anyone can find it.</p>'}
+    ${t.need ? `<p class="muted">And ${NEED_TEXT[t.need] ?? t.need}.</p>` : ''}
+    <h3>Leads to</h3>${unlocks.length ? `<div class="chips">${unlocks.map(chip).join('')}</div>` : '<p class="muted">Nothing further yet.</p>'}`);
+  document.querySelectorAll<HTMLElement>('#cardBody [data-tech]').forEach((el) => { el.onclick = () => void showTech(el.dataset.tech!); });
+}
+
+// ---------- the brain, drawn (fork): what a clan's neural network looks like ----------
+
+type BrainNet = { net: number[]; senses: number[]; shape: { inputs: number; hidden: number; outputs: number }; senseNames: string[]; outputNames: string[] };
+const SENSE_SHORT = ['spring/autumn', 'winter/summer', 'hunger', 'food stores', 'fruit', 'game', 'fish', 'settled', 'size', 'age', 'warmth'];
+const OUT_LABEL: Record<string, string> = { farm: 'Farming', herd: 'Herding', fish: 'Fishing', craft: 'Crafting', build: 'Building', forage: 'Foraging', give: 'Generosity', roam: 'Restlessness' };
+
+/** an SVG of the network: lines are the weights (green adds, red holds back, thicker is stronger), circles light up with the signal */
+function brainSvg(b: BrainNet): string {
+  const { inputs: I, hidden: H, outputs: O } = b.shape;
+  const net = b.net, x = b.senses;
+  if (!net || !x || net.length !== I * H + H + H * O + O) return '';
+  const hid: number[] = [];
+  for (let j = 0; j < H; j++) { let s = net[I * H + j]; for (let i = 0; i < I; i++) s += net[j * I + i] * x[i]; hid.push(Math.tanh(s)); }
+  const base = I * H + H;
+  const outs: number[] = [];
+  for (let o = 0; o < O; o++) { let s = net[base + H * O + o]; for (let j = 0; j < H; j++) s += net[base + o * H + j] * hid[j]; outs.push(Math.tanh(s / 2)); }
+  // the unused hunting output is left out of the picture
+  const shown = b.outputNames.map((n, o) => [n, o] as const).filter(([n]) => n !== 'hunt');
+  const W = 360, Hh = 250, xi = 92, xh = 180, xo = 268;
+  const yI = (i: number) => 14 + (i * (Hh - 28)) / (I - 1);
+  const yH = (j: number) => 30 + (j * (Hh - 60)) / (H - 1);
+  const yO = (k: number) => 22 + (k * (Hh - 44)) / (shown.length - 1);
+  const line = (x1: number, y1: number, x2: number, y2: number, w: number) => {
+    const a = Math.min(1, Math.abs(w) / 1.5);
+    return `<line x1="${x1}" y1="${y1.toFixed(1)}" x2="${x2}" y2="${y2.toFixed(1)}" stroke="${w >= 0 ? '#6cc38a' : '#d9776f'}" stroke-opacity="${(0.08 + a * 0.6).toFixed(2)}" stroke-width="${(0.4 + a * 1.6).toFixed(2)}"/>`;
+  };
+  const dot = (cx: number, cy: number, v: number) => `<circle cx="${cx}" cy="${cy.toFixed(1)}" r="5" fill="${v >= 0 ? '#e0a84f' : '#7fb2d9'}" fill-opacity="${(0.25 + Math.min(1, Math.abs(v)) * 0.75).toFixed(2)}" stroke="rgba(255,255,255,0.35)" stroke-width="0.6"/>`;
+  let svg = '';
+  for (let j = 0; j < H; j++) for (let i = 0; i < I; i++) svg += line(xi, yI(i), xh, yH(j), net[j * I + i]);
+  shown.forEach(([, o], k) => { for (let j = 0; j < H; j++) svg += line(xh, yH(j), xo, yO(k), net[base + o * H + j]); });
+  for (let i = 0; i < I; i++) svg += dot(xi, yI(i), x[i]) + `<text x="${xi - 9}" y="${(yI(i) + 3.5).toFixed(1)}" text-anchor="end">${SENSE_SHORT[i] ?? ''}</text>`;
+  for (let j = 0; j < H; j++) svg += dot(xh, yH(j), hid[j]);
+  shown.forEach(([n, o], k) => { svg += dot(xo, yO(k), outs[o]) + `<text x="${xo + 9}" y="${(yO(k) + 3.5).toFixed(1)}">${OUT_LABEL[n] ?? n}</text>`; });
+  return `<svg class="brain-net" viewBox="0 0 ${W} ${Hh}" role="img" aria-label="The clan's neural network">${svg}</svg>
+    <div class="legend"><span><i style="background:#6cc38a"></i>adds</span><span><i style="background:#d9776f"></i>holds back</span><span><i style="background:#e0a84f"></i>active now</span></div>`;
 }
 
 // ---------- while you were away ----------

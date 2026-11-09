@@ -53,13 +53,16 @@ and a reworked, English-only interface. Upstream changes are merged in from time
     between hunting and gathering, but every clan learned to over-hunt and the game ran out for all (a tragedy of the commons),
     so that decision was taken back. Brains also found that herding and fishing had no limit and grew villages of 30,000; a pasture
     and a river now feed only so many.
-  Each clan card shows what its brain decided this month, what it reacts to most, and how much it learned from neighbours; the
-  dashboard shows the learning curve and the ways of life that emerged.
+  Each clan card draws its network (green connections add, red hold back, the circles light up with what it senses now) and shows
+  what it decided this month, what it reacts to most, and how much it learned from neighbours; the dashboard shows the learning
+  curve and the ways of life that emerged.
 - **Help the world** (the Help button, or the buttons on a clan's card to help that clan): send a blessing (food), rain,
   call a feast, inspire an inventor (four times the chance of a discovery for two years) or calm a feud. Each power has a
   waiting time shared by everyone watching, and everything is written in the chronicle.
 - **Prayers**: clans in trouble pray: a hungry clan for food, a dry one for rain, a feuding one for peace. Answer them from
   the Help panel (the red number on the Help button counts them); a prayer nobody answers fades after two hours.
+- **Discoveries tab**: search, filters (discovered, within reach now, not yet) and a card for every discovery: what it needs
+  (and from the land), what it leads to, who found it first and when, and how many clans know it now.
 - A living chronicle with filters (important, discoveries, life, clans, nature), clickable people and clans,
   family trees back to the first humans, and every discovery grouped by age with progress bars.
 - **Statistics dashboard**: population and clans over time with the ages marked, births and deaths per year, discoveries over time,
@@ -190,7 +193,7 @@ The finished atlas is in git, so Python is not needed to build the game.
 Added in this fork: `/api/history` (yearly series, causes of death, event counts, records, the ages),
 `/api/people?q=&band=&sort=old|young|name|deeds|children&offset=&limit=` (everyone alive), `/api/relations/:bandId` (a clan's friends and rivals),
 `/api/acts` (powers and open prayers), `POST /api/act/bless|rain|feast|inspire|calm?band=`, `POST /api/prayer/:id` (answer a prayer),
-`/api/brains` and `/api/brain/:bandId` (what the clans learned), `GET/POST /api/time?scale=0|1|2|5|20|100` (pause and speed).
+`/api/brains` and `/api/brain/:bandId` (what the clans learned, with the network itself), `/api/techtree` (every discovery, what it needs, who found it), `GET/POST /api/time?scale=0|1|2|5|20|100` (pause and speed).
 
 `/api/health` works well as a sensor for Home Assistant or any uptime monitor.
 
