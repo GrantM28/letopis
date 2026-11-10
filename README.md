@@ -113,7 +113,10 @@ and a reworked, English-only interface. Upstream changes are merged in from time
 - **Prayers**: clans in trouble pray: a hungry clan for food, a dry one for rain, a feuding one for peace. Answer them from
   the Help panel (the red number on the Help button counts them); a prayer nobody answers fades after two hours.
 - **Discoveries tab**: search, filters (discovered, within reach now, not yet) and a card for every discovery: what it needs
-  (and from the land), what it leads to, who found it first and when, and how many clans know it now.
+  (and from the land), what it leads to, who found it first and when, and how many clans know it now. A new age begins
+  with one discovery (Farming opens the New Stone Age, Bronze the Bronze Age, Iron the Iron Age, and so on), not with
+  most of an age's discoveries, so the tab says which discovery opens the next age, when it came in history and what
+  the world still needs for it, and marks it in the list.
 - A living chronicle with filters (important, **story**, discoveries, life, clans, nature), clickable people and clans,
   family trees back to the first humans. *Story* hides everyday life (moves, weddings, new village elders, quiet deaths, small clan news) and leaves
   the history. A clan's change of way of life is told only once it holds for three periods.
@@ -215,7 +218,21 @@ before `node --disable-warning=ExperimentalWarning dist/server.js`.
 The tests (`tests/`): `techtree` (every discovery and age gate is sound), `english` (nothing the page shows comes out in
 Bulgarian), `determinism` (the same seed makes the same world), `saveload` (a saved and loaded world goes on exactly as one
 that never stopped, brains included), `smoke` (three worlds live 600 years: no dying out, no runaway clan, discoveries made),
-`api` (the server starts and every endpoint answers).
+`api` (the server starts and every endpoint answers), `worldcheck` (a world lives 700 years and is checked every year:
+nothing impossible in it, nothing piling up in the save, every chronicle entry in good English; `tests/invariants.ts`).
+
+The full simulation test, for before a big release (1.61 ran 7 new worlds for 5,000 years each and the dev world on from
+217 BC, with no problems left):
+
+```sh
+npx esbuild tools/fulltest.ts --bundle --platform=node --format=esm --outfile=dist/fulltest.mjs
+node dist/fulltest.mjs 3 5000                       # world 3 from the start for 5,000 years
+node dist/fulltest.mjs --from data/world.json.gz 2000  # a saved world carried on
+node tools/soak.mjs <copy of a data folder> 20      # the real server at x200 for 20 minutes, every endpoint asked again and again
+```
+
+`fulltest` checks every chronicle entry and the whole world every year, saves and reloads every 500 years, and reports
+each kind of problem once; `soak` reports server errors, failed answers, the slowest answers, memory and database size.
 
 Pushing to `main` builds the Docker image with GitHub Actions and publishes it as `ghcr.io/grantm28/letopis:latest`.
 

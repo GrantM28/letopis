@@ -3,6 +3,7 @@ import { TECH_DESC, TECH_LIST } from '../shared/i18n';
 import { fmtYear } from './lang';
 import { $, api, esc, ui } from './kit';
 import { cardHtml, chip as ckChip } from './cardkit';
+import { GATES } from './ages';
 
 /** ages opened in the discoveries tab; until one is touched, only the current age is open */
 const openAges = new Set<number>();
@@ -54,11 +55,23 @@ export function renderDiscoveries(body: HTMLElement) {
     const reach = (t: TreeTech) => !t.discovered && t.prereq.every((r) => known.has(r));
     const filters: [typeof discFilter, string][] = [['all', 'All'], ['done', 'Discovered'], ['reach', 'Within reach'], ['todo', 'Not yet']];
     const pct = (a: number, b: number) => (b ? Math.round((a / b) * 100) : 0);
+    // a new age begins with one discovery, not with most of the age's discoveries: say which one, and how near it is
+    const nextEra = ui.currentEra() + 1;
+    const gateId = GATES.get(nextEra);
+    const gate = gateId ? tree.techs.find((t) => t.id === gateId) : undefined;
+    const missing = gate ? gate.prereq.filter((r) => !known.has(r)).map((r) => ui.techLabel(r)) : [];
+    const nextAge = gate && !gate.discovered ? `<div class="next-age">
+        <div class="age-line"><span>Next age</span><b>${esc(ui.eraName(nextEra))}</b></div>
+        <p>It begins when someone discovers <a href="#" class="ref" data-tech="${gate.id}">${esc(ui.techLabel(gate.id))}</a>
+          (in history around ${fmtYear(gate.year)}). ${missing.length ? `First the world needs ${esc(missing.join(' and '))}.`
+            : `Everything it needs is known${gate.need ? `; a clan also needs ${esc(NEED_TEXT[gate.need] ?? gate.need)}` : ''}, so it can happen any time.`}
+          The other discoveries of an age can come before it.</p></div>` : '';
+
     body.innerHTML = `<div class="overall">
         <div class="age-line"><span>Discoveries made</span><b>${known.size}/${tree.techs.length}</b></div>
         <div class="meter"><i style="width:${pct(known.size, tree.techs.length)}%"></i></div>
         <div class="age-line" style="margin-top:6px"><span>Within reach now</span><b>${tree.techs.filter(reach).length}</b></div>
-      </div>
+      </div>${nextAge}
       <label class="search"><svg class="ic"><use href="#i-search"/></svg>
         <input id="discSearch" type="search" placeholder="Find a discovery" value="${esc(discQuery)}" autocomplete="off"></label>
       <div class="chips">${filters.map(([k, n]) => `<button class="chip" data-dfilter="${k}" aria-pressed="${k === discFilter}">${n}</button>`).join('')}</div>
@@ -82,7 +95,7 @@ export function renderDiscoveries(body: HTMLElement) {
             <span class="tech-count">${n}/${all.length}</span>
             <div class="meter"><i style="width:${pct(n, all.length)}%"></i></div></summary>
           <ul class="discoveries">${list.map((t) => `<li class="${t.discovered ? '' : reach(t) ? 'todo next' : 'todo'}" data-tech="${t.id}">
-            <b>${esc(ui.techLabel(t.id))}</b>${t.discovered && t.first ? ` - discovered by ${t.first.pid ? `<a href="#" class="ref" data-person="${t.first.pid}">${esc(t.first.who)}</a>` : esc(t.first.who)} in <span class="yr">${fmtYear(t.first.year)}</span>`
+            <b>${esc(ui.techLabel(t.id))}</b>${[...GATES].some(([ge, g]) => g === t.id && ge === t.era) ? ' <span class="tag">opens the age</span>' : ''}${t.discovered && t.first ? ` - discovered by ${t.first.pid ? `<a href="#" class="ref" data-person="${t.first.pid}">${esc(t.first.who)}</a>` : esc(t.first.who)} in <span class="yr">${fmtYear(t.first.year)}</span>`
               : ` - ${esc(TECH_DESC[t.id]?.[1] ?? 'not discovered yet')}`}</li>`).join('')}</ul></details>`;
       }).join('') || '<p class="empty-note">No discovery matches.</p>';
       $('#discList').querySelectorAll<HTMLDetailsElement>('details.tech-age').forEach((d) => {
@@ -95,6 +108,7 @@ export function renderDiscoveries(body: HTMLElement) {
       });
     };
     draw();
+    body.querySelectorAll<HTMLElement>('.next-age [data-tech]').forEach((el) => { el.onclick = (ev) => { ev.preventDefault(); void showTech(el.dataset.tech!); }; });
     const input = $('#discSearch') as HTMLInputElement;
     input.oninput = () => { discQuery = input.value; draw(); };
     body.querySelectorAll<HTMLButtonElement>('[data-dfilter]').forEach((c) => {
