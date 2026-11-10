@@ -374,7 +374,7 @@ const FEED_KINDS: Record<string, { bg: string; en: string; kinds?: string[] }> =
 };
 let feedKind = store('letopis.feedKind', store('letopis.onlyBig', false) ? 'big' : 'all');
 if (!FEED_KINDS[feedKind]) feedKind = 'all';
-const EVERYDAY = new Set(['move', 'marriage', 'twins', 'meet', 'learned', 'imitate', 'quarrel', 'aid', 'estranged', 'learn', 'rediscovery', 'merge']);
+const EVERYDAY = new Set(['move', 'marriage', 'twins', 'chief', 'elder', 'meet', 'learned', 'imitate', 'quarrel', 'aid', 'estranged', 'learn', 'rediscovery', 'merge']);
 /** older pages fetched by themselves for the current filter */
 let autoLoads = 0;
 const feedFilter = (e: ChronicleEntry) => {
@@ -518,6 +518,15 @@ $('#sideBody').addEventListener('click', (e) => {
   openRef(el);
 });
 
+/** a person's children; those the chronicle has let go (no children, deeds or partner of their own, long ago: see extras.ts) are counted, not named (fork) */
+function childList(cs: PersonDetail['children']): string {
+  if (!cs.length) return `<span class="muted">${T('няма', 'none')}</span>`;
+  const known = cs.filter((c) => c.name !== '?'), gone = cs.length - known.length;
+  const names = known.map((c) => `<a href="#" data-person="${c.id}" class="${c.alive ? '' : 'dead'}">${esc(P(c.name))}</a>`).join(', ');
+  const rest = gone ? `<span class="muted">${known.length ? ' and ' : ''}${gone} more who left no family of their own</span>` : '';
+  return names + rest;
+}
+
 /** a name was clicked: go there if it still lives, otherwise just tell about it */
 function openRef(el: HTMLElement) {
   const pid = Number(el.dataset.person), bid = Number(el.dataset.band);
@@ -598,7 +607,7 @@ async function showPerson(id: number) {
     <dl class="family">
       <dt>${T('Майка', 'Mother')}</dt><dd>${link(d.mother)}</dd><dt>${T('Баща', 'Father')}</dt><dd>${link(d.father)}</dd>
       <dt>${T('Партньор', 'Partner')}</dt><dd>${link(d.partner)}</dd>
-      <dt>${T('Деца', 'Children')}</dt><dd>${d.children.length ? d.children.map((c) => `<a href="#" data-person="${c.id}" class="${c.alive ? '' : 'dead'}">${esc(P(c.name))}</a>`).join(', ') : `<span class="muted">${T('няма', 'none')}</span>`}</dd>
+      <dt>${T('Деца', 'Children')}</dt><dd>${childList(d.children)}</dd>
     </dl>
     <button class="btn tree-btn" data-tree="${d.id}">${T('Родословие', 'Family tree')}</button>
     ${d.deeds.length ? `<h3>${T('Дела', 'Deeds')}</h3><ul class="deeds">${d.deeds.map((x) => `<li>${esc(DEED(x))}</li>`).join('')}</ul>` : ''}`, beside);

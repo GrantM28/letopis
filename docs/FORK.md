@@ -39,7 +39,7 @@ If a merge from the original conflicts, the conflict should be in one of the hoo
 - Clans split when crowded, and a desperate split at three times the limit (a guard against runaway clans).
 - `watcherAct` / `answerPrayer` for the watchers' powers.
 
-**`src/server/index.ts`**: the time scale (`TIME_SCALES`, `setTimeScale`), throttled broadcasts at high speed, the slow-client guard, `Extras` and `notify` wiring, English logs.
+**`src/server/index.ts`**: query numbers that are not numbers count as not given (a crash on `?limit=abc`), the time scale (`TIME_SCALES`, `setTimeScale`), throttled broadcasts at high speed, the slow-client guard, `Extras` and `notify` wiring, English logs.
 
 **`src/server/sim/tech.ts`**: adds `LATER_TECHS` and `ERA_GATES` to the tech list.
 

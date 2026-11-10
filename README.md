@@ -71,7 +71,7 @@ and a reworked, English-only interface. Upstream changes are merged in from time
 - **Discoveries tab**: search, filters (discovered, within reach now, not yet) and a card for every discovery: what it needs
   (and from the land), what it leads to, who found it first and when, and how many clans know it now.
 - A living chronicle with filters (important, **story**, discoveries, life, clans, nature), clickable people and clans,
-  family trees back to the first humans. *Story* hides everyday life (moves, weddings, quiet deaths, small clan news) and leaves
+  family trees back to the first humans. *Story* hides everyday life (moves, weddings, new village elders, quiet deaths, small clan news) and leaves
   the history. A clan's change of way of life is told only once it holds for three periods.
 - Every discovery grouped by age with progress bars.
 - **Statistics dashboard**: population and clans over time with the ages marked, births and deaths per year, discoveries over time,
@@ -116,6 +116,11 @@ In the **Docker** tab choose **Add Container** and fill in:
 To update, use **Force update** on the container. The world is saved every 2 minutes and when the container stops,
 and continues where it left off after a restart. If humanity dies out, the world is archived in `/data/archive/`
 and a new one begins a minute later.
+
+Disk use: every person who dies is kept for family trees. In a big world that grew to about a gigabyte in two weeks, so
+people who died over 300 years ago with no children, no deeds and no partner are let go a little at a time (they never
+appear in a family tree; their parents' cards count them as "more who left no family of their own"). Space freed this way
+is reused by the database, so an existing big file stops growing for a while rather than shrinking.
 
 ### Settings (environment)
 
