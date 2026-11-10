@@ -17,6 +17,7 @@ If a merge from the original conflicts, the conflict should be in one of the hoo
 | The brain benchmark and long-run probes | `tools/bench.ts`, `tools/bench.mjs`, `tools/longrun.ts`, `tools/switch.ts`, `tools/pasture-probe.ts` |
 | Extra API endpoints, history, settings | `src/server/extras.ts` |
 | Phone / Home Assistant notifications | `src/server/notify.ts` |
+| Daily backups of the world | `src/server/backups.ts` |
 | Page: shared helpers and the doorway into `main.ts` | `src/client/kit.ts` |
 | Page: speed of time (pause, play, fast forward) | `src/client/clock.ts` |
 | Page: ages and the progress bar under the clock | `src/client/ages.ts` |
@@ -42,7 +43,7 @@ If a merge from the original conflicts, the conflict should be in one of the hoo
 - Clans split when crowded, and a desperate split at three times the limit (a guard against runaway clans).
 - `watcherAct` / `answerPrayer` for the watchers' powers.
 
-**`src/server/index.ts`**: the autosave every two minutes packs the world in the background (`saveInBackground`); query numbers that are not numbers count as not given (a crash on `?limit=abc`), the time scale (`TIME_SCALES`, `setTimeScale`), throttled broadcasts at high speed, the slow-client guard, `Extras` and `notify` wiring, English logs.
+**`src/server/index.ts`**: the autosave every two minutes packs the world in the background (`saveInBackground`) and, once a day, keeps that save as a backup (`backups.make`, also at startup); query numbers that are not numbers count as not given (a crash on `?limit=abc`), the time scale (`TIME_SCALES`, `setTimeScale`), throttled broadcasts at high speed, the slow-client guard, `Extras` and `notify` wiring, English logs.
 
 **`src/server/sim/tech.ts`**: adds `LATER_TECHS` and `ERA_GATES` to the tech list.
 

@@ -1,6 +1,6 @@
 // The built server (dist/server.js, so run `npm run build` first) starts with an empty data folder and answers its API.
 import { spawn } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
@@ -31,6 +31,9 @@ export async function api() {
     for (let i = 0; i < 60 && !up; i++) { await wait(250); try { up = (await get('/api/health')).status === 200; } catch { /* not yet */ } }
     if (!up) throw new Error(`the server did not start:\n${log.slice(-800)}`);
     await wait(1500); // a few months
+    // a new server takes its first daily backup at once (backups.ts)
+    const bdir = path.join(data, 'backups');
+    if (!existsSync(bdir) || !readdirSync(bdir).some((n) => n.endsWith('.json.gz'))) bad.push('no backup was taken when the server started');
     const expect: [string, string[]][] = [
       ['/api/health', ['ok', 'year', 'population']], ['/api/world', ['worldId', 'w', 'h']], ['/api/snapshot', ['bands', 'people', 'time']],
       ['/api/history', ['series', 'causes', 'records', 'learning']], ['/api/brains', ['clans', 'styles', 'network']], ['/api/techtree', ['clans', 'techs']],

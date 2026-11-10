@@ -123,6 +123,12 @@ To update, use **Force update** on the container. The world is saved every 2 min
 and continues where it left off after a restart. If humanity dies out, the world is archived in `/data/archive/`
 and a new one begins a minute later.
 
+Backups: once a day (and when the server starts, if the last one is a day old) the world is copied to `/data/backups`,
+with a small note beside it saying the world, its year and how many people lived. The newest 14 are kept (5 to 15 MB
+each). Only the world is copied, not the chronicle database; the admin page (1.52) will roll back to a backup and trim
+the chronicle to match. Until then, to go back by hand: stop the container, copy a backup over `/data/world.json.gz`,
+start it again (the chronicle keeps the entries written after the backup).
+
 Disk use: every person who dies is kept for family trees. In a big world that grew to about a gigabyte in two weeks, so
 people who died over 300 years ago with no children, no deeds and no partner are let go a little at a time (they never
 appear in a family tree; their parents' cards count them as "more who left no family of their own"). Space freed this way
@@ -136,6 +142,8 @@ is reused by the database, so an existing big file stops growing for a while rat
 | `LETOPIS_DATA` | `/data` | where the world, the chronicle (SQLite) and the archive live |
 | `LETOPIS_SPEED` | `1` | time multiplier, only for testing |
 | `LETOPIS_SEED` | random | seed of the first world |
+| `LETOPIS_BACKUPS` | `14` | how many daily backups of the world to keep in `/data/backups` (`0` turns them off) |
+| `LETOPIS_BACKUP_HOURS` | `24` | how often a backup is taken |
 | `LETOPIS_NTFY_URL` | – | an [ntfy](https://ntfy.sh) topic URL (e.g. `https://ntfy.sh/my-letopis`) for phone notifications |
 | `LETOPIS_WEBHOOK_URL` | – | a URL that gets a JSON `POST` for each great moment (e.g. a Home Assistant webhook) |
 | `LETOPIS_NOTIFY_MIN` | `3` | the least importance that is sent: 3 = new ages and first discoveries, 2 = also plagues, wonders, comets and the like |

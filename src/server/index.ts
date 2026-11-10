@@ -11,6 +11,7 @@ import { Discovery, SnapshotMessage, TickMessage, WorldInfo, b64encode } from '.
 import { TECHS } from './sim/tech';
 import { notify, notifyEnabled } from './notify';
 import { Extras } from './extras';
+import { Backups } from './backups';
 
 const PORT = Number(process.env.LETOPIS_PORT ?? 2222);
 const DATA = path.resolve(process.env.LETOPIS_DATA ?? '/data');
@@ -25,6 +26,7 @@ mkdirSync(path.join(DATA, 'archive'), { recursive: true });
 const STATE_FILE = path.join(DATA, 'world.json.gz');
 const store = new Store(path.join(DATA, 'letopis.db'));
 const extras = new Extras(store.db);
+const backups = new Backups(DATA);
 
 function log(...a: unknown[]) {
   console.log(new Date().toISOString(), ...a);
@@ -87,10 +89,19 @@ function saveInBackground() {
   const json = JSON.stringify(sim.serialize());
   const tmp = STATE_FILE + '.bg.tmp';
   const world = sim.s.worldId;
+  const info = { world, year: Math.floor(sim.year), tick: sim.s.tick, people: sim.s.people.length };
   gzip(json, (err, packed) => {
     if (err) { saving = false; log('Error while saving', err); return; }
     // a world that died out meanwhile has been archived: its old picture must not come back
-    writeFile(tmp, packed).then(() => (sim.s.worldId === world && !sim.extinct ? rename(tmp, STATE_FILE) : undefined)).catch((e) => log('Error while saving', e)).finally(() => { saving = false; });
+    writeFile(tmp, packed).then(async () => {
+      if (sim.s.worldId !== world || sim.extinct) return;
+      await rename(tmp, STATE_FILE);
+      // once a day, the save just written is also kept as a backup (fork: backups.ts)
+      if (backups.due()) {
+        const b = await backups.make(STATE_FILE, { ...info, why: 'daily' });
+        if (b) log(`Backup ${b.file} (year ${b.year}, ${b.people} people)`);
+      }
+    }).catch((e) => log('Error while saving', e)).finally(() => { saving = false; });
   });
 }
 
@@ -374,5 +385,10 @@ server.listen(PORT, () => {
   flush();
   sim.events = [];
   save();
+  // a server that restarts often still gets its daily backup: one now if the last is a day old (fork: backups.ts)
+  const info = { world: sim.s.worldId, year: Math.floor(sim.year), tick: sim.s.tick, people: sim.s.people.length };
+  backups.init().then(() => (backups.due() ? backups.make(STATE_FILE, { ...info, why: 'daily' }) : null))
+    .then((b) => { if (b) log(`Backup ${b.file} (year ${b.year}, ${b.people} people)`); })
+    .catch((e) => log('Error while backing up', e));
   tick();
 });
