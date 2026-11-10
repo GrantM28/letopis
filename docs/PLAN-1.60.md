@@ -14,16 +14,18 @@ released on its own (1.51 to 1.59), each one tested and pushed when it is ready.
 
 | Version | What | Size |
 | --- | --- | --- |
-| 1.51 | Daily backups of the world | small |
-| 1.52 | Admin page: backups, roll back, new world from a seed, server health | medium |
-| 1.53 | Cultures on the map | medium |
-| 1.54 | Culture cards and culture news | small |
-| 1.55 | Trade routes between allied villages | medium |
-| 1.56 | History view | medium |
-| 1.57 | Book of the world (print and share) | small |
-| 1.58 | Realms: how they form, on the map, in the chronicle | large |
-| 1.59 | Realms: rulers, succession, what a realm does | medium |
-| 1.60 | Everything together: long run to the Iron Age, speed, polish | medium |
+| 1.51 | Daily backups of the world (done) | small |
+| 1.52 | Admin page: backups, roll back, new world from a seed, server health (done) | medium |
+| 1.53 | Cultures on the map (done) | medium |
+| 1.54 | Culture cards and culture news (done) | small |
+| 1.55 | Kids mode removed (done; not in the first plan) | small |
+| 1.56 | Trade routes between allied villages | medium |
+| 1.57 | History view | medium |
+| 1.58 | Book of the world (print and share) | small |
+| 1.59 | Realms: how they form, on the map, in the chronicle | large |
+| 1.60 | Realms: rulers, succession, what a realm does; then everything together (long run to the Iron Age, speed, polish) | large |
+
+The sections below keep their first numbers: 1.55 trade routes is now 1.56, and so on; 1.59 and 1.60 are one release.
 
 ---
 

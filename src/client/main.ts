@@ -51,7 +51,6 @@ async function api<T>(path: string): Promise<T> {
 
 // ---------- state ----------
 
-let kids = store('letopis.kids', false);
 let tour = store('letopis.tour', false);
 let bands: BandView[] = [];
 let people: PersonRow[] = [];
@@ -236,7 +235,7 @@ function onSnapshot(m: SnapshotMessage) {
   if (m.roads) r.setRoads(m.roads);
   r.setExplored(b64decode(m.explored));
   mini?.setExplored(r.explored);
-  r.updateBands(bands, kids);
+  r.updateBands(bands);
   r.updatePeople(people, bandColors(), 400);
   applyTime(m.time, m.population);
   $('#born').textContent = num(m.totalBorn);
@@ -250,7 +249,7 @@ function onTick(m: TickMessage) {
   if (m.explored) { r.setExplored(b64decode(m.explored)); mini?.setExplored(r.explored); }
   if (m.trees) r.updateTrees(m.trees);
   if (m.roads) r.updateRoads(m.roads);
-  r.updateBands(bands, kids);
+  r.updateBands(bands);
   r.updatePeople(people, bandColors(), m.time.tickMs);
   applyTime(m.time, m.population);
   for (const e of m.events) addEvent(e, true);
@@ -299,7 +298,7 @@ function connect() {
 
 function evText(e: ChronicleEntry): string {
   const src = EN && e.en ? e.en : e;
-  return kids && src.kids ? src.kids : src.text;
+  return src.text;
 }
 
 /** the text with the names of people and bands as blue links */
@@ -769,16 +768,6 @@ function tourStep(now: number) {
   tourHold = now + 15000;
 }
 
-$('#kidsBtn').onclick = () => {
-  kids = !kids;
-  save('letopis.kids', kids);
-  document.body.classList.toggle('kids', kids);
-  $('#kidsBtn').setAttribute('aria-pressed', String(kids));
-  r.updateBands(bands, kids);
-  renderSide();
-};
-document.body.classList.toggle('kids', kids);
-$('#kidsBtn').setAttribute('aria-pressed', String(kids));
 let night = store('letopis.night', true);
 r.night = night;
 $('#nightBtn').setAttribute('aria-pressed', String(night));

@@ -26,7 +26,6 @@
 
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--text); font-family: var(--font); font-size: var(--fs); -webkit-font-smoothing: antialiased; }
-body.kids { --fs: 18px; --side-w: 440px; }
 #stage { position: fixed; inset: 0; }
 #stage canvas { display: block; touch-action: none; cursor: grab; }
 #stage canvas:active { cursor: grabbing; }

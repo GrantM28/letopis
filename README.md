@@ -97,7 +97,6 @@ and a reworked, English-only interface. Upstream changes are merged in from time
   the map button in the toolbar hides it.
 - The top bar shows how far the world is through the discoveries of its age and which age comes next.
 - **Notifications** to your phone (ntfy) or Home Assistant (webhook) when a new age begins or a great first discovery is made.
-- Kids mode with bigger letters and simpler explanations.
 - "While you were away": the highlights since your last visit.
 - Tour mode: the camera wanders the world by itself and stops where something happens. Nice on a TV.
 - 100 tiny secrets hidden around every world.

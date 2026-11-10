@@ -90,8 +90,6 @@ export function translatePage() {
   set('#tourBtn', undefined, 'The camera wanders the world on its own');
   set('#nightBtn .lbl', 'Night');
   set('#nightBtn', undefined, 'Day and night cycle');
-  set('#kidsBtn .lbl', 'Kids mode');
-  set('#kidsBtn', undefined, 'Bigger letters and explanations for children');
   set('#sideToggle .lbl', 'Panel');
   set('#sideToggle', undefined, 'Hide or show the chronicle');
   set('#ageLabel', 'Discoveries of this age');

@@ -863,7 +863,7 @@ export class WorldRenderer {
   /** called after every update of the clans (fork: the culture layer listens) */
   onBands: ((bands: BandView[]) => void) | null = null;
 
-  updateBands(bands: BandView[], kids: boolean) {
+  updateBands(bands: BandView[]) {
     this.onBands?.(bands);
     const seen = new Set<number>();
     this.bandTech.clear();
@@ -875,7 +875,7 @@ export class WorldRenderer {
         c = new CampSprite(this, b);
         this.camps.set(b.id, c);
       }
-      c.update(b, kids);
+      c.update(b);
     }
     for (const [id, c] of this.camps) if (!seen.has(id)) { c.destroy(); this.camps.delete(id); }
     if (this.info) this.updateCleared();
@@ -1620,7 +1620,7 @@ export class CampSprite {
     return null;
   }
 
-  update(b: BandView, kids: boolean) {
+  update(b: BandView) {
     const p = this.r.tileTop(b.x, b.y);
     this.pos = p;
     this.tx = b.x;
@@ -1631,7 +1631,6 @@ export class CampSprite {
     this.glow.position.set(p.x, p.y - 4);
     this.glow.visible = b.hasFire || b.dwelling === 'house';
     this.label.text = b.settlementName ? `${VILLAGE(b.settlementName)} (${b.size})` : `${B(b.name).replace(/^(Родът на|Clan of the) /, '')} (${b.size})`;
-    this.label.style.fontSize = kids ? 16 : 12;
     this.bannerCloth.tint = b.color;
     this.tag.position.set(p.x, p.y - 30);
     if (this.label.text !== this.tagText) {
