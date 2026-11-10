@@ -49,11 +49,14 @@ and a reworked, English-only interface. Upstream changes are merged in from time
   (for wanderers) whether to move on to fresh land before it must.
   - *Learning in a lifetime*: every two years the clan judges a slightly changed network and keeps it only if the clan ate better and
     grew, counting the people who left to found daughter clans as success (an evolution strategy, a gradient-free kind of
-    reinforcement learning). Each clan tunes its own daring: bigger changes while its tries succeed, smaller while they fail.
+    reinforcement learning). Each clan tunes how bold its changes are: bigger while they succeed, smaller while they fail.
   - *Learning from others*: now and then a clan tries a blend of a neighbour's brain that does clearly better, and keeps it only if it works.
   - *Learning over generations*: daughter clans inherit their parents' network with small mutations, and clans whose network fails go
     hungry and die out (neuroevolution).
-  - It is tested: the same worlds with learning switched off grow 10-15% fewer people. An early version also let brains choose
+  - How much it helps, honestly: a 6-world benchmark over 3,000 years found that learning changes how clans
+    live, but worlds with learning switched off grew as many people or more. A fixed plan where every clan herds and fishes beats
+    both by far, so there is a lot left to learn; a new brain where whole cultures learn together is being built on the
+    `brain2` branch (see docs/PLAN-BRAIN-2.md). An early version also let brains choose
     between hunting and gathering, but every clan learned to over-hunt and the game ran out for all (a tragedy of the commons),
     so that decision was taken back. Brains also found that herding and fishing had no limit and grew villages of 30,000; a pasture
     and a river now feed only so many.

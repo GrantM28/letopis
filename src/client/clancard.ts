@@ -31,18 +31,26 @@ export function fillBandCard(b: BandView) {
     $('#bandStyleTag').textContent = br.style + (br.inspired ? ' · inspired' : '');
     const max = Math.max(...Object.values(br.now), ...Object.values(br.weights));
     const c = br.culture;
+    const bold = br.step >= 0.15 ? 'bold' : br.step >= 0.06 ? 'steady' : 'careful';
     const intro = br.brain2 && c
       ? `<p class="lead">This clan belongs to the culture of <b>${esc(c.name)}</b>: ${c.clans.length} clan${c.clans.length === 1 ? '' : 's'} sharing one deep
-        neural network (${esc(br.network)}). Every month it reads the clan's situation and its own memory, and decides how to share the work,
-        how generous to be and when to move on. Every two years each clan of the culture lives with its own small variation of the network,
-        and the culture moves towards the variations that did best.</p>
+        neural network (${esc(br.network)}). Every month it reads 18 senses (the season, hunger, stores, the land around, wood, children and elders,
+        crowding, friends and rivals nearby, how the last two years went) and six memory cells it writes for itself, and decides how the clan
+        shares its work, how generous it is and whether to move on.</p>
+        <p class="muted">How the culture learns: all its clans live two years with one small change to the network, then two years with the opposite
+        change, and the culture keeps moving the way that fed and grew its people better. A culture doing clearly worse than one nearby takes up
+        part of its ways, and a culture grown too big splits in two.</p>
         <p class="muted">${c.steps} learning steps since ${c.since < 0 ? `${-c.since} BC` : `AD ${c.since}`}${c.from ? ` · split from the culture of ${esc(c.from)}` : ''}
-        ${br.lastPeriod !== null && br.lastPeriod !== undefined ? ` · this clan did ${br.lastPeriod >= 0 ? 'better' : 'worse'} than the two years before (${br.lastPeriod >= 0 ? '+' : ''}${br.lastPeriod.toFixed(2)})` : ''}.</p>
+        ${br.lastPeriod !== null && br.lastPeriod !== undefined ? ` · the culture did ${br.lastPeriod >= 0 ? 'better' : 'worse'} than in the two years before (${br.lastPeriod >= 0 ? '+' : ''}${br.lastPeriod.toFixed(2)})` : ''}.</p>
         ${c.clans.length > 1 ? `<p class="muted">Its clans: ${c.clans.slice(0, 14).map((x) => `<a href="#" class="ref" data-band="${x.id}">${esc(x.name)}</a>`).join(', ')}.</p>` : ''}`
-      : `<p class="lead">This clan's brain is a small neural network (${esc(br.network)}). Every month it looks at the clan's situation and
-        decides how to share the work and when to move on; every two years it judges a slightly changed network and keeps it only if the clan ate better and grew.
-        Generation ${br.generation} of its line · ${br.kept} of ${br.tried} tries kept${br.trying ? ' · trying something new this year' : ''}
-        · learned from neighbours ${br.copiedKept} of ${br.copied} times · daring ${Math.round(br.step * 100)}%.</p>`;
+      : `<p class="lead">This clan's brain is a small neural network: 11 senses (the season, hunger, food stores, the fruit, game and fish
+        nearby, warmth, the clan's size, whether it is settled and the age of the world) feed 8 neurons, which decide each month how the clan shares
+        its work between six jobs, how generous it is with friends and, while it wanders, whether to move on early.
+        It learns by trial: it lives two years with a slightly changed copy of its network and keeps the copy only if the clan ate better and grew
+        (people who left to found daughter clans count as growth). Now and then the copy is a blend with a neighbour that is doing better.</p>
+        <p class="muted">Generation ${br.generation} of its line (each daughter clan is one more than the clan it split from)
+        · ${br.kept} of ${br.tried} changes kept${br.copied ? ` · tried a neighbour's ways ${br.copied} time${br.copied === 1 ? '' : 's'}, kept ${br.copiedKept}` : ''}
+        · its changes are ${bold} now (bigger while they work, smaller while they fail).</p>`;
     el.innerHTML = `${intro}
       ${br.reactsTo?.length ? `<p class="muted">It reacts most to: <b>${br.reactsTo.map(esc).join('</b>, <b>')}</b>.</p>` : ''}
       ${br.deep ? deepSvg(br.deep) : brainSvg(br as unknown as BrainNet)}
