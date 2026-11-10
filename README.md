@@ -58,8 +58,9 @@ and a reworked, English-only interface. Upstream changes are merged in from time
     eats from what it spares. The first Brain 2, which judged each clan by its own food, learned to forage hardest, and
     foraging grows the smallest worlds.
   - *How much it helps* (`npm run bench`, worlds lived 2,000 years): on 12 worlds it had never seen, learning cultures
-    averaged **1,215 people against 855** for the same brains frozen (+42%), bigger in 11 of 12. The old Brain 1 learning
-    made worlds *smaller* than frozen brains. The cultures found by themselves that crafting at camp (which spares the
+    averaged **1,215 people against 855** for the same brains frozen (+42%), bigger in 11 of 12. Over 3,000 years on 6 more
+    worlds: **2,783 against 1,480** (+88%, 6 of 6), double Brain 1 (1,352), and ahead of the best hand-written plan
+    (everyone crafts: 2,003). The old Brain 1 learning made worlds *smaller* than frozen brains. The cultures found by themselves that crafting at camp (which spares the
     land and makes every worker more productive) beats foraging. Discoveries keep their historical pace; learning only
     changes how many people the land feeds.
   - Two older lessons: brains once chose between hunting and gathering, and every clan learned to over-hunt until the game

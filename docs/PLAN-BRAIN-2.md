@@ -161,3 +161,31 @@ What this says:
 
 Next options: judge whole cultures against each other (group selection, so a region keeps what it saves), or change the
 game so restraint pays a single clan too (stripped land recovers more slowly, or foraging falls off sooner on worn land).
+
+## What made it work (shipped in 1.50)
+
+The learning itself was never broken: scored on a made-up goal (work given to herding and fishing) the cultures pushed it
+from 34% to 90% in 600 years. What was wrong was **what they were scored on**:
+
+| Fixed plan for every clan (2 worlds, 1,500 years) | People | Food-against-need score |
+| --- | --- | --- |
+| mostly foraging | 334 / 579 (smallest) | highest |
+| even | 489 / 667 | |
+| herd and fish | 745 / 907 | |
+| mostly crafting | 1,104 / 1,412 (biggest) | lowest |
+
+Foraging brings in the most food each month and strips the land; crafting at camp spares the land and makes every worker
+more productive. Land fullness and two-year growth did not tell plans apart either (a settled world sits at its carrying
+capacity). Switching a settled world from the even plan to crafting showed why: about +3% in two years (lost in the noise)
+but +12% in ten. So Brain 2 now scores a culture **only on its growth, over five-year periods**, two-sided (five years with
++noise, five with -noise), and cultures copy neighbours that **grow** faster.
+
+| Benchmark | Learning | Frozen | Won |
+| --- | --- | --- | --- |
+| 12 new worlds, 2,000 years | 1,215 | 855 (+42%) | 11 of 12 |
+| original 6 worlds, 3,000 years | 2,783 | 1,480 (+88%) | 6 of 6 |
+
+Over 3,000 years it also beat Brain 1 (1,352) in 6 of 6 and the best hand-written plan, all-crafting (2,003), in 6 of 6.
+Same 23 discoveries in every world (the ages keep their pace), biggest clan 60. Cost: about 2.5x the simulation time per
+month, from the bigger population. Ways of life are a little less varied (2.1 against 2.2-2.5), since many cultures find
+the same answer.
