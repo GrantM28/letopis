@@ -189,3 +189,15 @@ Over 3,000 years it also beat Brain 1 (1,352) in 6 of 6 and the best hand-writte
 Same 23 discoveries in every world (the ages keep their pace), biggest clan 60. Cost: about 2.5x the simulation time per
 month, from the bigger population. Ways of life are a little less varied (2.1 against 2.2-2.5), since many cultures find
 the same answer.
+
+## Long runs and herding
+
+World 42 lived 7,000 years with Brain 2: 6,148 people at 8,000 BC, then a jump once herding arrives (target 7,900 BC)
+to 14,178 at 7,500 BC and 19,940 at 7,000 BC, then a plateau: 20,644 at 6,500 BC, 20,965 at 6,000 BC. The New Stone Age
+began around 7,150 BC, as in history. Brain 1 jumps at the same point (6,400 to 12,300).
+
+Herding yields the same food anywhere (only a clan's own flock size gives diminishing returns), so herders also work
+snow and bare rock: in a big world half the camps had almost no grass around them. `pasture.ts` makes herds share the
+grass within a day's walk with every herder nearby. Over 5,000 years on 4 worlds it changed final populations in both
+directions (17,002 / 20,894 / 16,583 / 19,940 without, 11,170 / 15,355 / 21,224 / 19,141 with), so it stays an experiment,
+off unless `LETOPIS_PASTURE` is set. With it on, learning cultures reached 11,170 where frozen brains reached 3,433 (world 3).
