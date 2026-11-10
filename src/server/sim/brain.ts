@@ -17,7 +17,7 @@
 import type { Band, Person } from './sim';
 import type { EventHost } from './events';
 import { idx, inBounds } from './world';
-import { BRAIN2_SHAPE, Brain2Part, account2, cultureInfo, cultureSummary, decide2, learn2, moreSenses, neighbourhood, reactsTo2, view2 } from './brain2';
+import { BRAIN2_SHAPE, Brain2Part, account2, cultureInfo, cultureSummary, decide2, learn2, moreSenses, neighbourhood, reactsTo2, reasons2, view2 } from './brain2';
 
 export const JOBS = ['farm', 'herd', 'fish', 'craft', 'build', 'forage'] as const;
 export type JobKey = (typeof JOBS)[number];
@@ -421,6 +421,12 @@ export function brainSummary(h: BrainHost) {
   };
 }
 
+/** the jobs a clan can do (the others make no difference to its work) */
+function canDo(h: BrainHost, b: Band): string[] {
+  const knows = (t: string) => h.hasTech(b, t);
+  return JOBS.filter((j) => (j === 'farm' ? knows('agriculture') && b.settled : j === 'herd' ? knows('herding') : j === 'fish' ? knows('fishing') : j === 'craft' ? knows('stone_tools') : j === 'build' ? b.settled && knows('mudbrick') : true));
+}
+
 /** for a clan card */
 export function brainView(h: BrainHost, b: Band) {
   const br = h.s.brains?.[b.id];
@@ -437,6 +443,10 @@ export function brainView(h: BrainHost, b: Band) {
     copied: br.copied ?? 0, copiedKept: br.copiedKept ?? 0, step: +(br.sigma ?? SIGMA_TRIAL).toFixed(3),
     generation: br.gen, tried: br.tried, kept: br.kept, score: +br.score.toFixed(2), trying: !!br.trial,
     reactsTo: BRAIN2 ? reactsTo2(h as never, br) : whatMatters(br).slice(0, 3).map((x) => x.sense),
+    // 1.60: what the clan can do, and the reasons behind its decisions in words
+    can: canDo(h, b),
+    reasons: BRAIN2 ? reasons2(h as never, br, new Set(canDo(h, b)), !b.settled) : [],
+    senseNames: BRAIN2 ? BRAIN2_SHAPE.senses.slice(0, 18) : SENSES,
     network: BRAIN2 ? `${BRAIN2_SHAPE.layers.join(' → ')}, ${BRAIN2_SHAPE.weights.toLocaleString('en')} weights` : `${IN} senses → ${HID} neurons → ${OUT} outputs (${PARAMS} weights)`,
     brain2: BRAIN2,
     culture: BRAIN2 ? cultureInfo(h as never, br) : null,
@@ -444,7 +454,7 @@ export function brainView(h: BrainHost, b: Band) {
     lastPeriod: br.imp ?? null,
     deep: deep ? { layers: BRAIN2_SHAPE.layers, acts: deep.acts, net: deep.net, senseNames: BRAIN2_SHAPE.senses, outputNames: BRAIN2_SHAPE.outputs } : null,
     // the network itself and what it senses now, for drawing it
-    net: br.net, senses: br.senses, shape: { inputs: IN, hidden: HID, outputs: OUT }, senseNames: SENSES,
+    net: br.net, senses: br.senses, shape: { inputs: IN, hidden: HID, outputs: OUT },
     outputNames: [...JOBS, 'give', 'hunt', 'roam'],
   };
 }

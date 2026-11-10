@@ -522,3 +522,66 @@ export function cultureInfo(h: Host, br: B2) {
   const from = c.from !== undefined ? h.s.cultures?.[c.from] : undefined;
   return { id: c.id, name: c.name ?? `Culture ${c.id}`, steps: c.gen, score: c.score, since: c.since, from: from ? from.name ?? `Culture ${from.id}` : null, clans };
 }
+
+// ---------- the Brain tab's "why" (1.60) ----------
+
+/** each sense said both ways: what it means when it rises, and when it falls */
+const SAY: Record<string, [string, string]> = {
+  'spring/autumn': ['in spring', 'in autumn'], 'winter/summer': ['in winter', 'in summer'],
+  hunger: ['when they go hungry', 'when they are well fed'], 'food stores': ['when their stores fill up', 'when their stores run low'],
+  fruit: ['when the fruit around them is thick', 'when the fruit around them thins out'], game: ['when game is plentiful', 'when game grows scarce'],
+  fish: ['when the waters teem with fish', 'when the waters are fished out'], warmth: ['when it is warm', 'when it is cold'],
+  wood: ['when there is wood all around', 'when wood runs short'], size: ['as the clan grows', 'as the clan shrinks'],
+  children: ['with many children about', 'with few children about'], elders: ['with many elders', 'with few elders'],
+  crowding: ['when neighbours crowd in', 'when the land around empties'], 'friends near': ['with friends nearby', 'with no friends nearby'],
+  'rivals near': ['with rivals nearby', 'with no rivals nearby'], 'last period': ['after five good years', 'after five hard years'],
+};
+const DO: Record<string, [string, string]> = {
+  farm: ['they farm more', 'they farm less'], herd: ['they herd more', 'they herd less'], fish: ['they fish more', 'they fish less'],
+  craft: ['they craft more', 'they craft less'], build: ['they build more', 'they build less'], forage: ['they hunt and gather more', 'they hunt and gather less'],
+  give: ['they share more with friends', 'they share less with friends'], roam: ['they move on sooner', 'they stay put longer'],
+};
+const OUTS = ['farm', 'herd', 'fish', 'craft', 'build', 'forage', 'give', 'hunt', 'roam'];
+
+/** the strongest reasons behind a clan's decisions right now, in words: each sense is nudged up and down and the
+ *  decision it moves most is told ("When their stores run low, they fish more"). Only the jobs the clan can do count. */
+export function reasons2(h: Host, br: B2, can: Set<string>, wanders: boolean): { text: string; up: boolean; strength: number }[] {
+  const c = cultureOf(h, br);
+  if (!c || !br.senses) return [];
+  const w = weightsOf(h, br, c);
+  const mem = br.mem ?? new Array(MEM).fill(0);
+  const outs = (x: number[]) => {
+    const o = decisions(forward2(w, x.concat(mem))[3]).out;
+    // the jobs as shares of the jobs it can do; generosity and restlessness as they are
+    const jobs = o.slice(0, JOBN).map((v, k) => (can.has(OUTS[k]) ? v : 0));
+    const t = jobs.reduce((a, v) => a + v, 0) || 1;
+    return [...jobs.map((v) => v / t), o[O_GIVE], 0, wanders ? o[O_ROAM] : 0];
+  };
+  const base = outs(br.senses);
+  const found: { text: string; up: boolean; strength: number; sense: number }[] = [];
+  SENSES2.forEach((name, i) => {
+    const say = SAY[name];
+    if (!say) return;
+    for (const dir of [1, -1]) {
+      const x = br.senses!.slice();
+      x[i] += dir * 0.35;
+      const o = outs(x);
+      let best = -1, bd = 0;
+      o.forEach((v, k) => { if (OUTS[k] !== 'hunt' && Math.abs(v - base[k]) > Math.abs(bd)) { bd = v - base[k]; best = k; } });
+      if (best < 0 || Math.abs(bd) < 0.015) continue;
+      const when = say[dir > 0 ? 0 : 1];
+      const does = DO[OUTS[best]][bd > 0 ? 0 : 1];
+      found.push({ text: `${when[0].toUpperCase()}${when.slice(1)}, ${does}.`, up: bd > 0, strength: Math.abs(bd), sense: i });
+    }
+  });
+  // the strongest few, one per sense; the work comes first, generosity and restlessness at most once each
+  const seen = new Set<string>();
+  let side = 0;
+  return found.sort((a, b) => b.strength - a.strength).filter((r) => {
+    // one direction per sense (warm and cold say the same thing), the stronger one
+    if (seen.has(String(r.sense))) return false;
+    if (/share|move on|stay put/.test(r.text)) { if (side >= 1) return false; side++; }
+    seen.add(String(r.sense));
+    return true;
+  }).slice(0, 5).map((r) => ({ text: r.text, up: r.up, strength: Math.round(r.strength * 100) / 100 }));
+}

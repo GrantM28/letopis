@@ -17,7 +17,7 @@ import { clockFromServer } from './clock';
 import { GATES, eraName, knownNow, techLabel, updateAgeProgress } from './ages';
 import { initHelp } from './help';
 import { renderPeople } from './people';
-import { fillBandCard } from './clancard';
+import { showClanCard } from './clancard';
 import { renderStats, resetStats } from './dashboard';
 import { renderDiscoveries, showTech } from './discoveries';
 import {
@@ -706,40 +706,22 @@ async function showTree(id: number) {
 }
 
 function showBand(b: BandView) {
+  // the card itself lives in clancard.ts (1.60); this hands over what the page already knows this month
   const members = people.filter((p) => p[4] === b.id);
-  const kidsN = members.filter((p) => p[5] < 12).length;
-  const eldersN = members.filter((p) => p[5] >= 60).length;
   const tasks = new Map<string, number>();
+  // the working grown-ups and their daytime work (children, elders and the chief are counted on the card already)
   for (const p of members) {
-    const t = TASK(r.nightTask(p[0], p[3]) ?? TASK_NAMES[TASKS[p[3]]]);
+    const k = TASKS[p[3]];
+    if (k === 'child' || k === 'elder' || k === 'lead') continue;
+    const t = TASK(TASK_NAMES[k]);
     tasks.set(t, (tasks.get(t) ?? 0) + 1);
   }
-  const hex = (c: number) => `#${c.toString(16).padStart(6, '0')}`;
   const knownIds = new Set(b.techIds ?? []);
   const eraOfBand = Math.max(0, ...[...GATES].filter(([, g]) => knownIds.has(g)).map(([e]) => e));
-  const taskTotal = members.length || 1;
-  openCard(`
-    <h2><span class="dot" style="background:${hex(b.color)}"></span> ${esc(b.settlementName ? VILLAGE(b.settlementName) : B(b.name))}</h2>
-    <div class="muted">${b.settlementName ? `${esc(B(b.name))} · ` : ''}since ${fmtYear(b.founded)} · ${b.settled ? 'settled' : 'wandering the land'} · ${eraName(eraOfBand)}</div>
-    ${b.chief ? `<div>${esc(CHIEF(b.chief.title))}: <a href="#" data-person="${b.chief.id}">${esc(P(b.chief.name))}</a></div>` : ''}
-    ${originHtml(b.founder, b.from)}
-    <div class="kpis kpis-4"><div><span>People</span><b>${b.size}</b></div><div><span>Children</span><b>${kidsN}</b></div>
-      <div><span>Elders</span><b>${eldersN}</b></div><div><span>Food</span><b>${b.food}</b></div></div>
-    <div class="help-row" id="bandHelp">
-      <button class="btn" data-help="bless" title="Food for this clan">🌟 Bless</button>
-      <button class="btn" data-help="rain" title="Rain over their land">🌧️ Rain</button>
-      <button class="btn" data-help="inspire" title="Four times the chance of a discovery for two years">💭 Inspire</button>
-      <button class="btn" data-help="feast" title="They invite their neighbours">🍖 Feast</button>
-      <button class="btn" data-help="calm" title="Make peace with their rivals">🕊️ Calm</button>
-    </div>
-    <p class="act-note" id="bandHelpNote" hidden></p>
-    <h3>Way of life <small id="bandStyleTag"></small></h3><div id="bandBrain" class="muted">Loading…</div>
-    <h3>Friends and rivals</h3><div id="bandRel" class="muted">Loading…</div>
-    <h3>What they are doing</h3><div class="barlist">${[...tasks].sort((a, c) => c[1] - a[1]).map(([t, n]) => `<div class="barrow"><span class="bl-k">${esc(t)}</span><span class="bl-v">${n}</span>
-      <div class="bl-bar"><i style="width:${(n / taskTotal) * 100}%;background:${hex(b.color)}"></i></div></div>`).join('')}</div>
-    <h3>What they know <small>${b.techs.length}</small></h3><div class="techs">${b.techs.map((t) => `<span class="pill">${esc(TECH(t))}</span>`).join('') || '<span class="muted">Nothing yet</span>'}</div>
-    <h3>The people</h3><ul class="people" id="bandPeople"><li class="muted">Loading…</li></ul>`);
-  fillBandCard(b);
+  void showClanCard(b, {
+    children: members.filter((p) => p[5] < 12).length, elders: members.filter((p) => p[5] >= 60).length,
+    tasks: [...tasks], era: eraName(eraOfBand), origin: originHtml(b.founder, b.from),
+  });
 }
 
 // ---------- while you were away ----------

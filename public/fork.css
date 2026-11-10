@@ -213,3 +213,35 @@ a.ck-chip:hover { border-color: var(--accent); text-decoration: none; }
 .ck-note { color: var(--muted); font-size: 13px; }
 @media (max-width: 560px) { .ck-stats-4 { grid-template-columns: repeat(2, 1fr); } .ck-name h2 { font-size: 21px; } }
 #cardBody > :first-child:not(.ck-head) { margin-top: 20px; }
+
+/* ---------- 1.60: the clan card's Brain tab ---------- */
+.leans, .gauges { display: grid; gap: 7px; }
+.gauges { margin-top: 12px; }
+.lean, .gauge { display: grid; grid-template-columns: 150px 1fr 92px; gap: 10px; align-items: center; font-size: 14px; }
+.lean b, .gauge b { font-weight: 600; font-size: 13px; text-align: right; color: var(--text); }
+.lean .bl-bar, .gauge .bl-bar { margin: 0; grid-column: auto; height: 8px; }
+.reasons { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; }
+.reasons li { display: flex; gap: 10px; align-items: baseline; padding: 7px 10px; border-radius: 10px; background: var(--panel-raised); }
+.arrow { font-size: 11px; }
+.arrow.up { color: #6cc38a; } .arrow.down { color: #d9776f; }
+.senses { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px 18px; }
+.sense-group h4 { margin: 0 0 4px; font-size: 12px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; }
+.sense { display: grid; grid-template-columns: 112px 1fr; gap: 8px; align-items: center; font-size: 13px; margin: 3px 0; }
+.sense-bar { position: relative; height: 7px; border-radius: 4px; background: rgba(255, 255, 255, 0.07); overflow: hidden; }
+.sense-bar i { position: absolute; top: 0; bottom: 0; background: var(--accent); border-radius: 4px; }
+.sense-bar.two::after { content: ''; position: absolute; left: 50%; top: -2px; bottom: -2px; width: 1px; background: rgba(255, 255, 255, 0.35); }
+.memory { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 12px; font-size: 13px; }
+.memory > span { color: var(--muted); margin-right: 4px; }
+.memory i { width: 14px; height: 14px; border-radius: 50%; display: inline-block; }
+.memory small { flex-basis: 100%; color: var(--faint); font-size: 12px; }
+#netHolder { margin-top: 10px; }
+@media (max-width: 560px) { .lean, .gauge { grid-template-columns: 1fr 1fr 80px; } .senses { grid-template-columns: 1fr; } }
+
+/* 1.60: the readable network (netview.ts) */
+svg.brain-net.readable { width: 100%; height: auto; }
+svg.brain-net.readable text { font-size: 12px; fill: var(--text); font-family: system-ui, sans-serif; }
+svg.brain-net.readable text.net-group { font-size: 10px; fill: var(--muted); letter-spacing: 0.08em; font-weight: 700; }
+svg.brain-net.readable text.net-col { font-size: 11px; fill: var(--faint); }
+svg.brain-net.readable .net-out { cursor: pointer; }
+svg.brain-net.readable.focus line { stroke-opacity: 0.06; }
+svg.brain-net.readable.focus line.lit { stroke-opacity: 0.9; }

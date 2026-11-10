@@ -114,6 +114,8 @@ export interface BandView {
   dwelling: 'none' | 'tent' | 'hut' | 'house';
   /** the culture the clan belongs to (fork: brain2.ts), for the map's culture layer */
   culture?: number;
+  /** how well fed the clan has been lately (1 = just enough; 1.60 clan card) */
+  fed?: number;
 }
 
 /** compact person: [id, x*10, y*10, taskIndex, bandId, ageYears, sex(0 m,1 f), chief(1) or not(0)] */

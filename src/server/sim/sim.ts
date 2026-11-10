@@ -1640,6 +1640,7 @@ export class Simulation {
       hasFire: this.hasTech(b, 'fire'),
       dwelling: this.hasTech(b, 'mudbrick') ? 'house' : b.settled ? 'hut' : this.hasTech(b, 'shelter') ? 'tent' : 'none',
       culture: this.s.brains?.[b.id]?.culture,
+      fed: Math.round((b.fed ?? 1) * 100) / 100,
     }));
   }
 
