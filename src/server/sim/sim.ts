@@ -1258,20 +1258,23 @@ export class Simulation {
     if (!this.campable(c) || t.height[c] > 0.62) return -1;
     // a new camp must be reachable: across water only with boats
     if (!this.reachable(self, x, y)) return -1;
+    // (squared distances: the same answers as Math.hypot for these whole-tile positions, several times faster in a big world; fork)
     for (const o of this.s.bands) {
       if (o.id === self.id) continue;
-      if (Math.hypot(o.cx - x, o.cy - y) < 7) return -1;
+      const dx = o.cx - x, dy = o.cy - y;
+      if (dx * dx + dy * dy < 49) return -1;
       // a place another chief is already walking to is taken
-      if (o.scout && Math.hypot(o.scout.x - x, o.scout.y - y) < 7) return -1;
+      if (o.scout) { const sx = o.scout.x - x, sy = o.scout.y - y; if (sx * sx + sy * sy < 49) return -1; }
     }
     // a new camp needs wood: at least five big trees close by
     const big = this.treesNear(x, y, 4, BIG);
     if (big < 5) return -1;
     let s = Math.min(12, big) * 0.3;
+    const fishes = this.hasTech(self, 'fishing');
     for (let oy = -R; oy <= R; oy += 2) for (let ox = -R; ox <= R; ox += 2) {
       if (!inBounds(x + ox, y + oy)) continue;
       const i = idx(x + ox, y + oy);
-      s += t.plants[i] + t.game[i] * 1.2 + (this.hasTech(self, 'fishing') ? t.fish[i] * 0.8 : 0);
+      s += t.plants[i] + t.game[i] * 1.2 + (fishes ? t.fish[i] * 0.8 : 0);
     }
     const temp = t.temp[c];
     if (temp < 0.3) s *= this.hasTech(self, 'clothing') ? 0.85 : 0.5;
@@ -1433,6 +1436,9 @@ export class Simulation {
     for (let i = 0; i < bands.length; i++) {
       for (let j = i + 1; j < bands.length; j++) {
         const a = bands[i], b = bands[j];
+        // nobody reaches further than 32 tiles: far pairs are passed over before any lookups (fork: most pairs, in a big world)
+        const ex = a.cx - b.cx, ey = a.cy - b.cy;
+        if (ex * ex + ey * ey > 1024) continue;
         const d = dist(a, b);
         // horses and carts bring far neighbours together
         const reach = this.hasTech(a, 'railway') || this.hasTech(b, 'railway') ? 32 : this.hasTech(a, 'horse') || this.hasTech(b, 'horse') ? 24 : 16;
