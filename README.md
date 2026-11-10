@@ -69,6 +69,10 @@ and a reworked, English-only interface. Upstream changes are merged in from time
   Each clan card names its culture and its clans and draws the network (both hidden layers, the memory cells in purple,
   green connections add, red hold back, circles light up with what it senses now); the dashboard lists the cultures.
   `LETOPIS_BRAIN=1` brings back Brain 1 (one small network per clan) for comparisons.
+- **Cultures on the map**: the **Cultures** button colours the land around every clan in its culture's colour, so you can
+  watch schools of thought spread, split and take up each other's ways. A daughter culture is a shade of the one it split
+  from, so families of cultures look related. Zoomed out, each culture of four or more clans shows its name and the clans'
+  own name tags step back; the world map in the corner colours its dots by culture too.
 - **Help the world** (the Help button, or the buttons on a clan's card to help that clan): send a blessing (food), rain,
   call a feast, inspire an inventor (four times the chance of a discovery for two years) or calm a feud. Each power has a
   waiting time shared by everyone watching, and everything is written in the chronicle.

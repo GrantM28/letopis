@@ -28,6 +28,7 @@ If a merge from the original conflicts, the conflict should be in one of the hoo
 | Page: People tab | `src/client/people.ts` |
 | Page: clan card (help, brain, friends, people) | `src/client/clancard.ts`, `src/client/brainview.ts` |
 | Page: minimap, landmarks | `src/client/minimap.ts`, `src/client/landmarks.ts` |
+| Page: cultures on the map (the Cultures button) | `src/client/cultures.ts`, `src/client/culturelayer.ts` |
 | Styles | `public/fork.css` (loaded after `style.css`) |
 | Tests | `tests/` (`npm test`; CI runs them before building the image) |
 | Plans | `docs/PLAN-*.md` |
@@ -41,6 +42,7 @@ If a merge from the original conflicts, the conflict should be in one of the hoo
 - Each month: `brainStep`, `relationsStep`, `worldEvents`, `prayersStep`; jobs are steered by `steerJobs`, restless moves by `wantsToMove`, camp moves told by `announceMove`.
 - Food: `laterFarming()` (later farming techs), diminishing returns for herding and fishing, spoilage reduced by canning/refrigeration, medicine chain for longevity.
 - Herding: `herdF` is multiplied by `pastureShare()` (1 unless the pasture experiment is on).
+- `bandViews()` adds each clan's `culture`.
 - Clans split when crowded, and a desperate split at three times the limit (a guard against runaway clans).
 - `watcherAct` / `answerPrayer` for the watchers' powers.
 
@@ -52,9 +54,9 @@ If a merge from the original conflicts, the conflict should be in one of the hoo
 
 **`src/shared/rng.ts`**: the dice update their state in place (same numbers, less garbage).
 
-**`src/shared/types.ts`**: `scale` on the time message.
+**`src/shared/types.ts`**: `scale` on the time message; `culture` on a clan.
 
-**`src/client/render.ts`**: landmarks, crisp pixel-art sprite pages.
+**`src/client/render.ts`**: landmarks, crisp pixel-art sprite pages, `onBands` (called after every update of the clans).
 
 **`src/client/lang.ts`**: English only.
 

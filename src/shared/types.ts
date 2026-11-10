@@ -112,6 +112,8 @@ export interface BandView {
   founded: number; // year
   hasFire: boolean;
   dwelling: 'none' | 'tent' | 'hut' | 'house';
+  /** the culture the clan belongs to (fork: brain2.ts), for the map's culture layer */
+  culture?: number;
 }
 
 /** compact person: [id, x*10, y*10, taskIndex, bandId, ageYears, sex(0 m,1 f), chief(1) or not(0)] */

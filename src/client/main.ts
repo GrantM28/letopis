@@ -6,6 +6,7 @@ import {
 import { SECRET_COUNT, SecretFind, SecretSpot } from '../shared/secrets';
 import { ERAS_BG, ERAS_EN, TECH_LIST } from '../shared/i18n';
 import { Minimap } from './minimap';
+import { initCultures } from './cultures';
 import { setUi } from './kit';
 import { clockFromServer } from './clock';
 import { GATES, eraName, knownNow, techLabel, updateAgeProgress } from './ages';
@@ -844,6 +845,7 @@ const seenBefore = store<number>(`letopis.seen.${worldId}`, 0);
 r.setWorld(info);
 mini = new Minimap($('#minimap') as HTMLCanvasElement, info);
 mini.onPick = (x, y) => { stopTour(); follow = null; lookAt(x, y); };
+initCultures(r, mini, () => cam.zoom);
 api<{ found: SecretFind[] }>('/api/secrets').then((s) => r.setSecrets(s.found.map((f) => f.k))).catch(() => r.setSecrets([]));
 const snap = await api<SnapshotMessage>('/api/snapshot');
 onSnapshot(snap);

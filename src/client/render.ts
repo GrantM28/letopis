@@ -860,7 +860,11 @@ export class WorldRenderer {
 
   // ---------- living things ----------
 
+  /** called after every update of the clans (fork: the culture layer listens) */
+  onBands: ((bands: BandView[]) => void) | null = null;
+
   updateBands(bands: BandView[], kids: boolean) {
+    this.onBands?.(bands);
     const seen = new Set<number>();
     this.bandTech.clear();
     for (const b of bands) {

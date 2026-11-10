@@ -1630,6 +1630,7 @@ export class Simulation {
       founded: Math.floor(yearOf(b.founded)),
       hasFire: this.hasTech(b, 'fire'),
       dwelling: this.hasTech(b, 'mudbrick') ? 'house' : b.settled ? 'hut' : this.hasTech(b, 'shelter') ? 'tent' : 'none',
+      culture: this.s.brains?.[b.id]?.culture,
     }));
   }
 

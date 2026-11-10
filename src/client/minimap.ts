@@ -77,6 +77,9 @@ export class Minimap {
   }
 
   /** corners: the four screen corners as tiles */
+  /** a colour for a clan's dot instead of its own (fork: the culture layer); null keeps the clan's colour */
+  colorOf: ((b: BandView) => string | null) | null = null;
+
   draw(bands: BandView[], corners: { x: number; y: number }[], selected: number | null) {
     const dpr = this.fit();
     const g = this.canvas.getContext('2d')!;
@@ -89,7 +92,7 @@ export class Minimap {
     for (const b of bands) {
       const p = this.toMini(b.x, b.y);
       const r = b.settled ? 3 : 2;
-      g.fillStyle = `#${b.color.toString(16).padStart(6, '0')}`;
+      g.fillStyle = this.colorOf?.(b) ?? `#${b.color.toString(16).padStart(6, '0')}`;
       g.strokeStyle = b.id === selected ? '#ffffff' : 'rgba(0,0,0,0.6)';
       g.lineWidth = b.id === selected ? 2 : 1;
       g.beginPath();

@@ -71,6 +71,8 @@ export interface Culture {
   from?: number;
   /** the clan it is named after */
   name?: string;
+  /** its colour on the map (a hue, 0..360): a daughter culture takes a shade of its parent's */
+  hue?: number;
   /** this pair of periods: which noise, which side now, and how the + side did */
   trial?: { key: number; sign: number; plus?: number };
   /** people when this period began */
@@ -248,7 +250,7 @@ function joinCulture(h: Host, b: Band, br: B2): Culture {
   // the culture starts from its clans' old habits (their average job weights and generosity)
   const avgW = [0, 1, 2, 3, 4, 5].map((k) => all.reduce((a, x) => a + (x.w?.[k] ?? 1), 0) / all.length);
   const avgG = all.reduce((a, x) => a + (x.give ?? 0.5), 0) / all.length;
-  const c: Culture = { id, net: newCultureNet(h.s.seed, id, avgW, avgG), gen: 0, score: 0, since: Math.floor(h.year), name: h.bandEnLabel(b) };
+  const c: Culture = { id, net: newCultureNet(h.s.seed, id, avgW, avgG), gen: 0, score: 0, since: Math.floor(h.year), name: h.bandEnLabel(b), hue: hueOf(h.s.seed, id) };
   cs[id] = c;
   for (const x of all) x.culture = id;
   return c;
@@ -397,7 +399,11 @@ function splitCulture(h: Host, c: Culture, bands: Band[], members: Map<number, P
   const brains = (h.s.brains ?? {}) as Record<number, B2>;
   const cs = h.s.cultures!;
   const id = (h.s.cultureSeq = (h.s.cultureSeq ?? 0) + 1);
+  // the daughter's colour: a shade of the parent's, turned a little one way or the other
+  const parentHue = c.hue ?? hueOf(h.s.seed, c.id);
+  const turn = (hash(h.s.seed, id, 7) % 2 ? 1 : -1) * (24 + (hash(h.s.seed, id, 8) % 18));
   const nc: Culture = { id, net: c.net.slice(), mom: c.mom?.slice(), gen: c.gen, score: c.score, since: Math.floor(h.year), from: c.id, name: h.bandEnLabel(b),
+    hue: (((parentHue + turn) % 360) + 360) % 360,
     trial: c.trial ? { ...c.trial } : undefined, last: c.last };
   cs[id] = nc;
   let moved = 0;
@@ -410,6 +416,20 @@ function splitCulture(h: Host, c: Culture, bands: Band[], members: Map<number, P
 }
 
 // ---------- for the page ----------
+
+/** a first culture's colour, from the world's seed (cultures from before 1.53 get theirs the same way) */
+export function hueOf(seed: number, id: number): number {
+  return hash(seed, id, 3) % 360;
+}
+
+/** every culture with a clan, for the map: name, colour, parent, size (fork, 1.53) */
+export function cultureMap(h: Host) {
+  const brains = (h.s.brains ?? {}) as Record<number, B2>;
+  const size = new Map<number, number>();
+  for (const b of h.s.bands) { const c = brains[b.id]?.culture; if (c !== undefined) size.set(c, (size.get(c) ?? 0) + 1); }
+  return Object.values(h.s.cultures ?? {}).filter((c) => size.has(c.id))
+    .map((c) => ({ id: c.id, name: c.name ?? `Culture ${c.id}`, hue: c.hue ?? hueOf(h.s.seed, c.id), from: c.from ?? null, clans: size.get(c.id)!, steps: c.gen }));
+}
 
 export function cultureOf(h: Host, br: B2): Culture | undefined {
   return br.culture !== undefined ? h.s.cultures?.[br.culture] : undefined;
