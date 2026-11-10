@@ -66,10 +66,17 @@ and a reworked, English-only interface. Upstream changes are merged in from time
   - Two older lessons: brains once chose between hunting and gathering, and every clan learned to over-hunt until the game
     ran out (a tragedy of the commons), so that decision was taken back; and brains found that herding and fishing had no
     limit and grew villages of 30,000, so a pasture and a river now feed only so many.
-  Each clan card names its culture and its clans and draws the network (both hidden layers, the memory cells in purple,
-  green connections add, red hold back, circles light up with what it senses now); the dashboard lists the cultures.
+  A clan card's **Brain** tab shows what the brain does right now (how it leans on each job, in words), its strongest
+  reasons in plain words ("When their stores run low, they craft less"), what it senses in six groups and its memory;
+  **Show the network** draws the network itself, grouped and labelled, and pointing at a decision lights what feeds it.
   `LETOPIS_BRAIN=1` brings back Brain 1 (one small network per clan) for comparisons.
-- **Cultures on the map**: the **Cultures** button colours the land around every clan in its culture's colour, so you can
+- **The page** (reworked in 1.60): every card (clan, culture, realm, person, discovery) has the same layout: a header,
+  chips linking its culture, realm or chief, at most four numbers, and tabs. A clan card has **Overview** (what the
+  grown-ups do, where the clan came from, its newest discoveries, help for it), **Brain**, **Neighbours** (realm, culture,
+  trade partners, friends and rivals) and **People**. A **?** on each card opens **How it works**, every explanation in
+  one place. The map layers sit in one **Layers** menu (cultures, realms, trade, night); the chronicle has a heading for
+  each year and its great moments stand out. On a phone, cards are full-width sheets and the toolbar is one row.
+- **Cultures on the map**: the **Layers** menu's **Cultures** colours the land around every clan in its culture's colour, so you can
   watch schools of thought spread, split and take up each other's ways. A daughter culture is a shade of the one it split
   from, so families of cultures look related. Zoomed out, each culture of four or more clans shows its name and the clans'
   own name tags step back; the world map in the corner colours its dots by culture too.
@@ -78,7 +85,7 @@ and a reworked, English-only interface. Upstream changes are merged in from time
   from, the cultures that split from it, how its clans share their work, and its people over time; while it is open, its
   land is lit on the map. The chronicle tells when a culture parts (in the Clans filter; Story leaves it out).
 - **Trade routes**: two allied villages that both know trade (around 2,800 BC) and are joined by a road trade along it.
-  The **Trade** button draws the routes as gold dashes on the roads, with little carts going to and fro. Trading
+  The **Trade** layer draws the routes as gold dashes on the roads, with little carts going to and fro. Trading
   neighbours even out a good and a bad harvest, as before; the chronicle tells when a trade road opens or falls quiet
   (in the Clans filter; Story leaves it out).
 - **Realms**: from the New Stone Age, villages allied for 30 years and joined by road become one realm: a chiefdom,
@@ -87,7 +94,7 @@ and a reworked, English-only interface. Upstream changes are merged in from time
   follows and carries on the house ("the third of the House of Stoyan"), or else the capital's elder starts a new house.
   Other long allies join; a village that turns against its capital leaves; a realm whose capital is gone moves it to
   its biggest village, and one left with a single village ends. In a hungry year a realm's villages send food to the
-  hungriest of them. No wars: rivals quarrel, as ever. The **Realms** button draws each realm's land with a border and
+  hungriest of them. No wars: rivals quarrel, as ever. The **Realms** layer draws each realm's land with a border and
   its name over a crowned capital; a realm card tells its ruler and house, the rulers before, its capital and villages,
   and a village's card says which realm it belongs to. A world from before 1.59 gets its realms at once, quietly, with
   one line in the chronicle.
