@@ -24,8 +24,13 @@ interface Records {
   mostClans?: { bands: number; year: number };
 }
 
+/** the kinds of great events the history view keeps for good (the chronicle lets them go after 100 years) */
+const KEEP_HISTORY = new Set(['wonder', 'plague', 'flood', 'quake', 'drought', 'winter', 'fire', 'comet', 'eclipse', 'harvest', 'hunt', 'expedition', 'festival', 'lost', 'milestone', 'extinct', 'rollback']);
+
 export class Extras {
   private db: DatabaseSync;
+  /** worlds whose history has been filled from the chronicle once (1.57) */
+  private backfilled = new Set<string>();
 
   constructor(db: DatabaseSync) {
     this.db = db;
@@ -39,6 +44,10 @@ export class Extras {
       CREATE TABLE IF NOT EXISTS x_records (world TEXT PRIMARY KEY, json TEXT);
       CREATE TABLE IF NOT EXISTS x_acts (world TEXT NOT NULL, kind TEXT NOT NULL, at INTEGER, band TEXT, PRIMARY KEY (world, kind));
       CREATE TABLE IF NOT EXISTS x_settings (key TEXT PRIMARY KEY, value TEXT);
+      CREATE TABLE IF NOT EXISTS x_history (
+        world TEXT NOT NULL, id INTEGER NOT NULL, year INTEGER, kind TEXT, importance INTEGER, text TEXT, person INTEGER, band INTEGER,
+        PRIMARY KEY (world, id)
+      );
       CREATE TABLE IF NOT EXISTS x_learning (world TEXT NOT NULL, year INTEGER NOT NULL, score REAL, gen REAL, kept INTEGER, tried INTEGER, PRIMARY KEY (world, year));
     `);
   }
@@ -56,6 +65,12 @@ export class Extras {
   /** after every month of the world, before the chronicle and the dead are written away */
   onTick(sim: Simulation) {
     const w = sim.s.worldId;
+    // the great events the chronicle lets go after 100 years are kept for the history view (1.57)
+    const keep = sim.events.filter((e) => (e.importance >= 2 && KEEP_HISTORY.has(e.kind)) || e.kind === 'culture');
+    if (keep.length) {
+      const ins = this.db.prepare('INSERT OR REPLACE INTO x_history VALUES (?,?,?,?,?,?,?,?)');
+      for (const e of keep) ins.run(w, e.id, Math.floor(e.year), e.kind, e.importance, e.en?.text ?? e.text, e.personId ?? null, e.bandId ?? null);
+    }
     // the dead are kept for family trees: their genes to hundredths are plenty (a quarter of each record was long decimals)
     for (const d of sim.deadQueue) for (const k of Object.keys(d.genes)) d.genes[k] = Math.round(d.genes[k] * 100) / 100;
     const bump = this.db.prepare('INSERT INTO x_counts VALUES (?,?,?,1) ON CONFLICT(world, kind, key) DO UPDATE SET n = n + 1');
@@ -116,6 +131,32 @@ export class Extras {
       .run(cursor, end, world);
     cursor = end;
     this.setSetting(key, cursor);
+  }
+
+  /** the history view (1.57): the ages, first discoveries, villages, great events and cultures, with the population */
+  timeline(sim: Simulation) {
+    const w = sim.s.worldId;
+    // the first time a world is asked: copy the great events still in the chronicle (the last 100 years)
+    if (!this.backfilled.has(w)) {
+      this.backfilled.add(w);
+      const kinds = [...KEEP_HISTORY].map((k) => `'${k}'`).join(',');
+      this.db.prepare(`INSERT OR IGNORE INTO x_history SELECT world, id, year, kind, importance, COALESCE(json_extract(en, '$.text'), text), person, band
+        FROM chronicle WHERE world = ? AND ((importance >= 2 AND kind IN (${kinds})) OR kind = 'culture')`).run(w);
+    }
+    type Row = { id: number; year: number; kind: string; importance: number; text: string; person: number | null; band: number | null };
+    const fromChronicle = this.db.prepare(`SELECT id, year, kind, importance, COALESCE(json_extract(en, '$.text'), text) AS text, person, band
+      FROM chronicle WHERE world = ? AND importance = 3 ORDER BY id`).all(w) as Row[];
+    const kept = this.db.prepare('SELECT id, year, kind, importance, text, person, band FROM x_history WHERE world = ? ORDER BY id').all(w) as Row[];
+    const seen = new Set(fromChronicle.map((r) => r.id));
+    const events = [...fromChronicle, ...kept.filter((r) => !seen.has(r.id))].sort((a, b) => a.id - b.id);
+    // the cultures alive now and how they began (their own records: the chronicle keeps their partings only 100 years)
+    const cultures = cultureMap(sim.host() as never);
+    const all = sim.s.cultures ?? {};
+    const cult = cultures.map((c) => ({ id: c.id, name: c.name, hue: c.hue, since: all[c.id]?.since ?? -12000, from: c.from !== null ? (all[c.from]?.name ?? null) : null, fromId: c.from, clans: c.clans }));
+    // the population, a point every few years (at most 400)
+    const pop = this.db.prepare('SELECT year, population FROM x_years WHERE world = ? ORDER BY year').all(w) as { year: number; population: number }[];
+    const every = Math.max(1, Math.ceil(pop.length / 400));
+    return { year: Math.floor(sim.year), era: sim.s.era, events, cultures: cult, population: pop.filter((_, i) => i % every === 0 || i === pop.length - 1).map((r) => [r.year, r.population]) };
   }
 
   private records(world: string): Records {
@@ -206,6 +247,7 @@ export class Extras {
       return true;
     }
     if (p === '/api/brains') { json(res, brainSummary(sim.host())); return true; }
+    if (p === '/api/timeline') { json(res, this.timeline(sim)); return true; }
     if (p === '/api/trade') { json(res, tradeRoutes(sim)); return true; }
     if (p === '/api/cultures') { json(res, cultureMap(sim.host() as never)); return true; }
     if (p.startsWith('/api/culture/')) {

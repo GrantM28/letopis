@@ -9,6 +9,7 @@ import { Minimap } from './minimap';
 import { cultureLayer, initCultures } from './cultures';
 import { showCulture } from './culturecard';
 import { initTrade } from './tradelayer';
+import { initHistory } from './history';
 import { setUi } from './kit';
 import { clockFromServer } from './clock';
 import { GATES, eraName, knownNow, techLabel, updateAgeProgress } from './ages';
@@ -500,7 +501,7 @@ function renderBandList() {
 setUi({
   bands: () => bands, people: () => people, activeTab: () => activeTab, currentEra: () => currentEra,
   knownNow: () => knownNow(bands), eraName, techLabel, gates: GATES, icon: ICON,
-  openCard, rerender: () => renderSide(), lookAt: (x, y, z) => { stopTour(); follow = null; lookAt(x, y, z); }, focusBand: (b) => { stopTour(); lookAt(b.x, b.y, Math.max(cam.tz, 1.4)); },
+  openCard, rerender: () => renderSide(), lookAt: (x, y, z) => { stopTour(); follow = null; lookAt(x, y, z); }, openRef, focusBand: (b) => { stopTour(); lookAt(b.x, b.y, Math.max(cam.tz, 1.4)); },
 });
 initHelp();
 
@@ -842,6 +843,7 @@ mini = new Minimap($('#minimap') as HTMLCanvasElement, info);
 mini.onPick = (x, y) => { stopTour(); follow = null; lookAt(x, y); };
 initCultures(r, mini, () => cam.zoom);
 initTrade(r, () => cam.zoom);
+initHistory();
 api<{ found: SecretFind[] }>('/api/secrets').then((s) => r.setSecrets(s.found.map((f) => f.k))).catch(() => r.setSecrets([]));
 const snap = await api<SnapshotMessage>('/api/snapshot');
 onSnapshot(snap);

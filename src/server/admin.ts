@@ -230,6 +230,7 @@ export function trimAfter(db: DatabaseSync, state: SimState): { chronicle: numbe
     db.prepare("DELETE FROM gone_bands WHERE world = ? AND json_extract(json, '$.endedYear') > ?").run(w, year);
     if (has('x_years')) stats += n(db.prepare('DELETE FROM x_years WHERE world = ? AND year > ?').run(w, year));
     if (has('x_learning')) db.prepare('DELETE FROM x_learning WHERE world = ? AND year > ?').run(w, year);
+    if (has('x_history')) db.prepare('DELETE FROM x_history WHERE world = ? AND id >= ?').run(w, state.nextEventId);
     db.exec('COMMIT');
     return { chronicle, dead, stats };
   } catch (e) {

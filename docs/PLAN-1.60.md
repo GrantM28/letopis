@@ -20,12 +20,12 @@ released on its own (1.51 to 1.59), each one tested and pushed when it is ready.
 | 1.54 | Culture cards and culture news (done) | small |
 | 1.55 | Kids mode removed (done; not in the first plan) | small |
 | 1.56 | Trade routes between allied villages | medium |
-| 1.57 | History view | medium |
+| 1.57 | History view (done) | medium |
 | 1.58 | Book of the world (print and share) | small |
-| 1.59 | Realms: how they form, on the map, in the chronicle | large |
-| 1.60 | Realms: rulers, succession, what a realm does; then everything together (long run to the Iron Age, speed, polish) | large |
+| 1.59 | Realms: how they form, rulers and succession, what a realm does, on the map and in the chronicle | large |
+| 1.60 | **The whole page reworked** (your request): the clan card and the brain drawing easy to read, and the rest of the UI; then everything together (long run, speed, polish) | large |
 
-The sections below keep their first numbers: 1.55 trade routes is now 1.56, and so on; 1.59 and 1.60 are one release.
+The sections below keep their first numbers: 1.55 trade routes is now 1.56, and so on. Both realm steps (1.58 and 1.59 below) are now one release, 1.59, and 1.60 is the UI rework.
 
 ---
 
@@ -122,6 +122,23 @@ The sections below keep their first numbers: 1.55 trade routes is now 1.56, and 
 - **Speed**: the one known slow spot in big worlds, removing a dead person from the list of the living (it searches the
   whole list each time), and anything the long run finds.
 - README and docs/FORK.md brought up to date; a 1.60 summary in the chronicle's "while you were away".
+
+### 1.60 The whole page reworked
+
+Asked for on 2026-11-10: "rework the entire UI ... the clan card and brain diagram easier to read and other various UI
+changes and improvements". To be planned in detail before it starts; first ideas:
+
+- **Clan card**: a clear header (name, village or wandering, culture, size), then tabs instead of one long scroll:
+  Overview (people, food, what they do, help buttons), Brain, Friends and rivals, People.
+- **Brain drawing**: today's drawing shows every strong connection between four layers, which reads as a tangle. Instead:
+  what the clan senses now (a few labelled bars), what it decides now (the job shares), and the few senses that move each
+  decision most, in words ("more hunger → more fishing"); the full network behind a "show the network" button, drawn with
+  grouped and labelled inputs.
+- **Cards in general**: one layout for clan, culture, person and discovery cards; bigger type, more space, consistent headings.
+- **Side panel and toolbar**: fewer, clearer buttons (map layers grouped: cultures, trade, later realms), the chronicle
+  easier to scan, a settings menu for the rest.
+- **Phone**: cards as full-height sheets, the toolbar as one row.
+- Checked on desktop and phone width before release; screenshots of before and after in the release notes.
 
 ## How every release is checked
 

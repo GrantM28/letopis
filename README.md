@@ -81,6 +81,11 @@ and a reworked, English-only interface. Upstream changes are merged in from time
   The **Trade** button draws the routes as gold dashes on the roads, with little carts going to and fro. Trading
   neighbours even out a good and a bad harvest, as before; the chronicle tells when a trade road opens or falls quiet
   (in the Clans filter; Story leaves it out).
+- **History**: the **History** button opens the whole world on one page: the population over time with the ages shaded,
+  then one timeline of the ages, every first discovery and who made it, the great events (great buildings, plagues,
+  floods, comets and the like, kept for good from 1.57 on; the chronicle itself lets them go after 100 years), the
+  cultures alive now and how they began, and every village founded. Filters for each, oldest or newest first; every
+  entry opens its card.
 - **Help the world** (the Help button, or the buttons on a clan's card to help that clan): send a blessing (food), rain,
   call a feast, inspire an inventor (four times the chance of a discovery for two years) or calm a feud. Each power has a
   waiting time shared by everyone watching, and everything is written in the chronicle.

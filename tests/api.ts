@@ -36,7 +36,7 @@ export async function api() {
     if (!existsSync(bdir) || !readdirSync(bdir).some((n) => n.endsWith('.json.gz'))) bad.push('no backup was taken when the server started');
     const expect: [string, string[]][] = [
       ['/api/health', ['ok', 'year', 'population']], ['/api/world', ['worldId', 'w', 'h']], ['/api/snapshot', ['bands', 'people', 'time']],
-      ['/api/history', ['series', 'causes', 'records', 'learning']], ['/api/brains', ['clans', 'styles', 'network']], ['/api/cultures', []], ['/api/techtree', ['clans', 'techs']],
+      ['/api/history', ['series', 'causes', 'records', 'learning']], ['/api/brains', ['clans', 'styles', 'network']], ['/api/cultures', []], ['/api/timeline', ['events', 'cultures', 'population']], ['/api/techtree', ['clans', 'techs']],
       ['/api/people?limit=5', ['total', 'people']], ['/api/acts', ['acts', 'prayers']], ['/api/time', ['scale', 'scales']],
       ['/api/discoveries', []], ['/api/chronicle?limit=5', []], ['/api/heroes', []],
     ];

@@ -24,6 +24,8 @@ export interface ForkUi {
   openCard(html: string, beside?: boolean, extra?: string): void;
   /** look at a clan on the map */
   focusBand(b: BandView): void;
+  /** open the card a link points to (data-person, data-band, data-culture) */
+  openRef(el: HTMLElement): void;
   /** look at a map point */
   lookAt(x: number, y: number, zoom?: number): void;
   /** draw the side panel again */
