@@ -435,7 +435,7 @@ export function brainView(h: BrainHost, b: Band) {
     copied: br.copied ?? 0, copiedKept: br.copiedKept ?? 0, step: +(br.sigma ?? SIGMA_TRIAL).toFixed(3),
     generation: br.gen, tried: br.tried, kept: br.kept, score: +br.score.toFixed(2), trying: !!br.trial,
     reactsTo: BRAIN2 ? reactsTo2(h as never, br) : whatMatters(br).slice(0, 3).map((x) => x.sense),
-    network: BRAIN2 ? `${BRAIN2_SHAPE.layers.join(' → ')}, ${BRAIN2_SHAPE.weights} weights, shared by its culture` : `${IN} senses → ${HID} neurons → ${OUT} outputs (${PARAMS} weights)`,
+    network: BRAIN2 ? `${BRAIN2_SHAPE.layers.join(' → ')}, ${BRAIN2_SHAPE.weights.toLocaleString('en')} weights` : `${IN} senses → ${HID} neurons → ${OUT} outputs (${PARAMS} weights)`,
     brain2: BRAIN2,
     culture: BRAIN2 ? cultureInfo(h as never, br) : null,
     memory: br.mem ?? null,

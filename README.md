@@ -41,28 +41,33 @@ and a reworked, English-only interface. Upstream changes are merged in from time
   become rivals who quarrel over hunting grounds (nothing violent on screen). Alliances, rivalries and reconciliations go in the chronicle.
 - **Time controls** next to the year: pause, normal speed, and fast forward (2×, 5×, 20×, 100×; each click goes faster).
   Space pauses and resumes. The speed is the world's own: it holds for everyone watching and is kept across restarts.
-- **Clans that learn** (machine learning inside the simulation, nothing leaves your server): every clan carries a small
-  neural network, its brain (11 senses → 8 neurons → 9 outputs, 177 weights). Each month it senses the season, hunger, food stores,
-  the fruit, game and fish around, the cold, the clan's size, whether it is settled and the age of the world, and decides how the clan
-  shares its work between farming, herding, fishing, crafting, building and foraging (as shares that always add up, so a clan
-  can lean on one job only by giving up another), how generous it is with its friends, and
-  (for wanderers) whether to move on to fresh land before it must.
-  - *Learning in a lifetime*: every two years the clan judges a slightly changed network and keeps it only if the clan ate better and
-    grew, counting the people who left to found daughter clans as success (an evolution strategy, a gradient-free kind of
-    reinforcement learning). Each clan tunes how bold its changes are: bigger while they succeed, smaller while they fail.
-  - *Learning from others*: now and then a clan tries a blend of a neighbour's brain that does clearly better, and keeps it only if it works.
-  - *Learning over generations*: daughter clans inherit their parents' network with small mutations, and clans whose network fails go
-    hungry and die out (neuroevolution).
-  - How much it helps, honestly: a 6-world benchmark over 3,000 years found that learning changes how clans
-    live, but worlds with learning switched off grew as many people or more. A fixed plan where every clan herds and fishes beats
-    both by far, so there is a lot left to learn; a new brain where whole cultures learn together is being built on the
-    `brain2` branch (see docs/PLAN-BRAIN-2.md). An early version also let brains choose
-    between hunting and gathering, but every clan learned to over-hunt and the game ran out for all (a tragedy of the commons),
-    so that decision was taken back. Brains also found that herding and fishing had no limit and grew villages of 30,000; a pasture
-    and a river now feed only so many.
-  Each clan card draws its network (green connections add, red hold back, the circles light up with what it senses now) and shows
-  what it decided this month, what it reacts to most, and how much it learned from neighbours; the dashboard shows the learning
-  curve and the ways of life that emerged.
+- **Cultures that learn** (Brain 2, machine learning inside the simulation, nothing leaves your server). Clans descended from
+  the same first clans form a **culture**, and each culture shares one deep neural network: 18 senses and 6 memory cells →
+  24 neurons → 16 neurons → 15 outputs (1,255 weights). Each month it senses the season, hunger, food stores, the fruit, game,
+  fish and wood around, the cold, the clan's size, its children and elders, whether it is settled, how crowded the land is,
+  friends and rivals nearby, the age of the world and how the culture's last five years went, plus six numbers it wrote to
+  its own memory the month before. It decides how the clan shares its work between farming, herding, fishing, crafting,
+  building and foraging (shares that always add up), how generous it is with friends, whether a wandering clan moves on
+  early, and what to remember next month.
+  - *How a culture learns*: all its clans live five years with one small change to the network, then five years with the
+    opposite change, and the culture moves whichever way made it grow more (a two-sided evolution strategy, a
+    gradient-free kind of reinforcement learning). The noise comes from the world's seed, so a world replays the same.
+  - *Cultures compete*: a culture growing clearly slower than one nearby takes up part of its ways (written in the
+    chronicle), and a culture grown past 14 clans splits in two along the land, so the world grows several schools of thought.
+  - *Why whole cultures*: one clan alone gains by stripping the land around it; a culture holds one stretch of land and
+    eats from what it spares. The first Brain 2, which judged each clan by its own food, learned to forage hardest, and
+    foraging grows the smallest worlds.
+  - *How much it helps* (`npm run bench`, worlds lived 2,000 years): on 12 worlds it had never seen, learning cultures
+    averaged **1,215 people against 855** for the same brains frozen (+42%), bigger in 11 of 12. The old Brain 1 learning
+    made worlds *smaller* than frozen brains. The cultures found by themselves that crafting at camp (which spares the
+    land and makes every worker more productive) beats foraging. Discoveries keep their historical pace; learning only
+    changes how many people the land feeds.
+  - Two older lessons: brains once chose between hunting and gathering, and every clan learned to over-hunt until the game
+    ran out (a tragedy of the commons), so that decision was taken back; and brains found that herding and fishing had no
+    limit and grew villages of 30,000, so a pasture and a river now feed only so many.
+  Each clan card names its culture and its clans and draws the network (both hidden layers, the memory cells in purple,
+  green connections add, red hold back, circles light up with what it senses now); the dashboard lists the cultures.
+  `LETOPIS_BRAIN=1` brings back Brain 1 (one small network per clan) for comparisons.
 - **Help the world** (the Help button, or the buttons on a clan's card to help that clan): send a blessing (food), rain,
   call a feast, inspire an inventor (four times the chance of a discovery for two years) or calm a feud. Each power has a
   waiting time shared by everyone watching, and everything is written in the chronicle.
@@ -169,7 +174,8 @@ Pushing to `main` builds the Docker image with GitHub Actions and publishes it a
 | `src/server/sim/tech.ts`, `src/shared/later_techs.ts` | the discoveries; the Iron Age and later live in `later_techs.ts` |
 | `src/server/sim/events.ts`, `src/shared/event_words.ts` | the world events and the acts of the watchers |
 | `src/server/sim/relations.ts` | friendship and rivalry between neighbouring clans |
-| `src/server/sim/brain.ts` | the clans' brains: how they learn and pass on their way of life |
+| `src/server/sim/brain.ts`, `brain2.ts` | the brains: `brain2.ts` is the cultures' deep network and how they learn (Brain 2); `brain.ts` hooks it into the world and keeps Brain 1 |
+| `tools/bench.ts`, `tools/bench.mjs` | the brain benchmark: many worlds, learning against frozen brains and fixed plans (`npm run bench`) |
 | `src/client/minimap.ts` | the world map in the corner |
 | `src/server/extras.ts` | yearly history, records, people list and acts (`/api/history`, `/api/people`, `/api/acts`) |
 | `src/server/notify.ts` | ntfy and webhook notifications |
