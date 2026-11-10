@@ -6,7 +6,7 @@
 
 import type http from 'node:http';
 import type { DatabaseSync } from 'node:sqlite';
-import type { Simulation } from './sim/sim';
+import type { Person, Simulation } from './sim/sim';
 import { ACTS, ACT_COOLDOWN_MIN, ActKind, PRAYER_TTL_MS } from './sim/events';
 import { brainSummary, brainView } from './sim/brain';
 import { cultureCard, cultureMap } from './sim/brain2';
@@ -29,10 +29,16 @@ interface Records {
 /** the kinds of great events the history view keeps for good (the chronicle lets them go after 100 years) */
 const KEEP_HISTORY = new Set(['wonder', 'plague', 'flood', 'quake', 'drought', 'winter', 'fire', 'comet', 'eclipse', 'harvest', 'hunt', 'expedition', 'festival', 'lost', 'milestone', 'extinct', 'rollback', 'realm']);
 
+const COLLATE = new Intl.Collator('en');
+
 export class Extras {
   private db: DatabaseSync;
   /** worlds whose history has been filled from the chronicle once (1.57) */
   private backfilled = new Set<string>();
+  /** the English of people's names (the same names come again and again) */
+  private enNames = new Map<string, string>();
+  /** everyone's name and clan in English for the current month (the people search) */
+  private peopleCache: { tick: number; world: string; names: { x: Person; n: string; bn: string; low: string }[] } | null = null;
 
   constructor(db: DatabaseSync) {
     this.db = db;
@@ -317,19 +323,26 @@ export class Extras {
       const sort = url.searchParams.get('sort') ?? 'old';
       const offset = Math.max(0, Number(url.searchParams.get('offset') ?? 0) || 0);
       const limit = Math.min(200, Math.max(1, Number(url.searchParams.get('limit') ?? 100) || 100));
-      const bandById = new Map(sim.s.bands.map((b) => [b.id, b]));
-      const chiefs = new Set(sim.s.bands.map((b) => b.chiefId));
-      let rows = sim.s.people.map((x) => {
-        const b = bandById.get(x.bandId);
-        return { id: x.id, name: sim.nameEn(x), age: Math.floor(sim.ageOf(x)), sex: x.sex, band: b ? sim.bandEnLabel(b, true) : '', bandId: x.bandId,
-          task: x.task, chief: chiefs.has(x.id), deeds: x.deeds.length, children: x.children.length, gen: x.gen };
-      });
-      if (q) rows = rows.filter((r) => r.name.toLowerCase().includes(q) || r.band.toLowerCase().includes(q));
       const onlyBand = Number(url.searchParams.get('band') ?? 0);
       if (url.searchParams.has('band') && !(onlyBand > 0)) { json(res, { error: 'band must be a clan id' }, 400); return true; }
-      if (onlyBand) rows = rows.filter((r) => r.bandId === onlyBand);
+      // (a big world has 50,000 people: one clan is picked out first, each clan's name is put into English once, and the
+      // English of a name is remembered, so a search no longer holds the server still for a second)
+      const bandById = new Map(sim.s.bands.map((b) => [b.id, b]));
+      const chiefs = new Set(sim.s.bands.map((b) => b.chiefId));
+      const bandEn = new Map<number, string>();
+      const bandName = (id: number) => { let v = bandEn.get(id); if (v === undefined) { const b = bandById.get(id); v = b ? sim.bandEnLabel(b, true) : ''; bandEn.set(id, v); } return v; };
+      const nameEn = (x: Person) => { const bg = sim.nameOf(x); let v = this.enNames.get(bg); if (v === undefined) { v = personEn(bg); if (this.enNames.size > 200_000) this.enNames.clear(); this.enNames.set(bg, v); } return v; };
+      // everyone in English once per month of the world (names change only between months): a second search or the
+      // next page within the same month is quick
+      if (!onlyBand && (!this.peopleCache || this.peopleCache.tick !== sim.s.tick || this.peopleCache.world !== sim.s.worldId)) {
+        this.peopleCache = { tick: sim.s.tick, world: sim.s.worldId, names: sim.s.people.map((x) => { const n = nameEn(x), bn = bandName(x.bandId); return { x, n, bn, low: `${n} ${bn}`.toLowerCase() }; }) };
+      }
+      const pool = onlyBand ? sim.s.people.filter((x) => x.bandId === onlyBand).map((x) => ({ x, n: nameEn(x), bn: bandName(x.bandId), low: '' }))
+        : this.peopleCache!.names.filter((e) => !q || e.low.includes(q));
+      const rows = pool.map(({ x, n, bn }) => ({ id: x.id, name: n, age: Math.floor(sim.ageOf(x)), sex: x.sex, band: bn, bandId: x.bandId,
+        task: x.task, chief: chiefs.has(x.id), deeds: x.deeds.length, children: x.children.length, gen: x.gen }));
       const by: Record<string, (a: (typeof rows)[number], b: (typeof rows)[number]) => number> = {
-        old: (a, b) => b.age - a.age, young: (a, b) => a.age - b.age, name: (a, b) => a.name.localeCompare(b.name),
+        old: (a, b) => b.age - a.age, young: (a, b) => a.age - b.age, name: (a, b) => COLLATE.compare(a.name, b.name),
         deeds: (a, b) => b.deeds - a.deeds || b.age - a.age, children: (a, b) => b.children - a.children || b.age - a.age,
       };
       rows.sort(by[sort] ?? by.old);

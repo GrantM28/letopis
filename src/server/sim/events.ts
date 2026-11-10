@@ -420,3 +420,14 @@ export function announceMove(h: EventHost, b: Band, fromX: number, fromY: number
     [`${h.bandEnLabel(b, true)} moved their camp ${far} ${dir}, to ${landAt(h, toX, toY)}. ${reason[why]}${led}`.replace(/ +/g, ' ').trim(),
       `${h.bandEnLabel(b, true)} packed up and walked ${dir} to ${landAt(h, toX, toY)}!`]);
 }
+
+/** once a year: notes kept per clan (when its last move was told, how long it stays inspired) are let go when the clan
+ *  is gone; they used to pile up in the save forever (found by the full simulation test, 1.60) */
+export function forgetGoneClans(h: EventHost) {
+  const alive = new Set(h.s.bands.map((b) => b.id));
+  const s = h.s as { moveNews?: Record<number, number>; inspired?: Record<number, number> };
+  for (const map of [s.moveNews, s.inspired]) {
+    if (!map) continue;
+    for (const k of Object.keys(map)) if (!alive.has(Number(k))) delete map[Number(k)];
+  }
+}

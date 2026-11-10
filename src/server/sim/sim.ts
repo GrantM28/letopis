@@ -7,7 +7,7 @@ import { SECRET_COUNT, SECRET_HEROES, SECRET_KINDS, SecretFind } from '../../sha
 import { FEMALE, MALE, bandColor, bandName, fixBandName, familyFrom, nickname, placeName } from './names';
 import { ERAS, TECHS, TECH_BY_ID, Tech, eraOf } from './tech';
 import { LATER_ERA_WHY } from '../../shared/later_techs';
-import { ActKind, EventHost, MoveWhy, act, announceMove, answerPrayer, prayersStep, worldEvents } from './events';
+import { ActKind, EventHost, MoveWhy, act, announceMove, answerPrayer, forgetGoneClans, prayersStep, worldEvents } from './events';
 import { RelationHost, relationsStep } from './relations';
 /** what the fork's add-ons may use of the simulation */
 export type ForkHost = EventHost & RelationHost & BrainHost & { treesNear(x: number, y: number, R: number, min: number): number; roads: Uint8Array };
@@ -708,7 +708,7 @@ export class Simulation {
     this.contact();
     if (this.s.tick % 3 === 0) relationsStep(this.host(), members);
     brainStep(this.host(), members);
-    if (this.month === 6) { this.buildRoads(); tradeStep(this.host() as never); realmsStep(this.host() as never, members); }
+    if (this.month === 6) { this.buildRoads(); tradeStep(this.host() as never); realmsStep(this.host() as never, members); forgetGoneClans(this.host()); }
     if (this.s.tick % 6 === 0) this.explore();
     this.randomEvents(members);
     this.checkEra();

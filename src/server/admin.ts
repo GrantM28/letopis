@@ -21,6 +21,8 @@ export interface AdminHost {
   archive(summary: string): void;
   flush(): void;
   save(): void;
+  /** the same, packed away from the main thread (a big world took two seconds) */
+  saveNow(): Promise<void>;
   db: DatabaseSync;
   backups: Backups;
   dataDir: string;
@@ -164,7 +166,7 @@ export class Admin {
   private async backupNow(why: 'manual' | 'before-rollback' | 'before-new-world') {
     const h = this.host, sim = h.sim();
     h.flush();
-    h.save(); // the world on disk as it is this moment
+    await h.saveNow(); // the world on disk as it is this moment (packed in the background)
     const b = await h.backups.make(h.stateFile, { world: sim.s.worldId, year: Math.floor(sim.year), tick: sim.s.tick, people: sim.s.people.length, why });
     if (b) h.log(`Backup ${b.file} (${why})`);
     return b;

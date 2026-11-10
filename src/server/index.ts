@@ -411,6 +411,14 @@ const admin = new Admin({
   },
   flush,
   save,
+  saveNow: () => new Promise<void>((resolve, reject) => {
+    const json = JSON.stringify(sim.serialize());
+    const tmp = STATE_FILE + '.now.tmp';
+    gzip(json, (err, packed) => {
+      if (err) return reject(err);
+      writeFile(tmp, packed).then(() => rename(tmp, STATE_FILE)).then(resolve, reject);
+    });
+  }),
   db: store.db,
   backups,
   dataDir: DATA,
