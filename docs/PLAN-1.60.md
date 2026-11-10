@@ -125,6 +125,8 @@ The sections below keep their first numbers: 1.55 trade routes is now 1.56, and 
 
 ### 1.60 The whole page reworked
 
+The detailed plan is in [PLAN-1.60-UI.md](PLAN-1.60-UI.md). The first ideas below are kept for the record.
+
 Asked for on 2026-11-10: "rework the entire UI ... the clan card and brain diagram easier to read and other various UI
 changes and improvements". To be planned in detail before it starts; first ideas:
 
