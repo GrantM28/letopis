@@ -154,3 +154,7 @@ body.paused .tick i { background: var(--muted); }
 .discoveries li[data-tech] { cursor: pointer; border-radius: 6px; }
 .discoveries li[data-tech]:hover { background: rgba(255, 255, 255, 0.035); }
 .tech-chip.done { color: var(--good); border-color: rgba(108, 195, 138, 0.45); }
+
+/* lists of links on the culture card and the dashboard (1.54) */
+ul.plain { list-style: none; padding: 0; margin: 6px 0 10px; }
+ul.plain li { padding: 3px 0; }

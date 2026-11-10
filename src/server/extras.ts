@@ -9,7 +9,7 @@ import type { DatabaseSync } from 'node:sqlite';
 import type { Simulation } from './sim/sim';
 import { ACTS, ACT_COOLDOWN_MIN, ActKind, PRAYER_TTL_MS } from './sim/events';
 import { brainSummary, brainView } from './sim/brain';
-import { cultureMap } from './sim/brain2';
+import { cultureCard, cultureMap } from './sim/brain2';
 import { causeEn, personEn, bandTextEn } from '../shared/i18n';
 import { TECHS } from './sim/tech';
 import { relationCounts, relationsOf } from './sim/relations';
@@ -206,6 +206,11 @@ export class Extras {
     }
     if (p === '/api/brains') { json(res, brainSummary(sim.host())); return true; }
     if (p === '/api/cultures') { json(res, cultureMap(sim.host() as never)); return true; }
+    if (p.startsWith('/api/culture/')) {
+      const c = cultureCard(sim.host() as never, Number(p.split('/').pop()));
+      json(res, c ?? { error: 'no such culture' }, c ? 200 : 404);
+      return true;
+    }
     if (p === '/api/techtree') {
       // every discovery: what it needs, how many clans know it now, and who found it first
       const knownBy = new Map<string, number>();

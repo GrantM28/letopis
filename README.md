@@ -73,6 +73,10 @@ and a reworked, English-only interface. Upstream changes are merged in from time
   watch schools of thought spread, split and take up each other's ways. A daughter culture is a shade of the one it split
   from, so families of cultures look related. Zoomed out, each culture of four or more clans shows its name and the clans'
   own name tags step back; the world map in the corner colours its dots by culture too.
+- **Culture cards**: open a culture from a clan's card, from the Stats page (the biggest cultures), or by clicking its
+  coloured land. The card shows its clans and people, when and from which culture it split, which cultures it took ways
+  from, the cultures that split from it, how its clans share their work, and its people over time; while it is open, its
+  land is lit on the map. The chronicle tells when a culture parts (in the Clans filter; Story leaves it out).
 - **Help the world** (the Help button, or the buttons on a clan's card to help that clan): send a blessing (food), rain,
   call a feast, inspire an inventor (four times the chance of a discovery for two years) or calm a feud. Each power has a
   waiting time shared by everyone watching, and everything is written in the chronicle.

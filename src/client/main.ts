@@ -6,7 +6,8 @@ import {
 import { SECRET_COUNT, SecretFind, SecretSpot } from '../shared/secrets';
 import { ERAS_BG, ERAS_EN, TECH_LIST } from '../shared/i18n';
 import { Minimap } from './minimap';
-import { initCultures } from './cultures';
+import { cultureLayer, initCultures } from './cultures';
+import { showCulture } from './culturecard';
 import { setUi } from './kit';
 import { clockFromServer } from './clock';
 import { GATES, eraName, knownNow, techLabel, updateAgeProgress } from './ages';
@@ -183,7 +184,10 @@ function pick(sx: number, sy: number) {
     if (d < bb) { bb = d; bestBand = b; }
   }
   if (bestBand) showBand(bestBand);
-  else closeCard();
+  else {
+    const c = cultureLayer?.on ? cultureLayer.cultureAt((wx / (TW / 2) + wy / (TH / 2)) / 2, (wy / (TH / 2) - wx / (TW / 2)) / 2) : null;
+    if (c) void showCulture(c.id); else closeCard();
+  }
 }
 
 // ---------- network ----------
@@ -336,7 +340,7 @@ const ICON: Record<string, string> = {
   // clan relations (relations.ts)
   alliance: '🤝', rivalry: '😠', quarrel: '🗯️', aid: '🎁', peace: '🕊️', estranged: '🍂',
   // learning clans and the watchers' help (brain.ts, events.ts)
-  learned: '🧠', inspired: '💭', prayer: '🙏', imitate: '🎓', move: '🏕️',
+  learned: '🧠', inspired: '💭', prayer: '🙏', imitate: '🎓', move: '🏕️', culture: '🌐', rollback: '⏪',
 };
 
 function eventHtml(e: ChronicleEntry): string {
@@ -370,12 +374,12 @@ const FEED_KINDS: Record<string, { bg: string; en: string; kinds?: string[] }> =
   story: { bg: 'История', en: 'Story' },
   discovery: { bg: 'Открития', en: 'Discoveries', kinds: ['discovery', 'rediscovery', 'learn', 'era', 'lost'] },
   life: { bg: 'Живот', en: 'Life', kinds: ['death', 'twins', 'marriage', 'milestone', 'genesis', 'plague', 'festival', 'feast'] },
-  clans: { bg: 'Родове', en: 'Clans', kinds: ['settle', 'colony', 'split', 'meet', 'merge', 'extinct', 'end', 'wonder', 'expedition', 'alliance', 'rivalry', 'quarrel', 'aid', 'peace', 'estranged', 'learned', 'imitate', 'move'] },
+  clans: { bg: 'Родове', en: 'Clans', kinds: ['settle', 'colony', 'split', 'meet', 'merge', 'extinct', 'end', 'wonder', 'expedition', 'alliance', 'rivalry', 'quarrel', 'aid', 'peace', 'estranged', 'learned', 'imitate', 'move', 'culture'] },
   nature: { bg: 'Природа', en: 'Nature', kinds: ['hunt', 'winter', 'drought', 'secret', 'flood', 'harvest', 'comet', 'eclipse', 'quake', 'fire', 'blessing', 'rain', 'prayer', 'inspired'] },
 };
 let feedKind = store('letopis.feedKind', store('letopis.onlyBig', false) ? 'big' : 'all');
 if (!FEED_KINDS[feedKind]) feedKind = 'all';
-const EVERYDAY = new Set(['move', 'marriage', 'twins', 'chief', 'elder', 'meet', 'learned', 'imitate', 'quarrel', 'aid', 'estranged', 'learn', 'rediscovery', 'merge']);
+const EVERYDAY = new Set(['move', 'marriage', 'twins', 'chief', 'elder', 'meet', 'learned', 'imitate', 'quarrel', 'aid', 'estranged', 'learn', 'rediscovery', 'merge', 'culture']);
 /** older pages fetched by themselves for the current filter */
 let autoLoads = 0;
 const feedFilter = (e: ChronicleEntry) => {
@@ -391,7 +395,7 @@ function toast(e: ChronicleEntry) {
   t.className = `toast imp${e.importance}${e.kind === 'era' ? ' era' : ''}`;
   t.innerHTML = `<span class="ev-icon">${ICON[e.kind] ?? '•'}</span><div><div class="ev-year">${fmtYear(e.year)}</div>${linkedText(e)}</div>`;
   t.onclick = (ev) => {
-    const el = (ev.target as HTMLElement).closest<HTMLElement>('[data-person],[data-band]');
+    const el = (ev.target as HTMLElement).closest<HTMLElement>('[data-person],[data-band],[data-culture]');
     if (el) { ev.preventDefault(); openRef(el); }
   };
   $('#toasts').prepend(t);
@@ -496,7 +500,7 @@ function renderBandList() {
 setUi({
   bands: () => bands, people: () => people, activeTab: () => activeTab, currentEra: () => currentEra,
   knownNow: () => knownNow(bands), eraName, techLabel, gates: GATES, icon: ICON,
-  openCard, rerender: () => renderSide(), focusBand: (b) => { stopTour(); lookAt(b.x, b.y, Math.max(cam.tz, 1.4)); },
+  openCard, rerender: () => renderSide(), lookAt: (x, y, z) => { stopTour(); follow = null; lookAt(x, y, z); }, focusBand: (b) => { stopTour(); lookAt(b.x, b.y, Math.max(cam.tz, 1.4)); },
 });
 initHelp();
 
@@ -513,7 +517,7 @@ document.querySelectorAll<HTMLButtonElement>('.tab').forEach((b) => {
 $('#sideBody').addEventListener('click', (e) => {
   const tech = (e.target as HTMLElement).closest<HTMLElement>('li[data-tech]');
   if (tech && !(e.target as HTMLElement).closest('[data-person]')) { e.preventDefault(); void showTech(tech.dataset.tech!); return; }
-  const el = (e.target as HTMLElement).closest<HTMLElement>('[data-person],[data-band]');
+  const el = (e.target as HTMLElement).closest<HTMLElement>('[data-person],[data-band],[data-culture]');
   if (!el) return;
   e.preventDefault();
   openRef(el);
@@ -530,8 +534,9 @@ function childList(cs: PersonDetail['children']): string {
 
 /** a name was clicked: go there if it still lives, otherwise just tell about it */
 function openRef(el: HTMLElement) {
-  const pid = Number(el.dataset.person), bid = Number(el.dataset.band);
-  if (pid) showPerson(pid);
+  const pid = Number(el.dataset.person), bid = Number(el.dataset.band), cid = Number(el.dataset.culture);
+  if (cid) void showCulture(cid);
+  else if (pid) showPerson(pid);
   else if (bid) {
     const b = bands.find((x) => x.id === bid);
     if (b) { stopTour(); lookAt(b.x, b.y, 1.6); showBand(b); }
@@ -579,7 +584,7 @@ function closeCard() {
 $('#cardClose').onclick = closeCard;
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeCard(); });
 $('#card').addEventListener('click', (e) => {
-  const el = (e.target as HTMLElement).closest<HTMLElement>('[data-person],[data-tree],[data-band]');
+  const el = (e.target as HTMLElement).closest<HTMLElement>('[data-person],[data-tree],[data-band],[data-culture]');
   if (!el) return;
   e.preventDefault();
   if (el.dataset.tree) showTree(Number(el.dataset.tree));

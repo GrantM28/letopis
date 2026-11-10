@@ -1,13 +1,19 @@
 // Brain 2 holds together: every clan belongs to a culture, cultures learn and split, the networks stay finite,
 // the same seed gives the same noise, and a world from before Brain 2 is gathered into cultures.
 import { Simulation } from '../src/server/sim/sim';
-import { PARAMS2, cultureSummary } from '../src/server/sim/brain2';
+import { PARAMS2, cultureCard, cultureSummary } from '../src/server/sim/brain2';
 
 const step = (s: Simulation) => { s.step(); s.events = []; s.deadQueue = []; s.goneQueue = []; };
 
 export function brain2() {
   const sim = new Simulation(null, 31);
-  for (let i = 0; i < 12 * 500; i++) step(sim);
+  let splits = 0, splitEn = true;
+  // (700 years: in a small young world the first culture parts after about 600)
+  for (let i = 0; i < 12 * 700; i++) {
+    sim.step();
+    for (const e of sim.events) if (e.kind === 'culture') { splits++; if (!e.en?.text?.startsWith('The culture of')) splitEn = false; }
+    sim.events = []; sim.deadQueue = []; sim.goneQueue = [];
+  }
   const h = sim.host() as never;
   const brains = sim.s.brains ?? {};
   const cs = sim.s.cultures ?? {};
@@ -20,6 +26,13 @@ export function brain2() {
   const sum = cultureSummary(h).filter((c) => c.clans);
   if (!sum.length) bad.push('no cultures');
   if (!sum.some((c) => c.steps > 20)) bad.push(`no culture learned much: ${sum.map((c) => c.steps).join(', ')}`);
+  if (!splits) bad.push('no culture split was told in the chronicle');
+  if (!splitEn) bad.push('a culture split was told without its English');
+  // the culture card has what the page draws
+  const big = sum[0];
+  const card = big ? cultureCard(h, big.id) : null;
+  if (!card || card.clans.length !== big.clans || !card.hist.length || card.people <= 0) bad.push(`the culture card is incomplete: ${JSON.stringify(card)?.slice(0, 160)}`);
+  if (cultureCard(h, 999999) !== null) bad.push('a card for a culture that never was');
   if (sum.some((c) => c.clans > 30)) bad.push(`a culture never split: ${Math.max(...sum.map((c) => c.clans))} clans`);
   for (const c of Object.values(cs)) {
     if (c.net.length !== PARAMS2) bad.push(`culture ${c.id}: ${c.net.length} weights`);

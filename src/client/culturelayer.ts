@@ -27,6 +27,8 @@ export class CultureLayer {
   private labels = new Map<number, Text>();
   cultures = new Map<number, CultureInfo>();
   on = false;
+  /** a culture whose land is lit (its card is open): shown even with the layer off, the others left out */
+  private focused: number | null = null;
   private lastBands: BandView[] = [];
 
   constructor(private r: WorldRenderer) {
@@ -40,8 +42,16 @@ export class CultureLayer {
 
   setOn(on: boolean) {
     this.on = on;
-    this.c.visible = on;
-    if (on) this.draw(this.lastBands);
+    this.c.visible = on || this.focused !== null;
+    if (this.c.visible) this.draw(this.lastBands);
+  }
+
+  /** light one culture's land (or none); its card passes what the layer needs to know of it */
+  focus(id: number | null, info?: CultureInfo) {
+    this.focused = id;
+    if (id !== null && info && !this.cultures.has(id)) this.cultures.set(id, info);
+    this.c.visible = this.on || id !== null;
+    this.draw(this.lastBands);
   }
 
   setCultures(list: CultureInfo[]) {
@@ -52,7 +62,7 @@ export class CultureLayer {
   /** the clans moved, split or changed culture */
   update(bands: BandView[]) {
     this.lastBands = bands;
-    if (this.on) this.draw(bands);
+    if (this.on || this.focused !== null) this.draw(bands);
   }
 
   private tagsHidden = false;
@@ -89,7 +99,7 @@ export class CultureLayer {
     const centres = new Map<number, { x: number; y: number; n: number }>();
     for (const b of bands) {
       const c = b.culture !== undefined ? this.cultures.get(b.culture) : undefined;
-      if (!c) continue;
+      if (!c || (this.focused !== null && c.id !== this.focused)) continue;
       const p = this.r.tileTop(b.x, b.y);
       g.ellipse(p.x, p.y, rx, ry).fill({ color: hueColor(c.hue) });
       const m = centres.get(c.id) ?? { x: 0, y: 0, n: 0 };

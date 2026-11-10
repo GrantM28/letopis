@@ -80,6 +80,10 @@ export interface Culture {
   /** the last period's score, and the culture it last learned from (and when) */
   last?: number;
   learnedFrom?: string;
+  /** its people at the end of each learning period: [year, people], the newest 80 (for the culture card) */
+  hist?: [number, number][];
+  /** the cultures it took ways from: the newest 8 */
+  taughtBy?: { id: number; name: string; year: number }[];
   learnedAt?: number;
 }
 
@@ -316,6 +320,8 @@ export function learn2(h: Host, members: Map<number, Person[]>, learn: boolean) 
       if (learn && !HALVES) learnStep(h, c, score, period);
     }
     c.pop0 = pop;
+    (c.hist ??= []).push([Math.floor(h.year), pop]);
+    if (c.hist.length > 80) c.hist.splice(0, c.hist.length - 80);
     if (!learn) c.trial = undefined;
   }
   // cultures learn from each other: one doing clearly worse than a culture nearby takes up part of its ways
@@ -386,6 +392,8 @@ function compete(h: Host, byCulture: Map<number, Band[]>, scored: Map<number, nu
         [`The culture of ${c.name ?? id} took up the ways of the culture of ${best.name ?? best.id}, who were doing better.`]);
     }
     c.learnedFrom = best.name; c.learnedAt = year;
+    (c.taughtBy ??= []).push({ id: best.id, name: best.name ?? `Culture ${best.id}`, year });
+    if (c.taughtBy.length > 8) c.taughtBy.splice(0, c.taughtBy.length - 8);
   }
 }
 
@@ -413,6 +421,10 @@ function splitCulture(h: Host, c: Culture, bands: Band[], members: Map<number, P
   // each half counts its growth from its own people
   nc.pop0 = moved;
   c.pop0 = (c.pop0 ?? 0) - moved;
+  // the chronicle tells it (a minor entry: the Clans filter shows it, Story hides it)
+  const nClans = bands.filter((x) => brains[x.id].culture === id).length;
+  h.emit('culture', 1, `Културата на ${c.name ?? c.id} се раздели: ${nClans} рода около ${h.bandLabel(b)} тръгнаха по свой път.`, undefined, undefined, b.id, [],
+    [`The culture of ${c.name ?? c.id} parted: ${nClans} clans led by ${h.bandEnLabel(b)} go their own way now, as a culture of their own.`]);
 }
 
 // ---------- for the page ----------
@@ -470,6 +482,35 @@ export function reactsTo2(h: Host, br: B2): string[] {
     const b1 = share(x);
     return { name, e: b1.reduce((a, v, k) => a + Math.abs(v - b0[k]), 0) };
   }).sort((a, b) => b.e - a.e).slice(0, 3).map((x) => x.name);
+}
+
+/** everything the culture card shows (fork, 1.54) */
+export function cultureCard(h: Host, id: number) {
+  const c = h.s.cultures?.[id];
+  if (!c) return null;
+  const brains = (h.s.brains ?? {}) as Record<number, B2>;
+  const size = new Map<number, number>();
+  for (const p of h.s.people) size.set(p.bandId, (size.get(p.bandId) ?? 0) + 1);
+  const mine = h.s.bands.filter((b) => brains[b.id]?.culture === id);
+  // how its clans share their work this year, on average (each clan's yearly average of its decisions)
+  const jobs = ['farm', 'herd', 'fish', 'craft', 'build', 'forage'];
+  const lean = jobs.map(() => 0);
+  for (const b of mine) { const w = brains[b.id]?.w; if (w) { const t = w.slice(0, 6).reduce((a, v) => a + v, 0) || 1; w.slice(0, 6).forEach((v, k) => { lean[k] += v / t; }); } }
+  const from = c.from !== undefined ? h.s.cultures?.[c.from] : undefined;
+  const all = Object.values(h.s.cultures ?? {});
+  const alive = new Set(mine.length ? [id] : []);
+  for (const b of h.s.bands) { const k = brains[b.id]?.culture; if (k !== undefined) alive.add(k); }
+  return {
+    id, name: c.name ?? `Culture ${id}`, hue: c.hue ?? hueOf(h.s.seed, id), since: c.since, steps: c.gen,
+    from: c.from !== undefined ? { id: c.from, name: from?.name ?? null, alive: alive.has(c.from) } : null,
+    clans: mine.map((b) => ({ id: b.id, name: h.bandEnLabel(b, true), size: size.get(b.id) ?? 0, settled: b.settled, x: b.cx, y: b.cy }))
+      .sort((a, b) => b.size - a.size),
+    people: mine.reduce((a, b) => a + (size.get(b.id) ?? 0), 0),
+    daughters: all.filter((x) => x.from === id && alive.has(x.id)).map((x) => ({ id: x.id, name: x.name ?? `Culture ${x.id}` })),
+    taughtBy: (c.taughtBy ?? []).slice().reverse(),
+    lean: Object.fromEntries(jobs.map((j, k) => [j, mine.length ? +(lean[k] / mine.length).toFixed(3) : 0])),
+    hist: c.hist ?? [],
+  };
 }
 
 /** a culture's card: its clans, how it learned */

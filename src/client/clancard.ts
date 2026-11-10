@@ -33,7 +33,7 @@ export function fillBandCard(b: BandView) {
     const c = br.culture;
     const bold = br.step >= 0.15 ? 'bold' : br.step >= 0.06 ? 'steady' : 'careful';
     const intro = br.brain2 && c
-      ? `<p class="lead">This clan belongs to the culture of <b>${esc(c.name)}</b>: ${c.clans.length} clan${c.clans.length === 1 ? '' : 's'} sharing one deep
+      ? `<p class="lead">This clan belongs to <a href="#" class="ref" data-culture="${c.id}"><b>the culture of ${esc(c.name)}</b></a>: ${c.clans.length} clan${c.clans.length === 1 ? '' : 's'} sharing one deep
         neural network (${esc(br.network)}). Every month it reads 18 senses (the season, hunger, stores, the land around, wood, children and elders,
         crowding, friends and rivals nearby, how the culture's last five years went) and six memory cells it writes for itself, and decides how the clan
         shares its work, how generous it is and whether to move on.</p>

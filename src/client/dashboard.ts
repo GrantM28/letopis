@@ -33,7 +33,7 @@ const EVENT_NAMES: Record<string, string> = {
   expedition: 'Expeditions', secret: 'Secrets found', era: 'New ages', milestone: 'Population milestones', blessing: 'Blessings',
   rain: 'Rains sent', feast: 'Feasts', lost: 'Knowledge lost',
   alliance: 'Alliances sworn', rivalry: 'Rivalries', quarrel: 'Quarrels', aid: 'Food sent to friends', peace: 'Feuds ended', estranged: 'Friendships faded',
-  learned: 'Clans changing their way of life', inspired: 'Inventors inspired', prayer: 'Prayers', imitate: 'Clans learning from neighbours', move: 'Camps moved',
+  learned: 'Clans changing their way of life', culture: 'Cultures parting', rollback: 'Worlds turned back', inspired: 'Inventors inspired', prayer: 'Prayers', imitate: 'Clans learning from neighbours', move: 'Camps moved',
 };
 
 const css = (v: string, fb: string) => getComputedStyle(document.documentElement).getPropertyValue(v).trim() || fb;
@@ -131,7 +131,9 @@ export async function renderStats(body: HTMLElement, wide = false) {
         it grow more. Cultures growing clearly slower than one nearby take up part of its ways; big cultures split in two and go their own ways.
         Nobody wrote these strategies.</p>
         <div id="chLearn"></div>
-        <h4>Cultures now <small>${cs.length}</small></h4>${barList(cs.slice(0, 10).map((c) => [`${c.name} · ${c.steps} steps`, c.clans] as [string, number]), 'var(--accent-2)', 10)}
+        <h4>Biggest cultures <small>${cs.length} in all</small></h4>
+        <ul class="plain">${cs.slice(0, 10).map((c) => `<li><a href="#" class="ref" data-culture="${c.id}">the culture of ${esc(c.name)}</a>
+          <span class="muted">· ${c.clans} clan${c.clans === 1 ? '' : 's'} · ${num(c.steps)} learning steps</span></li>`).join('')}</ul>
         <h4>Ways of life now</h4>${barList(Object.entries(bs.styles), 'var(--accent)', 8)}`;
       const L = h.learning ?? [];
       lineChart(el.querySelector<HTMLElement>('#chLearn')!, { xs: L.map((x) => x.year), fmtX: fmt, height: 130, fmtY: (y) => y.toFixed(2), series: [
