@@ -35,13 +35,13 @@ export function fillBandCard(b: BandView) {
     const intro = br.brain2 && c
       ? `<p class="lead">This clan belongs to the culture of <b>${esc(c.name)}</b>: ${c.clans.length} clan${c.clans.length === 1 ? '' : 's'} sharing one deep
         neural network (${esc(br.network)}). Every month it reads 18 senses (the season, hunger, stores, the land around, wood, children and elders,
-        crowding, friends and rivals nearby, how the last two years went) and six memory cells it writes for itself, and decides how the clan
+        crowding, friends and rivals nearby, how the culture's last five years went) and six memory cells it writes for itself, and decides how the clan
         shares its work, how generous it is and whether to move on.</p>
-        <p class="muted">How the culture learns: all its clans live two years with one small change to the network, then two years with the opposite
-        change, and the culture keeps moving the way that fed and grew its people better. A culture doing clearly worse than one nearby takes up
-        part of its ways, and a culture grown too big splits in two.</p>
+        <p class="muted">How the culture learns: all its clans live five years with one small change to the network, then five years with the opposite
+        change, and the culture keeps moving whichever way made it grow more. A culture growing clearly slower than one nearby takes up part of
+        its ways, and a culture grown too big splits in two.</p>
         <p class="muted">${c.steps} learning steps since ${c.since < 0 ? `${-c.since} BC` : `AD ${c.since}`}${c.from ? ` · split from the culture of ${esc(c.from)}` : ''}
-        ${br.lastPeriod !== null && br.lastPeriod !== undefined ? ` · the culture did ${br.lastPeriod >= 0 ? 'better' : 'worse'} than in the two years before (${br.lastPeriod >= 0 ? '+' : ''}${br.lastPeriod.toFixed(2)})` : ''}.</p>
+        ${br.lastPeriod !== null && br.lastPeriod !== undefined ? ` · the culture grew ${br.lastPeriod >= 0 ? 'faster' : 'slower'} in the last five years than in the five before` : ''}.</p>
         ${c.clans.length > 1 ? `<p class="muted">Its clans: ${c.clans.slice(0, 14).map((x) => `<a href="#" class="ref" data-band="${x.id}">${esc(x.name)}</a>`).join(', ')}.</p>` : ''}`
       : `<p class="lead">This clan's brain is a small neural network: 11 senses (the season, hunger, food stores, the fruit, game and fish
         nearby, warmth, the clan's size, whether it is settled and the age of the world) feed 8 neurons, which decide each month how the clan shares

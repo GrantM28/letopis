@@ -2,10 +2,12 @@
 //
 // Clans descended from the same first clans form a culture, and a culture shares one deeper network:
 //   18 senses + 6 memory  ->  24 neurons  ->  16 neurons  ->  9 decisions + 6 memory
-// Cultures compete. A culture is the one that learns: all its clans live two years with one small variation of the
-// shared network (noise drawn from the world's seed), then two years with the opposite variation. The culture is judged
-// as a whole (its people's food against need and its total growth), and moves towards whichever of the two did better
-// (a two-sided evolution strategy). Because a culture holds one stretch of land, the fruit and game it spares feed its
+// Cultures compete. A culture is the one that learns: all its clans live five years with one small variation of the
+// shared network (noise drawn from the world's seed), then five years with the opposite variation. The culture is judged
+// as a whole by how much it grew, and moves towards whichever of the two did better (a two-sided evolution strategy).
+// Why growth over five years, and nothing else (measured, see docs/PLAN-BRAIN-2.md): food against need rewarded stripping
+// the land (foraging scored best and grew the smallest worlds), and a better way of life shows as ~3% growth in two
+// years, lost in the noise, but ~12% in ten. Because a culture holds one stretch of land, the land it spares feeds its
 // own clans later: a clan alone gains by stripping the land, a culture does not.
 // And cultures learn from each other: one doing clearly worse than a culture nearby takes up part of its ways.
 //
@@ -32,7 +34,7 @@ export const PARAMS2 = oB3 + OUT;
 const JOBN = 6, O_GIVE = 6, O_HUNT = 7, O_ROAM = 8;
 
 /** the period of learning, in months */
-const PERIOD = Number((typeof process !== 'undefined' && process.env?.LETOPIS_B2_PERIOD) || 24);
+const PERIOD = Number((typeof process !== 'undefined' && process.env?.LETOPIS_B2_PERIOD) || 60);
 const SIGMA = Number((typeof process !== 'undefined' && process.env?.LETOPIS_B2_SIGMA) || 0.06);
 const RATE = Number((typeof process !== 'undefined' && process.env?.LETOPIS_B2_RATE) || 0.04);
 const MOMENTUM = 0.8;
@@ -47,12 +49,12 @@ const BLEND = 0.25;
 export const HALVES = ((typeof process !== 'undefined' && process.env?.LETOPIS_B2_HALVES) || '0') === '1';
 /** how much keeping the land around the camp full of fruit and game counts: food taken today is food missing tomorrow,
  *  for the clan and its neighbours (LETOPIS_B2_STEWARD) */
-const STEWARD = Number((typeof process !== 'undefined' && process.env?.LETOPIS_B2_STEWARD) || 1);
+const STEWARD = Number((typeof process !== 'undefined' && process.env?.LETOPIS_B2_STEWARD) || 0);
 /** how much growth counts next to food (the experiments can change it: LETOPIS_B2_GROWTH) */
 /** for testing the learning only: score cultures on a made-up goal (LETOPIS_B2_SYNTH=1) */
 const SYNTH = ((typeof process !== 'undefined' && process.env?.LETOPIS_B2_SYNTH) || '0') === '1';
 /** how much food against need counts (LETOPIS_B2_FOOD): food today can be the land stripped tomorrow */
-const FOOD = Number((typeof process !== 'undefined' && process.env?.LETOPIS_B2_FOOD) ?? 1);
+const FOOD = Number((typeof process !== 'undefined' && process.env?.LETOPIS_B2_FOOD) || 0);
 const GROWTH = Number((typeof process !== 'undefined' && process.env?.LETOPIS_B2_GROWTH) || 1);
 
 export interface Culture {
@@ -263,7 +265,7 @@ export function account2(br: B2, prod: number, need: number, size: number, land:
   br.pN!++;
 }
 
-// ---------- every two years: learn ----------
+// ---------- every five years: learn ----------
 
 export function learn2(h: Host, members: Map<number, Person[]>, learn: boolean) {
   if (h.s.tick % PERIOD !== PERIOD - 1) return;

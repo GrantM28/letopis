@@ -19,7 +19,7 @@ export function brain2() {
   }
   const sum = cultureSummary(h).filter((c) => c.clans);
   if (!sum.length) bad.push('no cultures');
-  if (!sum.some((c) => c.steps > 50)) bad.push(`no culture learned much: ${sum.map((c) => c.steps).join(', ')}`);
+  if (!sum.some((c) => c.steps > 20)) bad.push(`no culture learned much: ${sum.map((c) => c.steps).join(', ')}`);
   if (sum.some((c) => c.clans > 30)) bad.push(`a culture never split: ${Math.max(...sum.map((c) => c.clans))} clans`);
   for (const c of Object.values(cs)) {
     if (c.net.length !== PARAMS2) bad.push(`culture ${c.id}: ${c.net.length} weights`);
