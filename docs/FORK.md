@@ -12,7 +12,9 @@ If a merge from the original conflicts, the conflict should be in one of the hoo
 | English words for the fork's events | `src/shared/event_words.ts` |
 | World events, watchers' powers, prayers, camp-move news | `src/server/sim/events.ts` |
 | Friendships and rivalries between clans | `src/server/sim/relations.ts` |
-| The clans' learning brains (neural network + evolution) | `src/server/sim/brain.ts` |
+| The brains: Brain 2 (cultures sharing a deep network that learns from growth) and Brain 1 (one small network per clan, `LETOPIS_BRAIN=1`) | `src/server/sim/brain2.ts`, `src/server/sim/brain.ts` |
+| Pasture: herds need grass shared with nearby herders (experiment, off unless `LETOPIS_PASTURE` is set) | `src/server/sim/pasture.ts` |
+| The brain benchmark and long-run probes | `tools/bench.ts`, `tools/bench.mjs`, `tools/longrun.ts`, `tools/switch.ts`, `tools/pasture-probe.ts` |
 | Extra API endpoints, history, settings | `src/server/extras.ts` |
 | Phone / Home Assistant notifications | `src/server/notify.ts` |
 | Page: shared helpers and the doorway into `main.ts` | `src/client/kit.ts` |
@@ -33,13 +35,14 @@ If a merge from the original conflicts, the conflict should be in one of the hoo
 **`src/server/sim/sim.ts`**
 - `host()` returns a `ForkHost`: the one doorway `events.ts`, `relations.ts`, `brain.ts` and `extras.ts` use into the simulation.
   If the original renames something they need, it fails to compile there.
-- `SimState` gains optional fields: `relations`, `relState`, `brains`, `inspired`, `prayers`, `moveNews`. Old saves load without them.
+- `SimState` gains optional fields: `relations`, `relState`, `brains`, `inspired`, `prayers`, `moveNews`, `cultures`, `cultureSeq`. Old saves load without them.
 - Each month: `brainStep`, `relationsStep`, `worldEvents`, `prayersStep`; jobs are steered by `steerJobs`, restless moves by `wantsToMove`, camp moves told by `announceMove`.
 - Food: `laterFarming()` (later farming techs), diminishing returns for herding and fishing, spoilage reduced by canning/refrigeration, medicine chain for longevity.
+- Herding: `herdF` is multiplied by `pastureShare()` (1 unless the pasture experiment is on).
 - Clans split when crowded, and a desperate split at three times the limit (a guard against runaway clans).
 - `watcherAct` / `answerPrayer` for the watchers' powers.
 
-**`src/server/index.ts`**: query numbers that are not numbers count as not given (a crash on `?limit=abc`), the time scale (`TIME_SCALES`, `setTimeScale`), throttled broadcasts at high speed, the slow-client guard, `Extras` and `notify` wiring, English logs.
+**`src/server/index.ts`**: the autosave every two minutes packs the world in the background (`saveInBackground`); query numbers that are not numbers count as not given (a crash on `?limit=abc`), the time scale (`TIME_SCALES`, `setTimeScale`), throttled broadcasts at high speed, the slow-client guard, `Extras` and `notify` wiring, English logs.
 
 **`src/server/sim/tech.ts`**: adds `LATER_TECHS` and `ERA_GATES` to the tech list.
 
