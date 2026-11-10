@@ -125,11 +125,8 @@ export async function renderStats(body: HTMLElement, wide = false) {
     el.classList.remove('muted');
     if (bs.brain2) {
       const cs = bs.cultures ?? [];
-      el.innerHTML = `<p class="lead">Clans descended from the same first clans form a <b>culture</b>, and each culture shares one deep neural network
-        (${(bs.network.layers ?? []).join(' → ')}, ${num(bs.network.weights)} weights, with six memory cells it writes for itself). All the clans of a culture
-        live five years with one small change to the network, then five years with the opposite change, and the culture keeps moving whichever way made
-        it grow more. Cultures growing clearly slower than one nearby take up part of its ways; big cultures split in two and go their own ways.
-        Nobody wrote these strategies.</p>
+      el.innerHTML = `<p class="lead">Each culture shares one brain and learns it by trial: five years with a small change, five with the
+        opposite, keeping whichever made it grow more. <a href="#" class="ck-help" data-help="cultures">How it works</a></p>
         <div id="chLearn"></div>
         <h4>Biggest cultures <small>${cs.length} in all</small></h4>
         <ul class="plain">${cs.slice(0, 10).map((c) => `<li><a href="#" class="ref" data-culture="${c.id}">the culture of ${esc(c.name)}</a>

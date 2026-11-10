@@ -245,3 +245,14 @@ svg.brain-net.readable text.net-col { font-size: 11px; fill: var(--faint); }
 svg.brain-net.readable .net-out { cursor: pointer; }
 svg.brain-net.readable.focus line { stroke-opacity: 0.06; }
 svg.brain-net.readable.focus line.lit { stroke-opacity: 0.9; }
+
+/* 1.60: How it works (howto.ts), on the History page's frame */
+.howto { z-index: 25; }
+.how-nav { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0 8px; position: sticky; top: 0; background: var(--bg); padding: 8px 0; z-index: 1; }
+.how-nav a { font-size: 13px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line); color: var(--text); text-decoration: none; }
+.how-nav a:hover { border-color: var(--accent); }
+.how-part { margin: 18px 0 26px; line-height: 1.65; font-size: 15.5px; border-left: 3px solid transparent; padding-left: 14px; transition: border-color 0.4s; }
+.how-part.lit { border-left-color: var(--accent); }
+.how-part h3 { font-family: var(--serif); font-size: 21px; color: var(--accent); margin: 0 0 8px; font-weight: normal; }
+.how-part code { background: var(--panel-raised); padding: 1px 6px; border-radius: 6px; font-size: 13px; }
+a.ck-help:not(.btn) { color: var(--accent-2); margin-left: 6px; }
