@@ -228,7 +228,8 @@ export function brainStep(h: BrainHost, members: Map<number, Person[]>) {
     const parent = b.from ? brains[b.from.id] : undefined;
     if (!br) {
       // a daughter clan takes after the clan it came from, with small mutations
-      const net = parent?.net ? mutate(h, parent.net, SIGMA_BIRTH) : newNet(h, parent?.w, parent?.give);
+      // (Brain 2 keeps no network per clan: the culture has it)
+      const net = BRAIN2 ? undefined : parent?.net ? mutate(h, parent.net, SIGMA_BIRTH) : newNet(h, parent?.w, parent?.give);
       // and the people who left with it are the parent's success
       if (parent) {
         parent.founded = (parent.founded ?? 0) + (members.get(b.id)?.length ?? 0);
@@ -239,7 +240,7 @@ export function brainStep(h: BrainHost, members: Map<number, Person[]>) {
     // brains from before the networks: their fixed preferences become the network's starting point
     if (br.net && br.net.length === PARAMS_V133) br.net = growNet(h, br.net);
     if (br.trial && br.trial.net.length === PARAMS_V133) br.trial.net = growNet(h, br.trial.net);
-    if (!br.net || br.net.length !== PARAMS) br.net = newNet(h, br.w, br.give);
+    if (BRAIN2) { delete br.net; br.trial = null; } else if (!br.net || br.net.length !== PARAMS) br.net = newNet(h, br.w, br.give);
     // decide for this month from what the clan senses now
     // rounded to 2 decimals: a saved and reloaded world (whose land the original rounds when it saves) decides the same (v1.40)
     const ms = members.get(b.id) ?? [];
@@ -250,7 +251,7 @@ export function brainStep(h: BrainHost, members: Map<number, Person[]>) {
     }
     x = x.map((v) => Math.round(v * 100) / 100);
     br.senses = x;
-    br.out = BRAIN2 ? decide2(h as never, b, br, x) : forward(br.trial?.net ?? br.net, x);
+    br.out = BRAIN2 ? decide2(h as never, b, br, x) : forward(br.trial?.net ?? br.net!, x);
     if (BRAIN2) account2(br, b.lastProd ?? 0, b.lastNeed ?? 0, ms.length, (x[4] + x[5]) / 2);
     // experiments only: LETOPIS_FIXED=<6 job weights,give,roam> gives every clan the same fixed decisions
     const fixedNow = (globalThis as { letopisFixed?: number[] }).letopisFixed ?? FIXED;

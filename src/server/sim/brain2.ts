@@ -176,12 +176,14 @@ function newCultureNet(seed: number, id: number, w?: number[], give?: number): n
   const g = Math.max(0.05, Math.min(0.95, give ?? 0.5));
   net[oB3 + O_GIVE] = Math.log(g / (1 - g));
   net[oB3 + O_ROAM] = -1.5;
-  return net;
+  return net.map(r4);
 }
 
 // ---------- senses ----------
 
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
+/** weights kept to four decimals: plenty for the network, and a culture saves in a third of the space */
+const r4 = (v: number) => Math.round(v * 1e4) / 1e4;
 
 /** the senses Brain 2 adds to Brain 1's eleven */
 export function moreSenses(h: Host, b: Band, br: B2, ms: Person[], near: { all: number; friends: number; rivals: number }): number[] {
@@ -334,8 +336,8 @@ function learnStep(h: Host, c: Culture, score: number, period: number) {
   const k = diff / (2 * SIGMA);
   c.mom ??= new Array(PARAMS2).fill(0);
   for (let p = 0; p < PARAMS2; p++) {
-    c.mom[p] = MOMENTUM * c.mom[p] + (1 - MOMENTUM) * k * e[p];
-    c.net[p] = clamp(c.net[p] + RATE * c.mom[p] - DECAY * c.net[p], -6, 6);
+    c.mom[p] = r4(MOMENTUM * c.mom[p] + (1 - MOMENTUM) * k * e[p]);
+    c.net[p] = r4(clamp(c.net[p] + RATE * c.mom[p] - DECAY * c.net[p], -6, 6));
   }
   c.gen++;
   c.trial = { key: period, sign: 1 };
@@ -347,8 +349,8 @@ function halvesStep(h: Host, c: Culture, diff: number) {
   const k = diff / (2 * SIGMA);
   c.mom ??= new Array(PARAMS2).fill(0);
   for (let p = 0; p < PARAMS2; p++) {
-    c.mom[p] = MOMENTUM * c.mom[p] + (1 - MOMENTUM) * k * e[p];
-    c.net[p] = clamp(c.net[p] + RATE * c.mom[p] - DECAY * c.net[p], -6, 6);
+    c.mom[p] = r4(MOMENTUM * c.mom[p] + (1 - MOMENTUM) * k * e[p]);
+    c.net[p] = r4(clamp(c.net[p] + RATE * c.mom[p] - DECAY * c.net[p], -6, 6));
   }
   c.gen++;
 }
@@ -371,8 +373,8 @@ function compete(h: Host, byCulture: Map<number, Band[]>, scored: Map<number, nu
       if (oc.score > bestScore && Math.hypot(ox - x, oy - y) < 35) { best = oc; bestScore = oc.score; }
     }
     if (!best) continue;
-    for (let p = 0; p < PARAMS2; p++) c.net[p] = c.net[p] * (1 - BLEND) + best.net[p] * BLEND;
-    if (c.mom) for (let p = 0; p < PARAMS2; p++) c.mom[p] *= 0.5;
+    for (let p = 0; p < PARAMS2; p++) c.net[p] = r4(c.net[p] * (1 - BLEND) + best.net[p] * BLEND);
+    if (c.mom) for (let p = 0; p < PARAMS2; p++) c.mom[p] = r4(c.mom[p] * 0.5);
     c.gen++;
     const year = Math.floor(h.year);
     const size = byCulture.get(id)!.length;

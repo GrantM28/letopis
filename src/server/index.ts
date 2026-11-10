@@ -1,6 +1,7 @@
 import http from 'node:http';
 import { createReadStream, existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs';
-import { createGzip, gunzipSync, gzipSync } from 'node:zlib';
+import { createGzip, gunzipSync, gzip, gzipSync } from 'node:zlib';
+import { writeFile, rename } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer, WebSocket } from 'ws';
@@ -77,6 +78,22 @@ function save() {
   renameSync(tmp, STATE_FILE);
 }
 
+/** the save every two minutes: packed away from the main thread (fork: a big world's gzip held the server still for over
+ *  a second). Only the picture of the world is taken here; on shutdown the plain save() above runs instead. */
+let saving = false;
+function saveInBackground() {
+  if (saving) return;
+  saving = true;
+  const json = JSON.stringify(sim.serialize());
+  const tmp = STATE_FILE + '.bg.tmp';
+  const world = sim.s.worldId;
+  gzip(json, (err, packed) => {
+    if (err) { saving = false; log('Error while saving', err); return; }
+    // a world that died out meanwhile has been archived: its old picture must not come back
+    writeFile(tmp, packed).then(() => (sim.s.worldId === world && !sim.extinct ? rename(tmp, STATE_FILE) : undefined)).catch((e) => log('Error while saving', e)).finally(() => { saving = false; });
+  });
+}
+
 function flush() {
   store.addEvents(sim.s.worldId, sim.events);
   store.addDead(sim.s.worldId, sim.deadQueue);
@@ -140,7 +157,7 @@ function tick() {
     if (timeScale <= 5 || Date.now() - lastBroadcast >= 250) { broadcast(); lastBroadcast = Date.now(); }
     if (sim.extinct) return restartWorld();
     if (Date.now() - lastSave > SAVE_EVERY_MS) {
-      save();
+      saveInBackground();
       lastSave = Date.now();
     }
   } catch (e) {
