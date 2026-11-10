@@ -32,7 +32,7 @@ export const PARAMS2 = oB3 + OUT;
 const JOBN = 6, O_GIVE = 6, O_HUNT = 7, O_ROAM = 8;
 
 /** the period of learning, in months */
-const PERIOD = 24;
+const PERIOD = Number((typeof process !== 'undefined' && process.env?.LETOPIS_B2_PERIOD) || 24);
 const SIGMA = Number((typeof process !== 'undefined' && process.env?.LETOPIS_B2_SIGMA) || 0.06);
 const RATE = Number((typeof process !== 'undefined' && process.env?.LETOPIS_B2_RATE) || 0.04);
 const MOMENTUM = 0.8;
@@ -49,6 +49,10 @@ export const HALVES = ((typeof process !== 'undefined' && process.env?.LETOPIS_B
  *  for the clan and its neighbours (LETOPIS_B2_STEWARD) */
 const STEWARD = Number((typeof process !== 'undefined' && process.env?.LETOPIS_B2_STEWARD) || 1);
 /** how much growth counts next to food (the experiments can change it: LETOPIS_B2_GROWTH) */
+/** for testing the learning only: score cultures on a made-up goal (LETOPIS_B2_SYNTH=1) */
+const SYNTH = ((typeof process !== 'undefined' && process.env?.LETOPIS_B2_SYNTH) || '0') === '1';
+/** how much food against need counts (LETOPIS_B2_FOOD): food today can be the land stripped tomorrow */
+const FOOD = Number((typeof process !== 'undefined' && process.env?.LETOPIS_B2_FOOD) ?? 1);
 const GROWTH = Number((typeof process !== 'undefined' && process.env?.LETOPIS_B2_GROWTH) || 1);
 
 export interface Culture {
@@ -251,7 +255,11 @@ function joinCulture(h: Host, b: Band, br: B2): Culture {
  *  work is shared, month by month, where being fed and growing answer slowly and with much luck. Growth still counts. */
 export function account2(br: B2, prod: number, need: number, size: number, land: number) {
   if (!br.pN) { br.pAcc = 0; br.pN = 0; br.pSize0 = size; br.pFounded = 0; }
-  br.pAcc! += (need > 0 ? Math.log(clamp(prod / need, 0.1, 4)) : 0) + STEWARD * land;
+  if (SYNTH && br.out) {
+    // a test of the learning itself: the score is just the share of work given to herding and fishing
+    const o = br.out.slice(0, JOBN); const t = o.reduce((a, v) => a + v, 0);
+    br.pAcc! += (o[1] + o[2]) / t;
+  } else br.pAcc! += FOOD * (need > 0 ? Math.log(clamp(prod / need, 0.1, 4)) : 0) + STEWARD * land;
   br.pN!++;
 }
 
@@ -287,12 +295,12 @@ export function learn2(h: Host, members: Map<number, Person[]>, learn: boolean) 
       br.pN = 0;
     }
     if (HALVES && learn) {
-      const F = (x: number[]) => x[0] / x[1] + clamp((x[3] - x[2]) / Math.max(10, x[2]), -0.3, 0.5) * GROWTH;
+      const F = (x: number[]) => x[0] / x[1] + clamp((x[3] - x[2]) / Math.max(10, x[2]), -0.6, 1) * GROWTH;
       if (c.trial && half[1][1] > 0 && half[-1][1] > 0) halvesStep(h, c, F(half[1]) - F(half[-1]));
       c.trial = { key: period + 1, sign: 1 };
     }
     if (c.pop0 !== undefined && w > 0) {
-      const grow = clamp((pop - c.pop0) / Math.max(10, c.pop0), -0.3, 0.5);
+      const grow = clamp((pop - c.pop0) / Math.max(10, c.pop0), -0.6, 1);
       const score = food / w + grow * GROWTH;
       const imp = c.last !== undefined ? Math.round((score - c.last) * 100) / 100 : 0;
       for (const b of bands) brains[b.id].imp = imp;

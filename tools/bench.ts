@@ -30,7 +30,8 @@ const variety = Math.exp(-Object.values(b.styles).reduce((a, c) => a + (c / tota
 console.log(JSON.stringify({
   seed, brain: process.env.LETOPIS_NO_LEARN === '1' ? 'frozen' : process.env.LETOPIS_BRAIN === '1' ? 'brain1' : 'brain2',
   year: Math.floor(sim.year), pop: sim.s.people.length, avgPop: Math.round(popSum / Math.max(1, n)), bands: sim.s.bands.length,
-  biggest, eras: eraYear, discovered: sim.s.discovered.length, variety: +variety.toFixed(2), styles: b.styles,
+  biggest, eras: eraYear, shares: (() => { const w = b.avgWeights as Record<string, number>; const t = Object.values(w).reduce((a, v) => a + v, 0) || 1; return Object.fromEntries(Object.entries(w).map(([k, v]) => [k, +(v / t).toFixed(2)])); })(), discovered: sim.s.discovered.length, variety: +variety.toFixed(2), styles: b.styles,
   cultures: (() => { const c = cultureSummary(sim.host() as never).filter((x) => x.clans); return { n: c.length, steps: Math.max(0, ...c.map((x) => x.steps)), sizes: c.map((x) => x.clans).slice(0, 8), score: c.slice(0, 5).map((x) => x.score) }; })(),
+  cultureScore: (() => { const cs = Object.values(sim.s.cultures ?? {}); return cs.length ? +(cs.reduce((a, c) => a + c.score, 0) / cs.length).toFixed(3) : null; })(),
   msPerMonth: +(ms / Math.max(1, msN)).toFixed(2), saveKB: Math.round(JSON.stringify(sim.serialize()).length / 1024),
 }));

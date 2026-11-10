@@ -253,7 +253,8 @@ export function brainStep(h: BrainHost, members: Map<number, Person[]>) {
     br.out = BRAIN2 ? decide2(h as never, b, br, x) : forward(br.trial?.net ?? br.net, x);
     if (BRAIN2) account2(br, b.lastProd ?? 0, b.lastNeed ?? 0, ms.length, (x[4] + x[5]) / 2);
     // experiments only: LETOPIS_FIXED=<6 job weights,give,roam> gives every clan the same fixed decisions
-    if (FIXED) br.out = FIXED;
+    const fixedNow = (globalThis as { letopisFixed?: number[] }).letopisFixed ?? FIXED;
+    if (fixedNow) br.out = fixedNow;
     br.wAcc ??= new Array(OUT).fill(0);
     br.out.forEach((v, i) => { br.wAcc![i] += v; });
     // how well fed the clan is (beyond plenty more food does not count)
