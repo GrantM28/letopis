@@ -39,7 +39,7 @@ function overlay(): HTMLElement {
   el.setAttribute('role', 'dialog');
   el.setAttribute('aria-label', 'The history of the world');
   el.innerHTML = `<div class="hist-inner">
-    <header class="hist-head"><h2>The history of the world</h2><button class="btn round" id="histClose" title="Close" aria-label="Close">×</button></header>
+    <header class="hist-head"><h2>The history of the world</h2><span class="hist-actions"><a class="btn" href="/book" target="_blank" rel="noopener">The book of the world</a><button class="btn round" id="histClose" title="Close" aria-label="Close">×</button></span></header>
     <p class="muted" id="histSub"></p>
     <div id="histPop"></div>
     <div class="hist-tools"><div class="chips" id="histChips"></div><button class="btn" id="histOrder"></button></div>

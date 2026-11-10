@@ -86,6 +86,10 @@ and a reworked, English-only interface. Upstream changes are merged in from time
   floods, comets and the like, kept for good from 1.57 on; the chronicle itself lets them go after 100 years), the
   cultures alive now and how they began, and every village founded. Filters for each, oldest or newest first; every
   entry opens its card.
+- **The book of the world** (`/book`, linked from History and the admin page): the whole history as one readable page,
+  a chapter for every age (when it began, how many people, what was first found and by whom, what happened, villages
+  and cultures), with the map as far as its people have seen it, the world's numbers and records, and some of the
+  living. Made anew each time it is opened; print it or save it as a PDF from the browser, or share the link.
 - **Help the world** (the Help button, or the buttons on a clan's card to help that clan): send a blessing (food), rain,
   call a feast, inspire an inventor (four times the chance of a discovery for two years) or calm a feud. Each power has a
   waiting time shared by everyone watching, and everything is written in the chronicle.

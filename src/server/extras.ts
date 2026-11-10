@@ -11,7 +11,8 @@ import { ACTS, ACT_COOLDOWN_MIN, ActKind, PRAYER_TTL_MS } from './sim/events';
 import { brainSummary, brainView } from './sim/brain';
 import { cultureCard, cultureMap } from './sim/brain2';
 import { tradeRoutes } from './sim/trade';
-import { causeEn, personEn, bandTextEn } from '../shared/i18n';
+import { causeEn, personEn, bandTextEn, deedEn } from '../shared/i18n';
+import { bookHtml, mapPng } from './book';
 import { TECHS } from './sim/tech';
 import { relationCounts, relationsOf } from './sim/relations';
 
@@ -156,7 +157,7 @@ export class Extras {
     // the population, a point every few years (at most 400)
     const pop = this.db.prepare('SELECT year, population FROM x_years WHERE world = ? ORDER BY year').all(w) as { year: number; population: number }[];
     const every = Math.max(1, Math.ceil(pop.length / 400));
-    return { year: Math.floor(sim.year), era: sim.s.era, events, cultures: cult, population: pop.filter((_, i) => i % every === 0 || i === pop.length - 1).map((r) => [r.year, r.population]) };
+    return { year: Math.floor(sim.year), era: sim.s.era, events, cultures: cult, population: pop.filter((_, i) => i % every === 0 || i === pop.length - 1).map((r) => [r.year, r.population] as [number, number]) };
   }
 
   private records(world: string): Records {
@@ -248,6 +249,20 @@ export class Extras {
     }
     if (p === '/api/brains') { json(res, brainSummary(sim.host())); return true; }
     if (p === '/api/timeline') { json(res, this.timeline(sim)); return true; }
+    if (p === '/book' || p === '/book/') {
+      // the book of the world (book.ts): the notable living in English, with their deeds
+      const byBand = new Map(sim.s.bands.map((b) => [b.id, b]));
+      const heroes = sim.s.people.filter((x) => x.deeds.length > 0).sort((a, b) => b.deeds.length - a.deeds.length || sim.ageOf(b) - sim.ageOf(a)).slice(0, 15)
+        .map((x) => ({ name: sim.nameEn(x), age: Math.floor(sim.ageOf(x)), band: byBand.has(x.bandId) ? sim.bandEnLabel(byBand.get(x.bandId)!) : 'a clan now gone', deeds: x.deeds.map(deedEn) }));
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
+      res.end(bookHtml(sim, this.timeline(sim), { records: this.records(sim.s.worldId), heroes }));
+      return true;
+    }
+    if (p === '/api/book/map.png') {
+      res.writeHead(200, { 'content-type': 'image/png', 'cache-control': 'no-cache' });
+      res.end(mapPng(sim));
+      return true;
+    }
     if (p === '/api/trade') { json(res, tradeRoutes(sim)); return true; }
     if (p === '/api/cultures') { json(res, cultureMap(sim.host() as never)); return true; }
     if (p.startsWith('/api/culture/')) {

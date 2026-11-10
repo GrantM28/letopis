@@ -3,12 +3,8 @@
 
 import type { BandView, WorldInfo } from '../shared/types';
 import { b64decode } from '../shared/types';
+import { BIOME_RGB } from '../shared/biomecolors';
 
-const BIOME_RGB: Record<number, [number, number, number]> = {
-  0: [28, 62, 104], 1: [46, 92, 140], 2: [214, 196, 140], 3: [110, 162, 78], 4: [150, 176, 90], 5: [58, 112, 58],
-  6: [52, 94, 74], 7: [128, 140, 90], 8: [132, 126, 120], 9: [236, 240, 244], 10: [214, 186, 120], 11: [150, 160, 140],
-  12: [86, 112, 82], 13: [60, 110, 160],
-};
 
 export class Minimap {
   private canvas: HTMLCanvasElement;

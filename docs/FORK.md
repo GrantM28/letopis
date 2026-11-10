@@ -29,6 +29,7 @@ If a merge from the original conflicts, the conflict should be in one of the hoo
 | Page: People tab | `src/client/people.ts` |
 | Page: clan card (help, brain, friends, people) | `src/client/clancard.ts`, `src/client/brainview.ts` |
 | Page: minimap, landmarks | `src/client/minimap.ts`, `src/client/landmarks.ts` |
+| The book of the world (`/book`, its map PNG) | `src/server/book.ts`, `src/shared/biomecolors.ts` |
 | Page: the History view | `src/client/history.ts` (great events kept in `x_history`, `/api/timeline` in `extras.ts`) |
 | Page: cultures on the map (the Cultures button) and the culture card | `src/client/cultures.ts`, `src/client/culturelayer.ts`, `src/client/culturecard.ts` |
 | Styles | `public/fork.css` (loaded after `style.css`) |

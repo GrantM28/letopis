@@ -60,6 +60,13 @@ export async function api() {
     if (!(bless.body as { ok?: boolean })?.ok) bad.push(`blessing failed: ${bless.text.slice(0, 80)}`);
     if ((await get('/api/act/bless', 'POST')).status !== 429) bad.push('a second blessing was not refused');
     if ((await get('/api/nothing-here')).status !== 200) bad.push('unknown paths should serve the page');
+    // the book of the world (book.ts): a page in English, and its map as a real PNG
+    const book = await get('/book');
+    if (book.status !== 200 || !book.text.includes('The Book of the World') || !book.text.includes('Stone Age')) bad.push('the book of the world did not render');
+    if (/[Ѐ-ӿ]/.test(book.text)) bad.push('the book has Bulgarian in it');
+    const map = await fetch(base + '/api/book/map.png');
+    const sig = new Uint8Array(await map.arrayBuffer()).slice(0, 8);
+    if (map.status !== 200 || sig[1] !== 0x50 || sig[2] !== 0x4e || sig[3] !== 0x47) bad.push('the book map is not a PNG');
     // bad input gets a clear answer, never a crash or a quiet guess
     if ((await get('/api/chronicle?limit=abc')).status !== 200) bad.push('/api/chronicle?limit=abc did not answer');
     if ((await get('/api/people?band=abc')).status !== 400) bad.push('/api/people?band=abc was not refused');
