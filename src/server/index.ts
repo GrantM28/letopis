@@ -224,7 +224,8 @@ function snapshot(): SnapshotMessage {
 const server = http.createServer((req, res) => {
   const url = new URL(req.url ?? '/', 'http://x');
   const p = url.pathname;
-  const q = (k: string) => (url.searchParams.has(k) ? Number(url.searchParams.get(k)) : undefined);
+  // a number from the query; anything that is not a number counts as not given (fork: ?limit=abc gave a 500)
+  const q = (k: string) => { const v = url.searchParams.has(k) ? Number(url.searchParams.get(k)) : NaN; return Number.isFinite(v) ? v : undefined; };
   const world = sim.s.worldId;
   try {
     if (p === '/api/time') {

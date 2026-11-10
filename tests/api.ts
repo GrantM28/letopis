@@ -57,6 +57,11 @@ export async function api() {
     if (!(bless.body as { ok?: boolean })?.ok) bad.push(`blessing failed: ${bless.text.slice(0, 80)}`);
     if ((await get('/api/act/bless', 'POST')).status !== 429) bad.push('a second blessing was not refused');
     if ((await get('/api/nothing-here')).status !== 200) bad.push('unknown paths should serve the page');
+    // bad input gets a clear answer, never a crash or a quiet guess
+    if ((await get('/api/chronicle?limit=abc')).status !== 200) bad.push('/api/chronicle?limit=abc did not answer');
+    if ((await get('/api/people?band=abc')).status !== 400) bad.push('/api/people?band=abc was not refused');
+    if ((await get('/api/act/rain?band=abc', 'POST')).status !== 400) bad.push('an act on a clan named abc was not refused');
+    if ((await get('/api/act/rain?band=999999', 'POST')).status !== 404) bad.push('an act on a clan that is gone was not refused');
   } finally {
     server.kill();
     await wait(500);

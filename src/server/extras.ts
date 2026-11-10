@@ -54,6 +54,8 @@ export class Extras {
   /** after every month of the world, before the chronicle and the dead are written away */
   onTick(sim: Simulation) {
     const w = sim.s.worldId;
+    // the dead are kept for family trees: their genes to hundredths are plenty (a quarter of each record was long decimals)
+    for (const d of sim.deadQueue) for (const k of Object.keys(d.genes)) d.genes[k] = Math.round(d.genes[k] * 100) / 100;
     const bump = this.db.prepare('INSERT INTO x_counts VALUES (?,?,?,1) ON CONFLICT(world, kind, key) DO UPDATE SET n = n + 1');
     if (sim.deadQueue.length || sim.events.length) {
       this.db.exec('BEGIN');
@@ -61,6 +63,7 @@ export class Extras {
       for (const e of sim.events) bump.run(w, 'event', e.kind);
       this.db.exec('COMMIT');
     }
+    if (sim.s.tick % 3 === 0) { const t0 = performance.now(); this.forgetDead(w, sim.s.tick); const ms = performance.now() - t0; if (process.env.LETOPIS_DEBUG_FORGET) console.log(`forget ${ms.toFixed(0)} ms`); }
     if (sim.s.tick % 12 !== 0) return;
     const people = sim.s.people;
     const ages = people.map((p) => sim.ageOf(p));
@@ -90,6 +93,27 @@ export class Extras {
     if (!rec.peak || people.length > rec.peak.population) { rec.peak = { population: people.length, year }; changed = true; }
     if (!rec.mostClans || sim.s.bands.length > rec.mostClans.bands) { rec.mostClans = { bands: sim.s.bands.length, year }; changed = true; }
     if (changed) this.db.prepare('INSERT OR REPLACE INTO x_records VALUES (?,?)').run(w, JSON.stringify(rec));
+  }
+
+  /** The original keeps every person who ever died, for family trees. In a big world that is millions of records
+   *  (a gigabyte in two weeks). Family trees only climb to parents, so a person with no children, no deeds and no partner
+   *  is never in one: once they died more than 300 years ago they are let go. A small slice every three months of the
+   *  world, so the server never stalls (big slices stalled it for seconds); the space is reused by SQLite. */
+  private forgetDead(world: string, tick: number) {
+    const key = `deadCursor:${world}`;
+    let cursor = this.getSetting<number>(key, 0);
+    const cutoff = tick - 300 * 12;
+    const rows = this.db.prepare('SELECT rowid AS r, json_extract(json, \'$.died\') AS died FROM dead WHERE rowid > ? ORDER BY rowid LIMIT 400')
+      .all(cursor) as { r: number; died: number }[];
+    let end = cursor;
+    for (const row of rows) { if (row.died >= cutoff) break; end = row.r; }
+    if (end <= cursor) return;
+    // (+world: without the plus SQLite walks the (world, id) index over every dead person instead of the small rowid range)
+    this.db.prepare(`DELETE FROM dead WHERE rowid > ? AND rowid <= ? AND +world = ?
+      AND json_array_length(json, '$.children') = 0 AND json_array_length(json, '$.deeds') = 0 AND json_extract(json, '$.partnerId') IS NULL`)
+      .run(cursor, end, world);
+    cursor = end;
+    this.setSetting(key, cursor);
   }
 
   private records(world: string): Records {
@@ -227,6 +251,7 @@ export class Extras {
       });
       if (q) rows = rows.filter((r) => r.name.toLowerCase().includes(q) || r.band.toLowerCase().includes(q));
       const onlyBand = Number(url.searchParams.get('band') ?? 0);
+      if (url.searchParams.has('band') && !(onlyBand > 0)) { json(res, { error: 'band must be a clan id' }, 400); return true; }
       if (onlyBand) rows = rows.filter((r) => r.bandId === onlyBand);
       const by: Record<string, (a: (typeof rows)[number], b: (typeof rows)[number]) => number> = {
         old: (a, b) => b.age - a.age, young: (a, b) => a.age - b.age, name: (a, b) => a.name.localeCompare(b.name),
@@ -243,6 +268,9 @@ export class Extras {
       if (!state.ready) { json(res, { error: 'not ready', readyIn: state.readyIn }, 429); return true; }
       const url = new URL(req.url ?? '/', 'http://x');
       const target = Number(url.searchParams.get('band') ?? 0) || undefined;
+      // a clan was named: help that one or nobody (never quietly someone else)
+      if (url.searchParams.has('band') && !(target && target > 0)) { json(res, { error: 'band must be a clan id' }, 400); return true; }
+      if (target && !sim.s.bands.some((x) => x.id === target)) { json(res, { error: 'that clan is gone' }, 404); return true; }
       const b = sim.watcherAct(kind, target);
       if (!b) { json(res, { error: kind === 'calm' ? 'no feud to calm' : 'nobody to help' }, 409); return true; }
       const band = sim.bandEnLabel(b, true);
