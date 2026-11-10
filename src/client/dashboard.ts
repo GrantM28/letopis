@@ -118,10 +118,26 @@ export async function renderStats(body: HTMLElement, wide = false) {
   lineChart(body.querySelector<HTMLElement>('#chTech')!, { xs, eras, fmtX: fmt, height: 120, series: [
     { name: 'Discoveries', color: '#b48ead', values: s.map((x) => x.techs), fill: true },
   ] });
-  api<{ clans: number; styles: Record<string, number>; avgGeneration: number; maxGeneration: number; tried: number; kept: number; copied?: number; copiedKept?: number; avgStep?: number; network: { inputs: number; hidden: number; outputs: number; weights: number } } | null>('/api/brains').then((bs) => {
+  api<{ clans: number; styles: Record<string, number>; avgGeneration: number; maxGeneration: number; tried: number; kept: number; copied?: number; copiedKept?: number; avgStep?: number; network: { inputs: number; hidden: number; outputs: number; weights: number; layers?: number[] }; brain2?: boolean;
+    cultures?: { id: number; name: string; clans: number; steps: number; score: number; since: number }[] } | null>('/api/brains').then((bs) => {
     const el = body.querySelector<HTMLElement>('#dashBrains');
     if (!el || !bs) return;
     el.classList.remove('muted');
+    if (bs.brain2) {
+      const cs = bs.cultures ?? [];
+      el.innerHTML = `<p class="lead">Clans descended from the same first clans form a <b>culture</b>, and each culture shares one deep neural network
+        (${(bs.network.layers ?? []).join(' → ')}, ${num(bs.network.weights)} weights, with a memory of its own). Every two years each clan of a culture lives with
+        its own small variation of the network, and the culture moves towards the variations that fed and grew their clans best. Big cultures split in two
+        and go their own ways. Nobody wrote these strategies.</p>
+        <div id="chLearn"></div>
+        <h4>Cultures now <small>${cs.length}</small></h4>${barList(cs.slice(0, 10).map((c) => [`${c.name} · ${c.steps} steps`, c.clans] as [string, number]), 'var(--accent-2)', 10)}
+        <h4>Ways of life now</h4>${barList(Object.entries(bs.styles), 'var(--accent)', 8)}`;
+      const L = h.learning ?? [];
+      lineChart(el.querySelector<HTMLElement>('#chLearn')!, { xs: L.map((x) => x.year), fmtX: fmt, height: 130, fmtY: (y) => y.toFixed(2), series: [
+        { name: 'How well clans do (food and growth)', color: '#6cc38a', values: L.map((x) => x.score), fill: true },
+      ] });
+      return;
+    }
     el.innerHTML = `<p class="lead">Every clan carries a small neural network (${bs.network.inputs} senses → ${bs.network.hidden} neurons → ${bs.network.outputs} outputs)
       that decides each month how the clan shares its work. Every two years a clan judges a slightly changed network and keeps it when the clan eats better and grows, now and then copying a neighbour that does better,
       and daughter clans inherit their parents' network with small mutations. Nobody wrote these strategies.</p>

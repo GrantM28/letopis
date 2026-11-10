@@ -5,7 +5,7 @@ import { TASK_NAMES } from '../shared/types';
 import { TASK } from './lang';
 import { $, api, esc } from './kit';
 import { useAct } from './help';
-import { BrainNet, brainSvg } from './brainview';
+import { BrainNet, DeepNet, brainSvg, deepSvg } from './brainview';
 import type { PersonListRow } from './people';
 
 export function fillBandCard(b: BandView) {
@@ -22,18 +22,30 @@ export function fillBandCard(b: BandView) {
   });
   // what the clan has learned (brain.ts on the server)
   const JOB_NAMES: Record<string, string> = { farm: 'Farming', herd: 'Herding', fish: 'Fishing', craft: 'Crafting', build: 'Building', forage: 'Hunting and gathering' };
-  api<{ style: string; weights: Record<string, number>; now: Record<string, number>; give: number; generation: number; tried: number; kept: number; trying: boolean; inspired: boolean; reactsTo: string[]; network: string; roam: number; copied: number; copiedKept: number; step: number } | null>(`/api/brain/${b.id}`).then((br) => {
+  api<{ style: string; weights: Record<string, number>; now: Record<string, number>; give: number; generation: number; tried: number; kept: number; trying: boolean; inspired: boolean; reactsTo: string[]; network: string; roam: number; copied: number; copiedKept: number; step: number;
+    brain2?: boolean; deep?: DeepNet | null; memory?: number[] | null; lastPeriod?: number | null;
+    culture?: { id: number; name: string; steps: number; score: number; since: number; from: string | null; clans: { id: number; name: string }[] } | null } | null>(`/api/brain/${b.id}`).then((br) => {
     const el = document.getElementById('bandBrain');
     if (!el || !br) { if (el) el.textContent = 'Still finding its way.'; return; }
     el.classList.remove('muted');
     $('#bandStyleTag').textContent = br.style + (br.inspired ? ' · inspired' : '');
     const max = Math.max(...Object.values(br.now), ...Object.values(br.weights));
-    el.innerHTML = `<p class="lead">This clan's brain is a small neural network (${esc(br.network)}). Every month it looks at the clan's situation and
+    const c = br.culture;
+    const intro = br.brain2 && c
+      ? `<p class="lead">This clan belongs to the culture of <b>${esc(c.name)}</b>: ${c.clans.length} clan${c.clans.length === 1 ? '' : 's'} sharing one deep
+        neural network (${esc(br.network)}). Every month it reads the clan's situation and its own memory, and decides how to share the work,
+        how generous to be and when to move on. Every two years each clan of the culture lives with its own small variation of the network,
+        and the culture moves towards the variations that did best.</p>
+        <p class="muted">${c.steps} learning steps since ${c.since < 0 ? `${-c.since} BC` : `AD ${c.since}`}${c.from ? ` · split from the culture of ${esc(c.from)}` : ''}
+        ${br.lastPeriod !== null && br.lastPeriod !== undefined ? ` · this clan did ${br.lastPeriod >= 0 ? 'better' : 'worse'} than the two years before (${br.lastPeriod >= 0 ? '+' : ''}${br.lastPeriod.toFixed(2)})` : ''}.</p>
+        ${c.clans.length > 1 ? `<p class="muted">Its clans: ${c.clans.slice(0, 14).map((x) => `<a href="#" class="ref" data-band="${x.id}">${esc(x.name)}</a>`).join(', ')}.</p>` : ''}`
+      : `<p class="lead">This clan's brain is a small neural network (${esc(br.network)}). Every month it looks at the clan's situation and
         decides how to share the work and when to move on; every two years it judges a slightly changed network and keeps it only if the clan ate better and grew.
         Generation ${br.generation} of its line · ${br.kept} of ${br.tried} tries kept${br.trying ? ' · trying something new this year' : ''}
-        · learned from neighbours ${br.copiedKept} of ${br.copied} times · daring ${Math.round(br.step * 100)}%.</p>
+        · learned from neighbours ${br.copiedKept} of ${br.copied} times · daring ${Math.round(br.step * 100)}%.</p>`;
+    el.innerHTML = `${intro}
       ${br.reactsTo?.length ? `<p class="muted">It reacts most to: <b>${br.reactsTo.map(esc).join('</b>, <b>')}</b>.</p>` : ''}
-      ${brainSvg(br as unknown as BrainNet)}
+      ${br.deep ? deepSvg(br.deep) : brainSvg(br as unknown as BrainNet)}
       <div class="barlist">${Object.entries(br.now).sort((x, y) => y[1] - x[1]).map(([k, v]) => `<div class="barrow"><span class="bl-k">${JOB_NAMES[k] ?? k}</span><span class="bl-v">×${v.toFixed(2)} now · ×${(br.weights[k] ?? 0).toFixed(2)} this year</span>
         <div class="bl-bar"><i style="width:${(v / max) * 100}%;background:${hex(b.color)}"></i></div></div>`).join('')}
         ${b.settled ? '' : `<div class="barrow"><span class="bl-k">Restlessness (moving on before they must)</span><span class="bl-v">${Math.round(br.roam * 100)}%</span>

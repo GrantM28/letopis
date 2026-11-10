@@ -17,6 +17,7 @@
 import type { Band, Person } from './sim';
 import type { EventHost } from './events';
 import { idx, inBounds } from './world';
+import { BRAIN2_SHAPE, Brain2Part, account2, cultureInfo, cultureSummary, decide2, learn2, moreSenses, neighbourhood, reactsTo2, view2 } from './brain2';
 
 export const JOBS = ['farm', 'herd', 'fish', 'craft', 'build', 'forage'] as const;
 export type JobKey = (typeof JOBS)[number];
@@ -34,7 +35,7 @@ const PARAMS = IN * HID + HID + HID * OUT + OUT;
 const OUT_V133 = JOBS.length + 1;
 const PARAMS_V133 = IN * HID + HID + HID * OUT_V133 + OUT_V133;
 
-export interface Brain {
+export interface Brain extends Brain2Part {
   /** the network's weights: input->hidden, hidden biases, hidden->output, output biases */
   net?: number[];
   /** what the network decided last month (job weights) and how generous it is now */
@@ -83,6 +84,9 @@ const SIGMA_TRIAL = 0.08;
 /** for experiments only: LETOPIS_NO_LEARN=1 freezes every network as it was born (tools/tests compare with and without learning) */
 const LEARN = !(typeof process !== 'undefined' && process.env?.LETOPIS_NO_LEARN === '1');
 const SIGMA_BIRTH = 0.12;
+/** Brain 2 (brain2.ts: cultures sharing a deeper network) is the brain from v2.0; LETOPIS_BRAIN=1 brings back Brain 1 for comparisons */
+const FIXED = typeof process !== 'undefined' && process.env?.LETOPIS_FIXED ? (() => { const v = process.env.LETOPIS_FIXED!.split(',').map(Number); return [...v.slice(0, 6), v[6] ?? 0.5, 0.5, v[7] ?? 0.2]; })() : null;
+export const BRAIN2 = !(typeof process !== 'undefined' && process.env?.LETOPIS_BRAIN === '1');
 
 function gauss(h: EventHost): number {
   // Box-Muller from the world's own dice, so a world stays the same with the same seed
@@ -218,6 +222,7 @@ export function styleOf(b: Brain, knows: (tech: string) => boolean): { key: stri
 /** every month: give new clans a brain, let every brain decide, and once a year learn */
 export function brainStep(h: BrainHost, members: Map<number, Person[]>) {
   const brains = (h.s.brains ??= {});
+  let near: ReturnType<typeof neighbourhood> | undefined;
   for (const b of h.s.bands) {
     let br = brains[b.id];
     const parent = b.from ? brains[b.from.id] : undefined;
@@ -225,7 +230,10 @@ export function brainStep(h: BrainHost, members: Map<number, Person[]>) {
       // a daughter clan takes after the clan it came from, with small mutations
       const net = parent?.net ? mutate(h, parent.net, SIGMA_BIRTH) : newNet(h, parent?.w, parent?.give);
       // and the people who left with it are the parent's success
-      if (parent) parent.founded = (parent.founded ?? 0) + (members.get(b.id)?.length ?? 0);
+      if (parent) {
+        parent.founded = (parent.founded ?? 0) + (members.get(b.id)?.length ?? 0);
+        parent.pFounded = (parent.pFounded ?? 0) + (members.get(b.id)?.length ?? 0);
+      }
       br = brains[b.id] = { net, w: JOBS.map(() => 1), give: 0.5, trial: null, score: parent?.score ?? 1, acc: 0, n: 0, gen: parent ? parent.gen + 1 : 0, tried: 0, kept: 0 };
     }
     // brains from before the networks: their fixed preferences become the network's starting point
@@ -234,9 +242,18 @@ export function brainStep(h: BrainHost, members: Map<number, Person[]>) {
     if (!br.net || br.net.length !== PARAMS) br.net = newNet(h, br.w, br.give);
     // decide for this month from what the clan senses now
     // rounded to 2 decimals: a saved and reloaded world (whose land the original rounds when it saves) decides the same (v1.40)
-    const x = sense(h, b, members.get(b.id)?.length ?? 0).map((v) => Math.round(v * 100) / 100);
+    const ms = members.get(b.id) ?? [];
+    let x = sense(h, b, ms.length);
+    if (BRAIN2) {
+      near ??= neighbourhood(h as never);
+      x = x.concat(moreSenses(h as never, b, br, ms, near.get(b.id)!));
+    }
+    x = x.map((v) => Math.round(v * 100) / 100);
     br.senses = x;
-    br.out = forward(br.trial?.net ?? br.net, x);
+    br.out = BRAIN2 ? decide2(h as never, b, br, x) : forward(br.trial?.net ?? br.net, x);
+    if (BRAIN2) account2(br, b.lastProd ?? 0, b.lastNeed ?? 0, ms.length, (x[4] + x[5]) / 2);
+    // experiments only: LETOPIS_FIXED=<6 job weights,give,roam> gives every clan the same fixed decisions
+    if (FIXED) br.out = FIXED;
     br.wAcc ??= new Array(OUT).fill(0);
     br.out.forEach((v, i) => { br.wAcc![i] += v; });
     // how well fed the clan is (beyond plenty more food does not count)
@@ -244,6 +261,7 @@ export function brainStep(h: BrainHost, members: Map<number, Person[]>) {
     br.acc += Math.min(1.4, b.fed ?? 1);
     br.n++;
   }
+  if (BRAIN2) learn2(h as never, members, LEARN);
   if (h.month !== 11) return;
   for (const b of h.s.bands) {
     const br = brains[b.id];
@@ -268,6 +286,7 @@ export function brainStep(h: BrainHost, members: Map<number, Person[]>) {
     br.acc = 0;
     br.n = 0;
     br.sigma ??= SIGMA_TRIAL;
+    if (BRAIN2) br.trial = null;
     if (br.trial) {
       br.tried++;
       const from = br.trial.from;
@@ -296,7 +315,7 @@ export function brainStep(h: BrainHost, members: Map<number, Person[]>) {
     } else {
       br.score = br.score * 0.5 + year * 0.5;
     }
-    if (!LEARN) continue;
+    if (!LEARN || BRAIN2) { newsOfStyle(h, b, br, members); continue; }
     // next year's try: now and then a blend with a neighbour that does better (learning from others),
     // otherwise a small change of its own
     const teacher = h.rng.chance(0.2) ? betterNeighbour(h, b, br) : null;
@@ -307,7 +326,18 @@ export function brainStep(h: BrainHost, members: Map<number, Person[]>) {
     } else {
       br.trial = { net: mutate(h, br.net!, br.sigma) };
     }
-    // a clan whose way of life changed is news, now and then
+    newsOfStyle(h, b, br, members);
+  }
+  // forget the brains of clans that are gone
+  if (h.s.tick % 60 === 0) {
+    const alive = new Set(h.s.bands.map((b) => b.id));
+    for (const id of Object.keys(brains)) if (!alive.has(Number(id))) delete brains[Number(id)];
+  }
+}
+
+/** a clan whose way of life changed is news, now and then */
+function newsOfStyle(h: BrainHost, b: Band, br: Brain, members: Map<number, Person[]>) {
+  {
     const style = styleOf(br, (t) => h.hasTech(b, t));
     // told only when the new way of life holds two periods running (v1.40: not every flicker)
     if (br.style && style.key !== br.style) {
@@ -325,11 +355,6 @@ export function brainStep(h: BrainHost, members: Map<number, Person[]>) {
       br.style = style.key;
       br.styleSeen = undefined;
     }
-  }
-  // forget the brains of clans that are gone
-  if (h.s.tick % 60 === 0) {
-    const alive = new Set(h.s.bands.map((b) => b.id));
-    for (const id of Object.keys(brains)) if (!alive.has(Number(id))) delete brains[Number(id)];
   }
 }
 
@@ -386,7 +411,10 @@ export function brainSummary(h: BrainHost) {
     clans: n, styles, avgWeights: Object.fromEntries(JOBS.map((j, i) => [j, n ? +(avg[i] / n).toFixed(2) : 1])),
     avgGeneration: n ? +(gen / n).toFixed(1) : 0, maxGeneration: maxGen, tried, kept, avgScore: n ? +(score / n).toFixed(3) : 0,
     copied, copiedKept, avgStep: n ? +(sigma / n).toFixed(3) : 0,
-    network: { inputs: IN, hidden: HID, outputs: OUT, weights: PARAMS },
+    network: BRAIN2 ? { inputs: BRAIN2_SHAPE.layers[0], hidden: BRAIN2_SHAPE.layers[1] + BRAIN2_SHAPE.layers[2], outputs: BRAIN2_SHAPE.layers[3], weights: BRAIN2_SHAPE.weights, layers: BRAIN2_SHAPE.layers }
+      : { inputs: IN, hidden: HID, outputs: OUT, weights: PARAMS },
+    brain2: BRAIN2,
+    cultures: BRAIN2 ? cultureSummary(h as never).filter((c) => c.clans > 0) : [],
   };
 }
 
@@ -396,6 +424,7 @@ export function brainView(h: BrainHost, b: Band) {
   if (!br) return null;
   const st = styleOf(br, (t) => h.hasTech(b, t));
   const now = br.out ?? br.w;
+  const deep = BRAIN2 ? view2(h as never, br) : null;
   return {
     style: st.name,
     weights: Object.fromEntries(JOBS.map((j, i) => [j, +br.w[i].toFixed(2)])),
@@ -404,8 +433,13 @@ export function brainView(h: BrainHost, b: Band) {
     roam: +(br.out?.[O_ROAM] ?? 0).toFixed(2),
     copied: br.copied ?? 0, copiedKept: br.copiedKept ?? 0, step: +(br.sigma ?? SIGMA_TRIAL).toFixed(3),
     generation: br.gen, tried: br.tried, kept: br.kept, score: +br.score.toFixed(2), trying: !!br.trial,
-    reactsTo: whatMatters(br).slice(0, 3).map((x) => x.sense),
-    network: `${IN} senses → ${HID} neurons → ${OUT} outputs (${PARAMS} weights)`,
+    reactsTo: BRAIN2 ? reactsTo2(h as never, br) : whatMatters(br).slice(0, 3).map((x) => x.sense),
+    network: BRAIN2 ? `${BRAIN2_SHAPE.layers.join(' → ')}, ${BRAIN2_SHAPE.weights} weights, shared by its culture` : `${IN} senses → ${HID} neurons → ${OUT} outputs (${PARAMS} weights)`,
+    brain2: BRAIN2,
+    culture: BRAIN2 ? cultureInfo(h as never, br) : null,
+    memory: br.mem ?? null,
+    lastPeriod: br.imp ?? null,
+    deep: deep ? { layers: BRAIN2_SHAPE.layers, acts: deep.acts, net: deep.net, senseNames: BRAIN2_SHAPE.senses, outputNames: BRAIN2_SHAPE.outputs } : null,
     // the network itself and what it senses now, for drawing it
     net: br.net, senses: br.senses, shape: { inputs: IN, hidden: HID, outputs: OUT }, senseNames: SENSES,
     outputNames: [...JOBS, 'give', 'hunt', 'roam'],

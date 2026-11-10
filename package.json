@@ -11,6 +11,8 @@
     "start": "node --disable-warning=ExperimentalWarning dist/server.js",
     "dev": "node build.mjs && LETOPIS_DATA=./data LETOPIS_SPEED=200 node --disable-warning=ExperimentalWarning dist/server.js",
     "test": "esbuild tests/run.ts --bundle --platform=node --format=esm --outfile=dist/tests.mjs --log-level=warning && node dist/tests.mjs",
+    "bench:build": "esbuild tools/bench.ts --bundle --platform=node --format=esm --outfile=dist/bench.mjs --log-level=warning",
+    "bench": "npm run bench:build && node tools/bench.mjs",
     "check:english": "npm test -- english",
     "simtest": "esbuild scripts/simtest.ts --bundle --platform=node --format=esm --outfile=dist/simtest.mjs --log-level=warning && node dist/simtest.mjs"
   },

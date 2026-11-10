@@ -33,3 +33,58 @@ export function brainSvg(b: BrainNet): string {
   return `<svg class="brain-net" viewBox="0 0 ${W} ${Hh}" role="img" aria-label="The clan's neural network">${svg}</svg>
     <div class="legend"><span><i style="background:#6cc38a"></i>adds</span><span><i style="background:#d9776f"></i>holds back</span><span><i style="background:#e0a84f"></i>active now</span></div>`;
 }
+
+// ---------- Brain 2: the culture's deeper network ----------
+
+export type DeepNet = { layers: number[]; acts: number[][]; net: number[]; senseNames: string[]; outputNames: string[] };
+const SHORT: Record<string, string> = { 'age of the world': 'age', 'last period': 'last 2 years', 'friends near': 'friends', 'rivals near': 'rivals', 'food stores': 'stores' };
+
+/** an SVG of the deep network: four columns (senses and memory, two hidden layers, decisions and memory), only the strongest
+ *  connections drawn, circles lit by what the clan senses now */
+export function deepSvg(d: DeepNet): string {
+  const L = d.layers;
+  if (!d.net || !d.acts || L.length !== 4) return '';
+  const W = 420, Hh = 380, xs = [96, 190, 262, 330];
+  const ys = L.map((n) => (i: number) => 12 + (i * (Hh - 24)) / Math.max(1, n - 1));
+  // the hunting output is unused: leave it out of the picture
+  const hidden = new Set([d.outputNames.indexOf('hunt')]);
+  // the outputs drawn evenly without the hidden one
+  const shownOut = d.acts[3].map((_, i) => i).filter((i) => !hidden.has(i));
+  const yOut = (i: number) => 12 + (shownOut.indexOf(i) * (Hh - 24)) / Math.max(1, shownOut.length - 1);
+  ys[3] = yOut;
+  let off = 0, svg = '';
+  const lines: string[] = [];
+  for (let l = 0; l < 3; l++) {
+    const nIn = L[l], nOut = L[l + 1];
+    const w = d.net.slice(off, off + nIn * nOut);
+    off += nIn * nOut + nOut;
+    // the strongest fifth of the connections, so the drawing stays readable
+    const cut = w.map(Math.abs).sort((a, b) => b - a)[Math.floor(w.length / 5)] ?? 0;
+    for (let j = 0; j < nOut; j++) {
+      if (l === 2 && hidden.has(j)) continue;
+      for (let i = 0; i < nIn; i++) {
+        const v = w[j * nIn + i];
+        if (Math.abs(v) < cut) continue;
+        const a = Math.min(1, Math.abs(v) / 1.2);
+        lines.push(`<line x1="${xs[l]}" y1="${ys[l](i).toFixed(1)}" x2="${xs[l + 1]}" y2="${ys[l + 1](j).toFixed(1)}" stroke="${v >= 0 ? '#6cc38a' : '#d9776f'}" stroke-opacity="${(0.1 + a * 0.5).toFixed(2)}" stroke-width="${(0.3 + a * 1.2).toFixed(2)}"/>`);
+      }
+    }
+  }
+  svg += lines.join('');
+  const dot = (cx: number, cy: number, v: number, mem = false) => `<circle cx="${cx}" cy="${cy.toFixed(1)}" r="${mem ? 4 : 4.5}" fill="${mem ? '#b48ead' : v >= 0 ? '#e0a84f' : '#7fb2d9'}" fill-opacity="${(0.25 + Math.min(1, Math.abs(v)) * 0.75).toFixed(2)}" stroke="rgba(255,255,255,0.35)" stroke-width="0.6"/>`;
+  d.acts[0].forEach((v, i) => {
+    const name = d.senseNames[i] ?? '';
+    const mem = name.startsWith('memory');
+    svg += dot(xs[0], ys[0](i), v, mem) + `<text x="${xs[0] - 8}" y="${(ys[0](i) + 3.5).toFixed(1)}" text-anchor="end">${SHORT[name] ?? name}</text>`;
+  });
+  d.acts[1].forEach((v, i) => { svg += dot(xs[1], ys[1](i), v); });
+  d.acts[2].forEach((v, i) => { svg += dot(xs[2], ys[2](i), v); });
+  d.acts[3].forEach((v, i) => {
+    if (hidden.has(i)) return;
+    const name = d.outputNames[i] ?? '';
+    const mem = name.startsWith('memory');
+    svg += dot(xs[3], ys[3](i), Math.tanh(v), mem) + `<text x="${xs[3] + 8}" y="${(ys[3](i) + 3.5).toFixed(1)}">${OUT_LABEL[name] ?? name}</text>`;
+  });
+  return `<svg class="brain-net" viewBox="0 0 ${W} ${Hh}" role="img" aria-label="The culture's neural network">${svg}</svg>
+    <div class="legend"><span><i style="background:#6cc38a"></i>adds</span><span><i style="background:#d9776f"></i>holds back</span><span><i style="background:#e0a84f"></i>active now</span><span><i style="background:#b48ead"></i>memory</span></div>`;
+}

@@ -124,6 +124,9 @@ export interface SimState {
   prayers?: import('./events').Prayer[];
   /** the year each clan's last move was told in the chronicle (fork: events.ts) */
   moveNews?: Record<number, number>;
+  /** cultures: groups of clans sharing one learning network (fork: brain2.ts) */
+  cultures?: Record<number, import('./brain2').Culture>;
+  cultureSeq?: number;
 }
 
 export interface DeadRecord {

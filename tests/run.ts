@@ -7,9 +7,10 @@ import { smoke } from './smoke';
 import { saveload } from './saveload';
 import { determinism } from './determinism';
 import { api } from './api';
+import { brain2 } from './brain2';
 
 const ALL: [string, () => Promise<void> | void][] = [
-  ['techtree', techtree], ['english', english], ['determinism', determinism], ['saveload', saveload], ['smoke', smoke], ['api', api],
+  ['techtree', techtree], ['english', english], ['determinism', determinism], ['saveload', saveload], ['smoke', smoke], ['brain2', brain2], ['api', api],
 ];
 
 const only = process.argv.slice(2);
