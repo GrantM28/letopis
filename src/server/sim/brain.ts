@@ -263,6 +263,12 @@ export function brainStep(h: BrainHost, members: Map<number, Person[]>) {
     br.acc += Math.min(1.4, b.fed ?? 1);
     br.n++;
   }
+  // forget the brains of clans that are gone, every five years (it sat after the December-only part, where a tick that is a
+  // multiple of 60 never comes, so the brains of every clan that ever lived stayed in the save; fixed in 1.50)
+  if (h.s.tick % 60 === 0) {
+    const alive = new Set(h.s.bands.map((b) => b.id));
+    for (const id of Object.keys(brains)) if (!alive.has(Number(id))) delete brains[Number(id)];
+  }
   if (BRAIN2) learn2(h as never, members, LEARN);
   if (h.month !== 11) return;
   for (const b of h.s.bands) {
@@ -329,11 +335,6 @@ export function brainStep(h: BrainHost, members: Map<number, Person[]>) {
       br.trial = { net: mutate(h, br.net!, br.sigma) };
     }
     newsOfStyle(h, b, br, members);
-  }
-  // forget the brains of clans that are gone
-  if (h.s.tick % 60 === 0) {
-    const alive = new Set(h.s.bands.map((b) => b.id));
-    for (const id of Object.keys(brains)) if (!alive.has(Number(id))) delete brains[Number(id)];
   }
 }
 

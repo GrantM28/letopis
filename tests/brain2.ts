@@ -35,3 +35,12 @@ export function brain2() {
   if (old.s.bands.some((b) => ob[b.id]?.culture === undefined)) bad.push('an old world was not gathered into cultures');
   if (bad.length) throw new Error(bad.slice(0, 8).join('\n'));
 }
+
+/** the brains of clans that are gone are forgotten (they piled up in every save until 1.50) */
+export function brainsForgotten() {
+  const sim = new Simulation(null, 8);
+  for (let i = 0; i < 12 * 400; i++) { sim.step(); sim.events = []; sim.deadQueue = []; sim.goneQueue = []; }
+  const alive = new Set(sim.s.bands.map((b) => b.id));
+  const stale = Object.keys(sim.s.brains ?? {}).filter((id) => !alive.has(Number(id))).length;
+  if (stale > alive.size) throw new Error(`${stale} brains of gone clans kept, for ${alive.size} living clans`);
+}
