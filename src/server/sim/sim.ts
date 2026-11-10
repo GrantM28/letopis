@@ -14,6 +14,7 @@ export type ForkHost = EventHost & RelationHost & BrainHost & { treesNear(x: num
 import { BrainHost, brainStep, steerJobs, wantsToMove } from './brain';
 import { BIG, startStage, treeKinds } from '../../shared/trees';
 import { findRoad } from './roads';
+import { pastureShare } from './pasture';
 import { BEAST_EN, ERAS_EN, FEATURE_EN, SECRET_HEROES_EN, SECRET_KINDS_EN, TECH_EN, bandEn, bandLabelEn, bandThe, causeEn, chiefEn, deedEn, personEn, translit } from '../../shared/i18n';
 
 export const START_YEAR = -12000;
@@ -792,7 +793,7 @@ export class Simulation {
     // less (fork: learning clans found that these two jobs had no limit and grew villages of 30,000)
     const herders = workers.filter((p) => p.task === 'herd').length;
     const fishers = workers.filter((p) => p.task === 'fish').length;
-    const herdF = 1 / (1 + herders / 18);
+    const herdF = (1 / (1 + herders / 18)) * (herders ? pastureShare(this, b) : 1);
     const fishF = 1 / (1 + fishers / 15);
     const craftBonus = 1 + Math.min(0.25, workers.filter((p) => p.task === 'craft').length * 0.04);
     for (const p of workers) {
