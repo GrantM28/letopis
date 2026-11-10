@@ -2,6 +2,7 @@
 import { TECH_DESC, TECH_LIST } from '../shared/i18n';
 import { fmtYear } from './lang';
 import { $, api, esc, ui } from './kit';
+import { cardHtml, chip as ckChip } from './cardkit';
 
 /** ages opened in the discoveries tab; until one is touched, only the current age is open */
 const openAges = new Set<number>();
@@ -28,17 +29,19 @@ export async function showTech(id: string) {
   const unlocks = tree.techs.filter((x) => x.prereq.includes(id));
   const ready = needs.every((x) => x.discovered);
   const share = tree.clans ? t.knownBy / tree.clans : 0;
-  ui.openCard(`<h2>💡 ${esc(ui.techLabel(id))}</h2>
-    <div class="muted">${esc(ui.eraName(t.era))} · in history around ${fmtYear(t.year)}</div>
-    <p class="lead" style="margin-top:10px">${esc(TECH_DESC[id]?.[1] ?? '')}</p>
-    ${t.discovered && t.first ? `<p>First discovered by ${t.first.pid ? `<a href="#" data-person="${t.first.pid}">${esc(t.first.who)}</a>` : esc(t.first.who)}
-        of ${esc(t.first.band)} in <b>${fmtYear(t.first.year)}</b>.</p>`
-      : `<p class="act-note">${ready ? 'Within reach: every clan that knows what it needs may find it any day now.' : 'Not yet: the world still needs what is listed below.'}</p>`}
-    <div class="barrow" style="margin:10px 0"><span class="bl-k">Known by ${t.knownBy} of ${tree.clans} clans</span><span class="bl-v">${Math.round(share * 100)}%</span>
-      <div class="bl-bar"><i style="width:${share * 100}%;background:var(--accent)"></i></div></div>
-    <h3>Needs</h3>${needs.length ? `<div class="chips">${needs.map(chip).join('')}</div>` : '<p class="muted">Nothing: anyone can find it.</p>'}
-    ${t.need ? `<p class="muted">And ${NEED_TEXT[t.need] ?? t.need}.</p>` : ''}
-    <h3>Leads to</h3>${unlocks.length ? `<div class="chips">${unlocks.map(chip).join('')}</div>` : '<p class="muted">Nothing further yet.</p>'}`);
+  const who = t.discovered && t.first ? (t.first.pid ? `<a href="#" data-person="${t.first.pid}">${esc(t.first.who)}</a>` : esc(t.first.who)) : '';
+  ui.openCard(cardHtml({
+    kind: 'discovery', emoji: t.discovered ? '💡' : ready ? '✨' : '🔒', title: ui.techLabel(id),
+    facts: `${esc(ui.eraName(t.era))} · in history around ${fmtYear(t.year)}`,
+    chips: t.discovered && t.first ? [ckChip('', `First found in ${fmtYear(t.first.year)}`)] : [ckChip('', ready ? 'Within reach' : 'Not yet')],
+    stats: [['clans know it', `${t.knownBy} of ${tree.clans}`], ['of all clans', `${Math.round(share * 100)}%`]],
+    body: `<p class="lead">${esc(TECH_DESC[id]?.[1] ?? '')}</p>
+      ${t.discovered && t.first ? `<p>First found by ${who} of ${esc(t.first.band)} in <b>${fmtYear(t.first.year)}</b>.</p>`
+        : `<p class="ck-note">${ready ? 'Every clan that knows what it needs may find it any day now.' : 'The world still needs what is listed below.'}</p>`}
+      <h3>Needs</h3>${needs.length ? `<div class="chips">${needs.map(chip).join('')}</div>` : '<p class="muted">Nothing: anyone can find it.</p>'}
+      ${t.need ? `<p class="muted">And ${NEED_TEXT[t.need] ?? t.need}.</p>` : ''}
+      <h3>Leads to</h3>${unlocks.length ? `<div class="chips">${unlocks.map(chip).join('')}</div>` : '<p class="muted">Nothing further yet.</p>'}`,
+  }));
   document.querySelectorAll<HTMLElement>('#cardBody [data-tech]').forEach((el) => { el.onclick = () => void showTech(el.dataset.tech!); });
 }
 

@@ -7,6 +7,7 @@ import { hueColor, hueCss } from './culturelayer';
 import { fmtYear, num } from './lang';
 import { $, api, esc, save, store, ui } from './kit';
 import { markOverlay, wantsQuietTags } from './overlays';
+import { cardHtml, chip, mountCard } from './cardkit';
 
 export interface RealmInfo { id: number; name: string; hue: number; capital: number; members: number[]; ruler: string | null }
 interface RealmCard {
@@ -123,15 +124,31 @@ export async function showRealm(id: number) {
   if (!c) { ui.openCard('<h2>A realm that is no more</h2><p class="muted">Its villages have gone their own ways.</p>'); return; }
   const color = hueCss(c.hue, 0.6);
   const ru = c.ruler;
-  ui.openCard(`
-    <h2><span class="dot" style="background:${color}"></span> ♛ The ${esc(c.name)}</h2>
-    <div class="muted">since ${fmtYear(c.since)}${c.capital ? ` · capital: <a href="#" class="ref" data-band="${c.capital.id}">${esc(c.capital.name)}</a>` : ''}</div>
-    <div class="kpis kpis-4" style="margin-top:12px"><div><span>Villages</span><b>${c.villages.length}</b></div><div><span>People</span><b>${num(c.people)}</b></div>
-      <div><span>Rulers so far</span><b>${c.past.length + (ru ? 1 : 0)}</b></div><div><span>Ruling houses</span><b>${new Set([...c.past.map((p) => p.house), ...(ru ? [ru.house] : [])]).size}</b></div></div>
-    ${ru ? `<h3>Its ${esc(ru.title)}</h3><p><a href="#" class="ref" data-person="${ru.id}"><b>${esc(ru.name)}</b></a>, ${ORD[ru.n] ?? `${ru.n}th`} of the ${esc(ru.house)}, rules since ${fmtYear(ru.since)}.</p>` : '<h3>Its ruler</h3><p class="muted">The throne is empty.</p>'}
-    <p class="lead">Villages long allied and joined by road became one realm. In a hungry year its villages send food to the hungriest
-      of them; a village that turns against the capital leaves. A ruler reigns for life, and a grown child in the realm carries on the house.</p>
-    ${c.past.length ? `<h3>Rulers before</h3><ul class="plain">${c.past.slice(0, 12).map((p) => `<li>${fmtYear(p.since)}: <a href="#" class="ref" data-person="${p.id}">${esc(p.name)}</a> <span class="muted">· ${ORD[p.n] ?? `${p.n}th`} of the ${esc(p.house)}</span></li>`).join('')}</ul>` : ''}
-    <h3>Its villages <small>${c.villages.length}</small></h3>
-    <ul class="bands">${c.villages.map((v) => `<li data-band="${v.id}"><span class="dot" style="background:${color}"></span><div><b>${esc(v.name)}</b>${c.capital?.id === v.id ? ' <span class="badge village">capital</span>' : ''}<div class="muted">${num(v.size)} people</div></div></li>`).join('')}</ul>`);
+  const houses = new Set([...c.past.map((p) => p.house), ...(ru ? [ru.house] : [])]).size;
+  const spec = {
+    kind: 'realm', dot: color, title: `The ${c.name}`,
+    facts: `${c.kind === 'Empire' ? 'an' : 'a'} ${esc(c.kind.toLowerCase())} · since ${fmtYear(c.since)}`,
+    chips: [
+      ...(ru ? [chip('👑', `${esc(ru.title[0].toUpperCase() + ru.title.slice(1))} ${esc(ru.name)}`, `data-person="${ru.id}"`)] : [chip('', 'The throne is empty')]),
+      ...(c.capital ? [chip('🏛', `Capital: ${esc(c.capital.name)}`, `data-band="${c.capital.id}"`)] : []),
+    ],
+    stats: [['villages', String(c.villages.length)], ['people', num(c.people)], ['rulers so far', String(c.past.length + (ru ? 1 : 0))], ['ruling houses', String(houses)]] as [string, string][],
+    help: 'realms',
+    tabs: [
+      { id: 'overview', label: 'Overview', render: (el: HTMLElement) => {
+        el.innerHTML = `${ru ? `<h3>Its ${esc(ru.title)}</h3><p><a href="#" class="ref" data-person="${ru.id}"><b>${esc(ru.name)}</b></a>, the ${ORD[ru.n] ?? `${ru.n}th`} of the ${esc(ru.house)}, rules since ${fmtYear(ru.since)}.</p>` : '<p class="muted">The throne is empty.</p>'}
+          <p class="ck-note">In a hungry year its villages send food to the hungriest of them. A village that turns against the capital leaves.</p>`;
+      } },
+      { id: 'villages', label: `Villages (${c.villages.length})`, render: (el: HTMLElement) => {
+        el.innerHTML = `<ul class="bands">${c.villages.map((v) => `<li data-band="${v.id}"><span class="dot" style="background:${color}"></span><div><b>${esc(v.name)}</b>${c.capital?.id === v.id ? ' <span class="badge village">capital</span>' : ''}<div class="muted">${num(v.size)} people</div></div></li>`).join('')}</ul>`;
+      } },
+      { id: 'rulers', label: 'Rulers', render: (el: HTMLElement) => {
+        const all = [...(ru ? [{ ...ru, now: true }] : []), ...c.past.map((p) => ({ ...p, now: false }))];
+        el.innerHTML = all.length ? `<ul class="plain">${all.map((p) => `<li>${fmtYear(p.since)}: <a href="#" class="ref" data-person="${p.id}">${esc(p.name)}</a> <span class="muted">· ${ORD[p.n] ?? `${p.n}th`} of the ${esc(p.house)}${p.now ? ' · rules now' : ''}</span></li>`).join('')}</ul>` : '<p class="muted">No ruler yet.</p>';
+      } },
+    ],
+  };
+  ui.openCard(cardHtml(spec));
+  mountCard(spec);
+
 }

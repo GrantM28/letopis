@@ -5,6 +5,7 @@ import { fmtYear, num } from './lang';
 import { api, esc, ui } from './kit';
 import { cultureLayer } from './cultures';
 import { hueCss } from './culturelayer';
+import { cardHtml, chip, mountCard } from './cardkit';
 
 interface CultureCard {
   id: number; name: string; hue: number; since: number; steps: number;
@@ -34,28 +35,35 @@ export async function showCulture(id: number) {
   const from = c.from
     ? ` · split from ${c.from.alive ? link(c.from.id, c.from.name ?? `culture ${c.from.id}`) : `the culture of ${esc(cap(c.from.name ?? 'a culture now gone'))}`}`
     : ' · one of the first cultures';
-  ui.openCard(`
-    <h2><span class="dot" style="background:${color}"></span> The culture of ${esc(cap(c.name))}</h2>
-    <div class="muted">since ${fmtYear(c.since)}${from} · ${num(c.steps)} learning steps in its line</div>
-    <div class="kpis kpis-4" style="margin-top:12px"><div><span>Clans</span><b>${c.clans.length}</b></div><div><span>Villages</span><b>${villages}</b></div>
-      <div><span>People</span><b>${num(c.people)}</b></div><div><span>Daughter cultures</span><b>${c.daughters.length}</b></div></div>
-    <p class="lead">Its clans share one deep neural network that learns as a whole: five years with a small change, five with the opposite,
-      and the culture keeps whichever way made it grow more.</p>
-    <button class="btn" id="cultureShow">Show its land on the map</button>
-    <h3>Its people over time</h3><div id="cultureChart">${c.hist.length > 1 ? '' : '<p class="muted">Not enough years yet.</p>'}</div>
-    <h3>How its clans share their work <small>% of their work</small></h3>${barList(lean, color, 6)}
-    ${c.taughtBy.length ? `<h3>Ways it took from others</h3><ul class="plain">${c.taughtBy.map((t) => `<li>${fmtYear(t.year)}: from ${link(t.id, t.name)}</li>`).join('')}</ul>` : ''}
-    ${c.daughters.length ? `<h3>Cultures that split from it</h3><p>${c.daughters.map((d) => link(d.id, d.name)).join(', ')}</p>` : ''}
-    <h3>Its clans <small>${c.clans.length}</small></h3>
-    <ul class="bands">${c.clans.slice(0, 40).map((b) => `<li data-band="${b.id}"><span class="dot" style="background:${color}"></span>
-      <div><b>${esc(b.name)}</b> <span class="badge${b.settled ? ' village' : ''}">${b.settled ? 'village' : 'nomads'}</span>
-      <div class="muted">${num(b.size)} people</div></div></li>`).join('')}</ul>
-    ${c.clans.length > 40 ? `<p class="muted">and ${c.clans.length - 40} more</p>` : ''}`);
-  if (c.hist.length > 1) {
-    lineChart(document.getElementById('cultureChart')!, { xs: c.hist.map((h) => h[0]), fmtX: fmtYear, height: 120, series: [
-      { name: 'People', color, values: c.hist.map((h) => h[1]), fill: true },
-    ] });
-  }
+  const spec = {
+    kind: 'culture', dot: color, title: `The culture of ${cap(c.name)}`,
+    facts: `since ${fmtYear(c.since)} · ${num(c.steps)} learning steps in its line`,
+    chips: [
+      c.from ? (c.from.alive ? chip('↰', `Split from the culture of ${esc(c.from.name ?? '')}`, `data-culture="${c.from.id}"`) : chip('↰', `Split from the culture of ${esc(c.from.name ?? 'a culture now gone')}`)) : chip('', 'One of the first cultures'),
+      `<button class="ck-chip" id="cultureShow">🗺 Show its land</button>`,
+    ],
+    stats: [['clans', String(c.clans.length)], ['villages', String(villages)], ['people', num(c.people)], ['daughter cultures', String(c.daughters.length)]] as [string, string][],
+    help: 'cultures',
+    tabs: [
+      { id: 'overview', label: 'Overview', render: (el: HTMLElement) => {
+        el.innerHTML = `<h3>Its people over time</h3><div class="ck-chart">${c.hist.length > 1 ? '' : '<p class="muted">Not enough years yet.</p>'}</div>
+          <h3>How its clans share their work <small>% of their work</small></h3>${barList(lean, color, 6)}`;
+        if (c.hist.length > 1) lineChart(el.querySelector<HTMLElement>('.ck-chart')!, { xs: c.hist.map((h) => h[0]), fmtX: fmtYear, height: 120, series: [{ name: 'People', color, values: c.hist.map((h) => h[1]), fill: true }] });
+      } },
+      { id: 'clans', label: `Clans (${c.clans.length})`, render: (el: HTMLElement) => {
+        el.innerHTML = `<ul class="bands">${c.clans.slice(0, 60).map((b) => `<li data-band="${b.id}"><span class="dot" style="background:${color}"></span>
+          <div><b>${esc(b.name)}</b> <span class="badge${b.settled ? ' village' : ''}">${b.settled ? 'village' : 'nomads'}</span><div class="muted">${num(b.size)} people</div></div></li>`).join('')}</ul>
+          ${c.clans.length > 60 ? `<p class="muted">and ${c.clans.length - 60} more</p>` : ''}`;
+      } },
+      { id: 'lineage', label: 'Lineage', render: (el: HTMLElement) => {
+        el.innerHTML = `<h3>Where it came from</h3><p>${c.from ? `It split from ${c.from.alive ? link(c.from.id, c.from.name ?? `culture ${c.from.id}`) : `the culture of ${esc(cap(c.from.name ?? 'a culture now gone'))}`} in ${fmtYear(c.since)}.` : 'It is one of the first cultures of the world.'}</p>
+          <h3>Ways it took from others</h3>${c.taughtBy.length ? `<ul class="plain">${c.taughtBy.map((t) => `<li>${fmtYear(t.year)}: from ${link(t.id, t.name)}</li>`).join('')}</ul>` : '<p class="muted">None yet: it learned everything itself.</p>'}
+          <h3>Cultures that split from it</h3>${c.daughters.length ? `<p>${c.daughters.map((d) => link(d.id, d.name)).join(', ')}</p>` : '<p class="muted">None yet.</p>'}`;
+      } },
+    ],
+  };
+  ui.openCard(cardHtml(spec));
+  mountCard(spec);
   // light its land while the card is open
   cultureLayer?.focus(c.id, { id: c.id, name: c.name, hue: c.hue, from: c.from?.id ?? null, clans: c.clans.length, steps: c.steps });
   const card = document.getElementById('card')!;
