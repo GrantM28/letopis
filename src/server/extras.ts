@@ -10,6 +10,7 @@ import type { Simulation } from './sim/sim';
 import { ACTS, ACT_COOLDOWN_MIN, ActKind, PRAYER_TTL_MS } from './sim/events';
 import { brainSummary, brainView } from './sim/brain';
 import { cultureCard, cultureMap } from './sim/brain2';
+import { tradeRoutes } from './sim/trade';
 import { causeEn, personEn, bandTextEn } from '../shared/i18n';
 import { TECHS } from './sim/tech';
 import { relationCounts, relationsOf } from './sim/relations';
@@ -205,6 +206,7 @@ export class Extras {
       return true;
     }
     if (p === '/api/brains') { json(res, brainSummary(sim.host())); return true; }
+    if (p === '/api/trade') { json(res, tradeRoutes(sim)); return true; }
     if (p === '/api/cultures') { json(res, cultureMap(sim.host() as never)); return true; }
     if (p.startsWith('/api/culture/')) {
       const c = cultureCard(sim.host() as never, Number(p.split('/').pop()));

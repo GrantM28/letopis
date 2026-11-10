@@ -10,11 +10,12 @@ import { LATER_ERA_WHY } from '../../shared/later_techs';
 import { ActKind, EventHost, MoveWhy, act, announceMove, answerPrayer, prayersStep, worldEvents } from './events';
 import { RelationHost, relationsStep } from './relations';
 /** what the fork's add-ons may use of the simulation */
-export type ForkHost = EventHost & RelationHost & BrainHost & { treesNear(x: number, y: number, R: number, min: number): number };
+export type ForkHost = EventHost & RelationHost & BrainHost & { treesNear(x: number, y: number, R: number, min: number): number; roads: Uint8Array };
 import { BrainHost, brainStep, steerJobs, wantsToMove } from './brain';
 import { BIG, startStage, treeKinds } from '../../shared/trees';
 import { findRoad } from './roads';
 import { pastureShare } from './pasture';
+import { tradeStep } from './trade';
 import { BEAST_EN, ERAS_EN, FEATURE_EN, SECRET_HEROES_EN, SECRET_KINDS_EN, TECH_EN, bandEn, bandLabelEn, bandThe, causeEn, chiefEn, deedEn, personEn, translit } from '../../shared/i18n';
 
 export const START_YEAR = -12000;
@@ -128,6 +129,8 @@ export interface SimState {
   /** cultures: groups of clans sharing one learning network (fork: brain2.ts) */
   cultures?: Record<number, import('./brain2').Culture>;
   cultureSeq?: number;
+  /** trade routes between allied villages joined by road, 'a-b' (fork: trade.ts) */
+  trade?: Record<string, import('./trade').TradeRoute>;
 }
 
 export interface DeadRecord {
@@ -700,7 +703,7 @@ export class Simulation {
     this.contact();
     if (this.s.tick % 3 === 0) relationsStep(this.host(), members);
     brainStep(this.host(), members);
-    if (this.month === 6) this.buildRoads();
+    if (this.month === 6) { this.buildRoads(); tradeStep(this.host() as never); }
     if (this.s.tick % 6 === 0) this.explore();
     this.randomEvents(members);
     this.checkEra();
@@ -1533,6 +1536,7 @@ export class Simulation {
       ageOf: (p) => sim.ageOf(p),
       bRefs: (b) => sim.bRefs(b),
       treesNear: (x, y, R, min) => sim.treesNear(x, y, R, min),
+      get roads() { return sim.roads; },
     };
     return this.forkHost;
   }

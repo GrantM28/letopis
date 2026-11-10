@@ -77,6 +77,10 @@ and a reworked, English-only interface. Upstream changes are merged in from time
   coloured land. The card shows its clans and people, when and from which culture it split, which cultures it took ways
   from, the cultures that split from it, how its clans share their work, and its people over time; while it is open, its
   land is lit on the map. The chronicle tells when a culture parts (in the Clans filter; Story leaves it out).
+- **Trade routes**: two allied villages that both know trade (around 2,800 BC) and are joined by a road trade along it.
+  The **Trade** button draws the routes as gold dashes on the roads, with little carts going to and fro. Trading
+  neighbours even out a good and a bad harvest, as before; the chronicle tells when a trade road opens or falls quiet
+  (in the Clans filter; Story leaves it out).
 - **Help the world** (the Help button, or the buttons on a clan's card to help that clan): send a blessing (food), rain,
   call a feast, inspire an inventor (four times the chance of a discovery for two years) or calm a feud. Each power has a
   waiting time shared by everyone watching, and everything is written in the chronicle.

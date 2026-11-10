@@ -8,6 +8,7 @@ import { ERAS_BG, ERAS_EN, TECH_LIST } from '../shared/i18n';
 import { Minimap } from './minimap';
 import { cultureLayer, initCultures } from './cultures';
 import { showCulture } from './culturecard';
+import { initTrade } from './tradelayer';
 import { setUi } from './kit';
 import { clockFromServer } from './clock';
 import { GATES, eraName, knownNow, techLabel, updateAgeProgress } from './ages';
@@ -339,7 +340,7 @@ const ICON: Record<string, string> = {
   // clan relations (relations.ts)
   alliance: '🤝', rivalry: '😠', quarrel: '🗯️', aid: '🎁', peace: '🕊️', estranged: '🍂',
   // learning clans and the watchers' help (brain.ts, events.ts)
-  learned: '🧠', inspired: '💭', prayer: '🙏', imitate: '🎓', move: '🏕️', culture: '🌐', rollback: '⏪',
+  learned: '🧠', inspired: '💭', prayer: '🙏', imitate: '🎓', move: '🏕️', culture: '🌐', rollback: '⏪', trade: '🛒',
 };
 
 function eventHtml(e: ChronicleEntry): string {
@@ -373,12 +374,12 @@ const FEED_KINDS: Record<string, { bg: string; en: string; kinds?: string[] }> =
   story: { bg: 'История', en: 'Story' },
   discovery: { bg: 'Открития', en: 'Discoveries', kinds: ['discovery', 'rediscovery', 'learn', 'era', 'lost'] },
   life: { bg: 'Живот', en: 'Life', kinds: ['death', 'twins', 'marriage', 'milestone', 'genesis', 'plague', 'festival', 'feast'] },
-  clans: { bg: 'Родове', en: 'Clans', kinds: ['settle', 'colony', 'split', 'meet', 'merge', 'extinct', 'end', 'wonder', 'expedition', 'alliance', 'rivalry', 'quarrel', 'aid', 'peace', 'estranged', 'learned', 'imitate', 'move', 'culture'] },
+  clans: { bg: 'Родове', en: 'Clans', kinds: ['settle', 'colony', 'split', 'meet', 'merge', 'extinct', 'end', 'wonder', 'expedition', 'alliance', 'rivalry', 'quarrel', 'aid', 'peace', 'estranged', 'learned', 'imitate', 'move', 'culture', 'trade'] },
   nature: { bg: 'Природа', en: 'Nature', kinds: ['hunt', 'winter', 'drought', 'secret', 'flood', 'harvest', 'comet', 'eclipse', 'quake', 'fire', 'blessing', 'rain', 'prayer', 'inspired'] },
 };
 let feedKind = store('letopis.feedKind', store('letopis.onlyBig', false) ? 'big' : 'all');
 if (!FEED_KINDS[feedKind]) feedKind = 'all';
-const EVERYDAY = new Set(['move', 'marriage', 'twins', 'chief', 'elder', 'meet', 'learned', 'imitate', 'quarrel', 'aid', 'estranged', 'learn', 'rediscovery', 'merge', 'culture']);
+const EVERYDAY = new Set(['move', 'marriage', 'twins', 'chief', 'elder', 'meet', 'learned', 'imitate', 'quarrel', 'aid', 'estranged', 'learn', 'rediscovery', 'merge', 'culture', 'trade']);
 /** older pages fetched by themselves for the current filter */
 let autoLoads = 0;
 const feedFilter = (e: ChronicleEntry) => {
@@ -840,6 +841,7 @@ r.setWorld(info);
 mini = new Minimap($('#minimap') as HTMLCanvasElement, info);
 mini.onPick = (x, y) => { stopTour(); follow = null; lookAt(x, y); };
 initCultures(r, mini, () => cam.zoom);
+initTrade(r, () => cam.zoom);
 api<{ found: SecretFind[] }>('/api/secrets').then((s) => r.setSecrets(s.found.map((f) => f.k))).catch(() => r.setSecrets([]));
 const snap = await api<SnapshotMessage>('/api/snapshot');
 onSnapshot(snap);
