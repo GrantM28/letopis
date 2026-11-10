@@ -178,3 +178,38 @@ ul.plain li { padding: 3px 0; }
 @media (max-width: 560px) { .hist-item { grid-template-columns: 70px 22px 1fr; font-size: 14px; } .hist-head h2 { font-size: 21px; } }
 .hist-actions { display: flex; gap: 8px; align-items: center; }
 .hist-actions a.btn { text-decoration: none; }
+
+/* ---------- 1.60: one card for everything (cardkit.ts) ---------- */
+.card { width: min(560px, calc(100vw - 32px)); padding: 0 0 18px; font-size: 15px; line-height: 1.5; }
+.card.beside { width: min(400px, calc(100vw - 32px)); }
+.card.wide { width: min(880px, calc(100vw - 32px)); }
+#cardBody { padding: 0 22px; }
+.ck-head { display: flex; gap: 12px; align-items: center; padding: 20px 44px 6px 0; }
+.ck-mark { flex: none; width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; background: var(--panel-raised); border: 1px solid var(--line); }
+.ck-emoji { font-size: 22px; }
+.ck-dot { width: 16px; height: 16px; border-radius: 50%; box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.08); }
+.ck-name { min-width: 0; }
+.ck-name h2 { margin: 0; padding: 0; font-size: 24px; line-height: 1.2; overflow-wrap: anywhere; }
+.ck-facts { color: var(--muted); font-size: 13px; margin-top: 2px; }
+.ck-help { position: absolute; top: 12px; right: 56px; width: 32px; height: 32px; font-size: 15px; }
+.ck-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 4px; }
+.ck-chip { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; padding: 3px 10px; border-radius: 999px; background: var(--panel-raised); border: 1px solid var(--line); color: var(--text); }
+a.ck-chip { color: var(--text); }
+a.ck-chip:hover { border-color: var(--accent); text-decoration: none; }
+.ck-chip-i { font-size: 13px; }
+.ck-stats { display: grid; gap: 8px; margin: 12px 0 4px; }
+.ck-stats-1 { grid-template-columns: 1fr; } .ck-stats-2 { grid-template-columns: repeat(2, 1fr); }
+.ck-stats-3 { grid-template-columns: repeat(3, 1fr); } .ck-stats-4 { grid-template-columns: repeat(4, 1fr); }
+.ck-stats div { background: var(--panel-raised); border: 1px solid var(--line); border-radius: 12px; padding: 8px 10px; }
+.ck-stats b { display: block; font-size: 20px; line-height: 1.2; }
+.ck-stats span { color: var(--muted); font-size: 12px; }
+.ck-tabs { position: sticky; top: 0; z-index: 2; display: flex; gap: 4px; margin: 14px -22px 0; padding: 8px 22px 0; background: var(--panel-solid); border-bottom: 1px solid var(--line); overflow-x: auto; }
+.ck-tab { font: inherit; font-size: 14px; color: var(--muted); background: none; border: 0; border-bottom: 2px solid transparent; padding: 8px 12px 9px; cursor: pointer; white-space: nowrap; }
+.ck-tab:hover { color: var(--text); }
+.ck-tab[aria-selected='true'] { color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }
+.ck-panel { padding-top: 12px; }
+.ck-panel h3, .ck-body h3 { font-size: 15px; margin: 18px 0 8px; color: var(--accent); font-family: var(--serif); font-weight: normal; }
+.ck-panel h3:first-child, .ck-body h3:first-child { margin-top: 4px; }
+.ck-note { color: var(--muted); font-size: 13px; }
+@media (max-width: 560px) { .ck-stats-4 { grid-template-columns: repeat(2, 1fr); } .ck-name h2 { font-size: 21px; } }
+#cardBody > :first-child:not(.ck-head) { margin-top: 20px; }

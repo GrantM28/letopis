@@ -12,6 +12,7 @@ import { initTrade } from './tradelayer';
 import { initHistory } from './history';
 import { initRealms, realmLayer, showRealm } from './realms';
 import { setUi } from './kit';
+import { cardHtml, chip, mountCard } from './cardkit';
 import { clockFromServer } from './clock';
 import { GATES, eraName, knownNow, techLabel, updateAgeProgress } from './ages';
 import { initHelp } from './help';
@@ -608,20 +609,27 @@ async function showPerson(id: number) {
   const live = r.people.get(id);
   const beside = !!(live && alive) && window.innerWidth > 760;
   if (live && alive) { stopTour(); follow = id; r.select(id); cam.tz = Math.max(cam.tz, 2); }
-  openCard(`
-    <div class="person-head"><div class="avatar ${d.sex ? 'f' : 'm'}">${d.sex ? '👩' : '👨'}</div>
-      <div><h2>${esc(P(d.name))}</h2>
-      <div class="muted">${alive ? `<span id="pAge">${d.age}</span> ${T('години', 'years')} · ${esc(BL(d.bandName))}` : `${fmtYear(d.bornYear)} – ${fmtYear(d.diedYear!)}, ${esc(CAUSE(d.cause ?? ''))} ${T('на', 'at')} ${d.age}`}</div>
-      ${d.title ? `<div class="title">${esc(TITLE(d.title))}</div>` : ''}
-      ${alive && d.task ? `<div>${T('Сега', 'Now')} ${esc(TASK(r.nightTask(id) ?? d.task))}</div>` : ''}<div class="muted">${T(`${d.generation}-о поколение`, `generation ${d.generation}`)}</div></div></div>
-    <div class="genes">${genes}</div>
+  // the card (1.60: the shared layout): who, where, what now; then their gifts, their family and their deeds
+  const spec = {
+    kind: 'person', emoji: alive ? (d.age < 12 ? '🧒' : d.age >= 60 ? (d.sex ? '👵' : '👴') : d.sex ? '👩' : '👨') : '🕯️', title: P(d.name),
+    facts: alive ? `<span id="pAge">${d.age}</span> years · ${esc(BL(d.bandName))}` : `${fmtYear(d.bornYear)} – ${fmtYear(d.diedYear!)} · ${esc(CAUSE(d.cause ?? ''))} at ${d.age}`,
+    chips: [
+      ...(d.title ? [chip('👑', esc(TITLE(d.title)))] : []),
+      ...(alive && d.task ? [chip('', `Now ${esc(TASK(r.nightTask(id) ?? d.task))}`)] : []),
+      chip('', `Generation ${d.generation}`),
+    ],
+    body: '',
+  };
+  openCard(cardHtml(spec) + `
+    <div class="ck-body"><div class="genes">${genes}</div>
     <dl class="family">
       <dt>${T('Майка', 'Mother')}</dt><dd>${link(d.mother)}</dd><dt>${T('Баща', 'Father')}</dt><dd>${link(d.father)}</dd>
       <dt>${T('Партньор', 'Partner')}</dt><dd>${link(d.partner)}</dd>
       <dt>${T('Деца', 'Children')}</dt><dd>${childList(d.children)}</dd>
     </dl>
     <button class="btn tree-btn" data-tree="${d.id}">${T('Родословие', 'Family tree')}</button>
-    ${d.deeds.length ? `<h3>${T('Дела', 'Deeds')}</h3><ul class="deeds">${d.deeds.map((x) => `<li>${esc(DEED(x))}</li>`).join('')}</ul>` : ''}`, beside);
+    ${d.deeds.length ? `<h3>${T('Дела', 'Deeds')}</h3><ul class="deeds">${d.deeds.map((x) => `<li>${esc(DEED(x))}</li>`).join('')}</ul>` : ''}</div>`, beside);
+  mountCard(spec);
   if (live && alive) { follow = id; r.select(id); }
 }
 
