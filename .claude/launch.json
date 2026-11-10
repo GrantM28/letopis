@@ -5,7 +5,7 @@
       "name": "letopis-dev",
       "runtimeExecutable": "node",
       "runtimeArgs": ["--disable-warning=ExperimentalWarning", "dist/server.js"],
-      "env": { "LETOPIS_DATA": "./data", "LETOPIS_SPEED": "200", "LETOPIS_PORT": "2222" },
+      "env": { "LETOPIS_DATA": "./data", "LETOPIS_SPEED": "200", "LETOPIS_PORT": "2222", "LETOPIS_ADMIN_TOKEN": "local-dev-only" },
       "port": 2222
     }
   ]

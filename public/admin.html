@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Letopis admin</title>
+  <link rel="icon" href="favicon-32.png">
+  <link rel="stylesheet" href="style.css">
+  <style>
+    body { background: var(--bg); color: var(--text); overflow: auto; height: auto; min-height: 100vh; }
+    main { max-width: 760px; margin: 0 auto; padding: 24px 16px 60px; }
+    h1 { font-size: 26px; margin: 0 0 4px; }
+    h1 a { color: inherit; text-decoration: none; }
+    h2 { font-size: 17px; margin: 28px 0 10px; color: var(--accent); }
+    section { background: var(--panel-solid); border: 1px solid var(--line); border-radius: 14px; padding: 16px; margin-top: 14px; }
+    .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    input { font: inherit; color: var(--text); background: var(--panel-raised); border: 1px solid var(--line-strong); border-radius: 10px; padding: 8px 12px; min-width: 0; }
+    input:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
+    .kpis { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+    .kpis span { display: block; color: var(--muted); font-size: 12px; }
+    .kpis b { font-size: 18px; }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+    th { color: var(--muted); font-weight: 500; font-size: 12px; }
+    td .btn { padding: 5px 10px; font-size: 13px; }
+    .btn.danger:hover { border-color: #d9776f; color: #f0a39c; }
+    .note { margin-top: 10px; padding: 10px 12px; border-radius: 10px; background: var(--accent-soft); }
+    .note.bad { background: rgba(217, 119, 111, 0.15); }
+    .why { font-size: 12px; color: var(--faint); }
+    @media (max-width: 560px) { .hide-narrow { display: none; } }
+  </style>
+</head>
+<body>
+<main>
+  <h1><a href="/">Letopis</a> · admin</h1>
+  <p class="muted" id="sub">Backups, roll back, a new world, and how the server is doing.</p>
+
+  <section id="off" hidden>
+    <p>The admin page is off. To turn it on, set <code>LETOPIS_ADMIN_TOKEN</code> on the container (in Unraid: edit the
+      container, <b>Add another Path, Port, Variable</b>, a Variable with that key and a long password as its value), then restart it.</p>
+  </section>
+
+  <section id="login" hidden>
+    <form id="loginForm" class="row">
+      <input id="token" type="password" autocomplete="current-password" placeholder="Admin token" required style="flex:1">
+      <button class="btn" type="submit">Log in</button>
+    </form>
+    <p id="loginNote" class="note bad" hidden></p>
+  </section>
+
+  <div id="panel" hidden>
+    <h2>The world now</h2>
+    <section><div class="kpis" id="health"></div></section>
+
+    <h2>Backups</h2>
+    <section>
+      <p class="muted" id="bkInfo"></p>
+      <div class="row"><button class="btn" id="backupNow">Back up now</button></div>
+      <p id="bkNote" class="note" hidden></p>
+      <table>
+        <thead><tr><th>Taken</th><th>World year</th><th class="hide-narrow">People</th><th class="hide-narrow">Size</th><th></th></tr></thead>
+        <tbody id="bkList"></tbody>
+      </table>
+      <p class="muted" style="margin-top:10px">Rolling back puts the world back as it was in that backup and removes from the chronicle,
+        the family records and the statistics everything written after it. The running totals of what happened most and the
+        all-time records keep counting. A backup of the world as it is now is taken first, so a roll back can itself be undone.</p>
+    </section>
+
+    <h2>A new world</h2>
+    <section>
+      <p class="muted">The current world is backed up and archived (as when a world dies out), and a new one begins at once,
+        12,000 BC. The same seed always makes the same land.</p>
+      <form id="newForm" class="row">
+        <input id="seed" inputmode="numeric" placeholder="Seed (empty for a random one)" style="flex:1">
+        <button class="btn danger" type="submit">Start a new world</button>
+      </form>
+      <p id="newNote" class="note" hidden></p>
+    </section>
+
+    <p style="margin-top:28px"><button class="btn" id="logout">Log out</button></p>
+  </div>
+</main>
+<script>
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+const yearText = (y) => (y < 0 ? `${(-y).toLocaleString('en')} BC` : `AD ${y}`);
+const post = (p, body = {}) => fetch(p, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
+  .then(async (r) => ({ status: r.status, body: await r.json().catch(() => ({})) }));
+const get = (p) => fetch(p).then(async (r) => ({ status: r.status, body: await r.json().catch(() => ({})) }));
+const note = (el, text, bad = false) => { el.hidden = false; el.textContent = text; el.classList.toggle('bad', bad); };
+const WHY = { daily: 'daily', manual: 'by hand', 'before-rollback': 'before a roll back', 'before-new-world': 'before a new world' };
+
+async function start() {
+  const st = (await get('/api/admin/status')).body;
+  $('#off').hidden = !!st.enabled;
+  $('#login').hidden = !st.enabled || st.loggedIn;
+  $('#panel').hidden = !st.loggedIn;
+  if (st.loggedIn) { await health(); await backups(); }
+}
+
+async function health() {
+  const r = await get('/api/admin/health');
+  if (r.status === 401) return start();
+  const h = r.body;
+  const kpi = (k, v) => `<div><span>${k}</span><b>${esc(v)}</b></div>`;
+  $('#health').innerHTML = [
+    kpi('Year', yearText(h.year)), kpi('People', h.people.toLocaleString('en')), kpi('Clans', `${h.clans} (${h.villages} villages)`),
+    kpi('Cultures', h.cultures), kpi('Speed', h.timeScale === 0 ? 'paused' : `${h.timeScale}×`), kpi('A month takes', `${h.monthMs} ms`),
+    kpi('Memory', `${h.memoryMB} MB`), kpi('Database', `${h.databaseMB} MB`), kpi('World save', `${h.saveMB} MB`),
+    kpi('Up for', `${h.uptimeHours} h`), kpi('World', h.world), kpi('Seed', h.seed),
+  ].join('');
+}
+
+async function backups() {
+  const r = await get('/api/admin/backups');
+  if (r.status === 401) return start();
+  const d = r.body;
+  $('#bkInfo').textContent = d.enabled
+    ? `A backup every ${d.everyHours} hours; the newest ${d.keep} are kept in /data/backups.`
+    : 'Daily backups are off (LETOPIS_BACKUPS=0).';
+  $('#backupNow').disabled = !d.enabled;
+  $('#bkList').innerHTML = d.backups.length ? d.backups.map((b) => `<tr>
+      <td>${esc(new Date(b.at).toLocaleString())}<div class="why">${esc(WHY[b.why] ?? b.why)}${b.world !== d.world ? ' · another world' : ''}</div></td>
+      <td>${esc(yearText(b.year))}</td><td class="hide-narrow">${b.people.toLocaleString('en')}</td>
+      <td class="hide-narrow">${(b.size / 1048576).toFixed(1)} MB</td>
+      <td style="text-align:right;white-space:nowrap"><a class="btn" href="/api/admin/backups/${encodeURIComponent(b.file)}" download>Download</a>
+        ${b.canRollBack ? `<button class="btn danger" data-roll="${esc(b.file)}" data-year="${b.year}">Roll back</button>` : ''}</td></tr>`).join('')
+    : '<tr><td colspan="5" class="muted">No backups yet.</td></tr>';
+  document.querySelectorAll('[data-roll]').forEach((btn) => {
+    btn.onclick = async () => {
+      if (!confirm(`Roll the world back to ${yearText(Number(btn.dataset.year))}?\n\nEverything after that moment is removed from the chronicle and the records. A backup of the world as it is now is taken first.`)) return;
+      btn.disabled = true;
+      const res = await post('/api/admin/rollback', { file: btn.dataset.roll });
+      if (res.body.ok) note($('#bkNote'), `Rolled back to ${yearText(res.body.year)}: ${res.body.chronicle} chronicle entries and ${res.body.dead} records of the dead removed. Open pages reload by themselves.`);
+      else note($('#bkNote'), res.body.error ?? 'Something went wrong.', true);
+      await health(); await backups();
+    };
+  });
+}
+
+$('#loginForm').onsubmit = async (e) => {
+  e.preventDefault();
+  const r = await post('/api/admin/login', { token: $('#token').value });
+  $('#token').value = '';
+  if (r.body.ok) { $('#loginNote').hidden = true; return start(); }
+  note($('#loginNote'), r.body.error ?? 'Could not log in.', true);
+};
+$('#backupNow').onclick = async () => {
+  $('#backupNow').disabled = true;
+  const r = await post('/api/admin/backup');
+  note($('#bkNote'), r.body.ok ? `Backed up: ${yearText(r.body.backup.year)}, ${r.body.backup.people.toLocaleString('en')} people.` : (r.body.error ?? 'Could not back up.'), !r.body.ok);
+  await backups();
+};
+$('#newForm').onsubmit = async (e) => {
+  e.preventDefault();
+  const seed = $('#seed').value.trim();
+  if (!confirm(`Start a new world${seed ? ` from seed ${seed}` : ''}?\n\nThe current world is backed up and archived; its chronicle stays in the database. This cannot be undone from here.`)) return;
+  const r = await post('/api/admin/newworld', seed ? { seed } : {});
+  note($('#newNote'), r.body.ok ? `A new world has begun: ${r.body.world} (seed ${r.body.seed}).` : (r.body.error ?? 'Could not start a new world.'), !r.body.ok);
+  await health(); await backups();
+};
+$('#logout').onclick = async () => { await post('/api/admin/logout'); start(); };
+setInterval(() => { if (!$('#panel').hidden) void health(); }, 10000);
+start();
+</script>
+</body>
+</html>

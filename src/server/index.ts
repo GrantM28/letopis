@@ -12,6 +12,7 @@ import { TECHS } from './sim/tech';
 import { notify, notifyEnabled } from './notify';
 import { Extras } from './extras';
 import { Backups } from './backups';
+import { Admin } from './admin';
 
 const PORT = Number(process.env.LETOPIS_PORT ?? 2222);
 const DATA = path.resolve(process.env.LETOPIS_DATA ?? '/data');
@@ -83,18 +84,20 @@ function save() {
 /** the save every two minutes: packed away from the main thread (fork: a big world's gzip held the server still for over
  *  a second). Only the picture of the world is taken here; on shutdown the plain save() above runs instead. */
 let saving = false;
+/** counts worlds put in place by the admin page, so a background save of the one before never lands */
+let worldGen = 0;
 function saveInBackground() {
   if (saving) return;
   saving = true;
   const json = JSON.stringify(sim.serialize());
   const tmp = STATE_FILE + '.bg.tmp';
-  const world = sim.s.worldId;
+  const world = sim.s.worldId, gen = worldGen;
   const info = { world, year: Math.floor(sim.year), tick: sim.s.tick, people: sim.s.people.length };
   gzip(json, (err, packed) => {
     if (err) { saving = false; log('Error while saving', err); return; }
     // a world that died out meanwhile has been archived: its old picture must not come back
     writeFile(tmp, packed).then(async () => {
-      if (sim.s.worldId !== world || sim.extinct) return;
+      if (sim.s.worldId !== world || worldGen !== gen || sim.extinct) return;
       await rename(tmp, STATE_FILE);
       // once a day, the save just written is also kept as a backup (fork: backups.ts)
       if (backups.due()) {
@@ -127,6 +130,7 @@ let timeScale = extras.getSetting('timeScale', 1);
 if (!TIME_SCALES.includes(timeScale)) timeScale = 1;
 let lastBroadcast = 0;
 let tickTimer: NodeJS.Timeout | null = null;
+let lastMonthMs = 0;
 const timeInfo = () => ({ ...sim.timeInfo(SPEED * Math.max(1, timeScale)), scale: timeScale });
 
 function setTimeScale(v: number) {
@@ -176,6 +180,7 @@ function tick() {
   }
   // never run flat out: rest at least half as long as the month took, so the page and its clicks are answered at once
   const spent = Date.now() - started;
+  lastMonthMs = spent;
   const wait = Math.max(5, spent * 0.5, sim.tickMs(SPEED * timeScale) - spent);
   tickTimer = setTimeout(tick, wait);
 }
@@ -264,6 +269,7 @@ const server = http.createServer((req, res) => {
       }
       return json(res, { scale: timeScale, scales: TIME_SCALES });
     }
+    if (admin.handle(req, res, p)) return;
     if (extras.handle(req, res, p, sim, json, notifyEnabled)) return;
     if (p === '/api/health') return json(res, { ok: true, world, year: Math.floor(sim.year), population: sim.s.people.length });
     if (p === '/api/world') return json(res, worldInfo);
@@ -377,6 +383,45 @@ function shutdown() {
   }
   process.exit(0);
 }
+// ---------- the admin page (fork: admin.ts) ----------
+
+/** put another world in place: the admin page's roll back or new world */
+function replaceWorld(next: Simulation) {
+  worldGen++;
+  sim = next;
+  bindLookup();
+  store.startWorld(sim.s.worldId);
+  worldInfo = makeWorldInfo();
+  sim.events = [];
+  save();
+  for (const ws of clients) if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ t: 'newworld' }));
+  if (tickTimer) clearTimeout(tickTimer);
+  tickTimer = setTimeout(tick, 50);
+}
+
+const admin = new Admin({
+  sim: () => sim,
+  replace: replaceWorld,
+  archive(summary) {
+    const old = sim.s.worldId;
+    flush();
+    store.endWorld(old, summary);
+    save();
+    renameSync(STATE_FILE, path.join(DATA, 'archive', `${old}.json.gz`));
+  },
+  flush,
+  save,
+  db: store.db,
+  backups,
+  dataDir: DATA,
+  stateFile: STATE_FILE,
+  publicDir: PUBLIC,
+  monthMs: () => lastMonthMs,
+  timeScale: () => timeScale,
+  log,
+});
+if (admin.enabled) log('The admin page is on: /admin');
+
 process.on('SIGTERM', shutdown);
 process.on('SIGINT', shutdown);
 

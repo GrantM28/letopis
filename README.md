@@ -125,9 +125,15 @@ and a new one begins a minute later.
 
 Backups: once a day (and when the server starts, if the last one is a day old) the world is copied to `/data/backups`,
 with a small note beside it saying the world, its year and how many people lived. The newest 14 are kept (5 to 15 MB
-each). Only the world is copied, not the chronicle database; the admin page (1.52) will roll back to a backup and trim
-the chronicle to match. Until then, to go back by hand: stop the container, copy a backup over `/data/world.json.gz`,
-start it again (the chronicle keeps the entries written after the backup).
+each). Only the world is copied, not the chronicle database: rolling back from the admin page trims the chronicle to match.
+
+**Admin page**: set `LETOPIS_ADMIN_TOKEN` on the container (in Unraid: edit the container, *Add another Path, Port,
+Variable*, a Variable with that key and a long password), restart it, and open `http://<server>:2222/admin`. Log in once
+with the token (a cookie keeps you in for 30 days). There you can see how the server is doing (people, how long a month
+takes, memory, database and save sizes), download a backup, **back up now**, **roll back** to a backup of this world (the
+chronicle, the dead and the statistics written after it are removed; a backup of the world as it is now is taken first),
+or **start a new world** from a seed you choose (the current one is backed up and archived first). Wrong tokens are
+slowed down, and the token is never put in a URL or a log.
 
 Disk use: every person who dies is kept for family trees. In a big world that grew to about a gigabyte in two weeks, so
 people who died over 300 years ago with no children, no deeds and no partner are let go a little at a time (they never
@@ -142,6 +148,7 @@ is reused by the database, so an existing big file stops growing for a while rat
 | `LETOPIS_DATA` | `/data` | where the world, the chronicle (SQLite) and the archive live |
 | `LETOPIS_SPEED` | `1` | time multiplier, only for testing |
 | `LETOPIS_SEED` | random | seed of the first world |
+| `LETOPIS_ADMIN_TOKEN` | – | turns on the admin page at `/admin` (use a long password); without it the page is off |
 | `LETOPIS_BACKUPS` | `14` | how many daily backups of the world to keep in `/data/backups` (`0` turns them off) |
 | `LETOPIS_BACKUP_HOURS` | `24` | how often a backup is taken |
 | `LETOPIS_NTFY_URL` | – | an [ntfy](https://ntfy.sh) topic URL (e.g. `https://ntfy.sh/my-letopis`) for phone notifications |

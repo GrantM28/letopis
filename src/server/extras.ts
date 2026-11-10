@@ -63,7 +63,7 @@ export class Extras {
       for (const e of sim.events) bump.run(w, 'event', e.kind);
       this.db.exec('COMMIT');
     }
-    if (sim.s.tick % 3 === 0) { const t0 = performance.now(); this.forgetDead(w, sim.s.tick); const ms = performance.now() - t0; if (process.env.LETOPIS_DEBUG_FORGET) console.log(`forget ${ms.toFixed(0)} ms`); }
+    { const t0 = performance.now(); this.forgetDead(w, sim.s.tick); const ms = performance.now() - t0; if (process.env.LETOPIS_DEBUG_FORGET) console.log(`forget ${ms.toFixed(0)} ms`); }
     if (sim.s.tick % 12 !== 0) return;
     const people = sim.s.people;
     const ages = people.map((p) => sim.ageOf(p));
@@ -97,7 +97,7 @@ export class Extras {
 
   /** The original keeps every person who ever died, for family trees. In a big world that is millions of records
    *  (a gigabyte in two weeks). Family trees only climb to parents, so a person with no children, no deeds and no partner
-   *  is never in one: once they died more than 300 years ago they are let go. A small slice every three months of the
+   *  is never in one: once they died more than 300 years ago they are let go. A small slice every month of the
    *  world, so the server never stalls (big slices stalled it for seconds); the space is reused by SQLite. */
   private forgetDead(world: string, tick: number) {
     const key = `deadCursor:${world}`;
