@@ -1,6 +1,6 @@
-# Plan: Brain 2.0, a deep learning brain for the clans
+# Plan: Brain 2, a deep learning brain for the clans
 
-Status: **plan only**, nothing built yet. Target release: 2.0.
+Status: **being built** on the `brain2` branch. Target release: **1.50**.
 
 The goal is a much deeper machine-learning brain that is the heart of the game, **without** making clans
 superhuman: no early ages, no discoveries out of order. Learning should show in *how* clans live (when they

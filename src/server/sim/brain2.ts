@@ -42,6 +42,9 @@ const SPLIT_AT = 14;
 /** a culture this much worse than a neighbouring one (in smoothed score) takes up part of its ways */
 const ENVY = Number((typeof process !== 'undefined' && process.env?.LETOPIS_B2_ENVY) || 0.04);
 const BLEND = 0.25;
+/** halves: the two sides of a change are lived at the same time by two interleaved halves of the culture's clans,
+ *  instead of one after the other by all of them (LETOPIS_B2_HALVES=1 or 0) */
+export const HALVES = ((typeof process !== 'undefined' && process.env?.LETOPIS_B2_HALVES) || '0') === '1';
 /** how much keeping the land around the camp full of fruit and game counts: food taken today is food missing tomorrow,
  *  for the clan and its neighbours (LETOPIS_B2_STEWARD) */
 const STEWARD = Number((typeof process !== 'undefined' && process.env?.LETOPIS_B2_STEWARD) || 1);
@@ -81,6 +84,8 @@ export interface Brain2State {
 export interface Brain2Part {
   culture?: number;
   mem?: number[];
+  /** which half of its culture the clan is in (+1 or -1), when the halves live the two sides of a change */
+  side?: number;
   /** this period's food and growth */
   pAcc?: number; pN?: number; pSize0?: number; pFounded?: number;
   /** how the clan scored last period, and how much better than the one before */
@@ -112,18 +117,21 @@ function noise(seed: number, culture: number, period: number, j: number): Float6
 }
 
 /** a culture's weights for this period (shared network + this period's variation), worked out once, never saved */
-const cache = new WeakMap<object, { key: string; w: Float64Array }>();
-function weightsOf(h: Host, _br: B2, c: Culture): Float64Array {
+const cache = new WeakMap<object, Map<string, Float64Array>>();
+function weightsOf(h: Host, br: B2, c: Culture): Float64Array {
   const t = c.trial;
-  const key = `${c.gen}:${t ? `${t.key}:${t.sign}` : '-'}`;
-  const hit = cache.get(c);
-  if (hit && hit.key === key) return hit.w;
+  const sign = t ? t.sign * (HALVES ? (br.side ?? 1) : 1) : 0;
+  const key = `${c.gen}:${t ? t.key : '-'}:${sign}`;
+  let m = cache.get(c);
+  const hit = m?.get(key);
+  if (hit) return hit;
+  if (!m || m.size > 4) { m = new Map(); cache.set(c, m); }
   const w = Float64Array.from(c.net);
-  if (t) {
-    const e = noise(h.s.seed, c.id, t.key, 0);
-    for (let i = 0; i < PARAMS2; i++) w[i] += SIGMA * t.sign * e[i];
+  if (sign) {
+    const e = noise(h.s.seed, c.id, t!.key, 0);
+    for (let i = 0; i < PARAMS2; i++) w[i] += SIGMA * sign * e[i];
   }
-  cache.set(c, { key, w });
+  m.set(key, w);
   return w;
 }
 
@@ -204,6 +212,7 @@ export function decide2(h: Host, b: Band, br: B2, senses: number[]): number[] {
   let c = br.culture !== undefined ? cs[br.culture] : undefined;
   if (!c) c = joinCulture(h, b, br);
   br.mem ??= new Array(MEM).fill(0);
+  br.side = b.id % 2 ? 1 : -1;
   const x = senses.concat(br.mem);
   const acts = forward2(weightsOf(h, br, c), x);
   const { out, mem } = decisions(acts[3]);
@@ -264,12 +273,23 @@ export function learn2(h: Host, members: Map<number, Person[]>, learn: boolean) 
   for (const [cid, bands] of byCulture) {
     const c = cs[cid];
     let food = 0, w = 0, pop = 0;
+    // for the halves: food, weight, people at the start and now (with those who left to found clans), for each side
+    const half = { 1: [0, 0, 0, 0], [-1]: [0, 0, 0, 0] } as Record<number, number[]>;
     for (const b of bands) {
       const br = brains[b.id];
       const size = members.get(b.id)?.length ?? 0;
       pop += size;
-      if (br.pN && br.pN >= 6) { food += (br.pAcc! / br.pN) * Math.max(1, size); w += Math.max(1, size); }
+      if (br.pN && br.pN >= 6) {
+        food += (br.pAcc! / br.pN) * Math.max(1, size); w += Math.max(1, size);
+        const hs = half[br.side ?? 1];
+        hs[0] += (br.pAcc! / br.pN) * Math.max(1, size); hs[1] += Math.max(1, size); hs[2] += br.pSize0 ?? size; hs[3] += size + (br.pFounded ?? 0);
+      }
       br.pN = 0;
+    }
+    if (HALVES && learn) {
+      const F = (x: number[]) => x[0] / x[1] + clamp((x[3] - x[2]) / Math.max(10, x[2]), -0.3, 0.5) * GROWTH;
+      if (c.trial && half[1][1] > 0 && half[-1][1] > 0) halvesStep(h, c, F(half[1]) - F(half[-1]));
+      c.trial = { key: period + 1, sign: 1 };
     }
     if (c.pop0 !== undefined && w > 0) {
       const grow = clamp((pop - c.pop0) / Math.max(10, c.pop0), -0.3, 0.5);
@@ -279,7 +299,7 @@ export function learn2(h: Host, members: Map<number, Person[]>, learn: boolean) 
       c.last = score;
       c.score = Math.round((c.score ? c.score * 0.8 + score * 0.2 : score) * 1000) / 1000;
       scored.set(cid, score);
-      if (learn) learnStep(h, c, score, period);
+      if (learn && !HALVES) learnStep(h, c, score, period);
     }
     c.pop0 = pop;
     if (!learn) c.trial = undefined;
@@ -311,6 +331,18 @@ function learnStep(h: Host, c: Culture, score: number, period: number) {
   c.trial = { key: period, sign: 1 };
 }
 
+/** the halves lived the two sides of the change together: move towards the side that did better */
+function halvesStep(h: Host, c: Culture, diff: number) {
+  const e = noise(h.s.seed, c.id, c.trial!.key, 0);
+  const k = diff / (2 * SIGMA);
+  c.mom ??= new Array(PARAMS2).fill(0);
+  for (let p = 0; p < PARAMS2; p++) {
+    c.mom[p] = MOMENTUM * c.mom[p] + (1 - MOMENTUM) * k * e[p];
+    c.net[p] = clamp(c.net[p] + RATE * c.mom[p] - DECAY * c.net[p], -6, 6);
+  }
+  c.gen++;
+}
+
 /** a culture doing clearly worse than one within reach blends part of the better one's network into its own */
 function compete(h: Host, byCulture: Map<number, Band[]>, scored: Map<number, number>) {
   const cs = h.s.cultures!;
@@ -319,7 +351,7 @@ function compete(h: Host, byCulture: Map<number, Band[]>, scored: Map<number, nu
   const ids = [...scored.keys()].sort((a, b) => a - b);
   for (const id of ids) {
     const c = cs[id];
-    if (!c.trial || c.trial.sign < 0) continue; // only between pairs of periods, so a learning step is not cut in half
+    if (!c.trial || (!HALVES && c.trial.sign < 0)) continue; // only between pairs of periods, so a learning step is not cut in half
     const [x, y] = centre.get(id)!;
     let best: Culture | null = null, bestScore = c.score + ENVY;
     for (const o of ids) {
