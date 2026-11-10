@@ -122,13 +122,17 @@ export async function renderStats(body: HTMLElement, wide = false) {
     const el = body.querySelector<HTMLElement>('#dashBrains');
     if (!el || !bs) return;
     el.classList.remove('muted');
-    el.innerHTML = `<p class="lead">Every clan carries a small neural network (${bs.network.inputs} senses → ${bs.network.hidden} neurons → ${bs.network.outputs} outputs)
-      that decides each month how the clan shares its work. Every two years a clan judges a slightly changed network and keeps it when the clan eats better and grows, now and then copying a neighbour that does better,
-      and daughter clans inherit their parents' network with small mutations. Nobody wrote these strategies.</p>
+    el.innerHTML = `<p class="lead">Every clan carries a small neural network (${bs.network.inputs} senses → ${bs.network.hidden} neurons, ${bs.network.weights} weights)
+      that decides each month how the clan shares its work between six jobs, how generous it is with friends and when a wandering clan moves on.
+      A clan learns by trial: it lives two years with a slightly changed copy of its network and keeps the copy only if it ate better and grew;
+      now and then the copy is a blend with a neighbour doing better. Daughter clans inherit their parents' network with small changes.
+      Nobody wrote these strategies.</p>
+      <p class="muted">How much it helps: in tests over 3,000 years, learning changes how clans live but has not made worlds bigger than clans whose
+      brains never change. A new brain where whole cultures learn together is being built to fix that.</p>
       <div id="chLearn"></div>
       <h4>Ways of life now</h4>${barList(Object.entries(bs.styles), 'var(--accent)', 8)}
-      <p class="muted">Line generations: ${bs.avgGeneration} on average, up to ${bs.maxGeneration} · ${num(bs.kept)} of ${num(bs.tried)} tries kept by the clans alive now
-        · ${num(bs.copiedKept ?? 0)} of ${num(bs.copied ?? 0)} lessons from neighbours kept · average daring ${Math.round((bs.avgStep ?? 0) * 100)}%.</p>`;
+      <p class="muted">Generations (daughter clans count one more than their parents): ${bs.avgGeneration} on average, up to ${bs.maxGeneration}
+        · ${num(bs.kept)} of ${num(bs.tried)} changes kept by the clans alive now · ${num(bs.copiedKept ?? 0)} of ${num(bs.copied ?? 0)} blends with neighbours kept.</p>`;
     const L = h.learning ?? [];
     lineChart(el.querySelector<HTMLElement>('#chLearn')!, { xs: L.map((x) => x.year), fmtX: fmt, height: 130, fmtY: (y) => y.toFixed(2), series: [
       { name: 'How well clans do (food and growth)', color: '#6cc38a', values: L.map((x) => x.score), fill: true },

@@ -28,10 +28,15 @@ export function fillBandCard(b: BandView) {
     el.classList.remove('muted');
     $('#bandStyleTag').textContent = br.style + (br.inspired ? ' · inspired' : '');
     const max = Math.max(...Object.values(br.now), ...Object.values(br.weights));
-    el.innerHTML = `<p class="lead">This clan's brain is a small neural network (${esc(br.network)}). Every month it looks at the clan's situation and
-        decides how to share the work and when to move on; every two years it judges a slightly changed network and keeps it only if the clan ate better and grew.
-        Generation ${br.generation} of its line · ${br.kept} of ${br.tried} tries kept${br.trying ? ' · trying something new this year' : ''}
-        · learned from neighbours ${br.copiedKept} of ${br.copied} times · daring ${Math.round(br.step * 100)}%.</p>
+    const bold = br.step >= 0.15 ? 'bold' : br.step >= 0.06 ? 'steady' : 'careful';
+    el.innerHTML = `<p class="lead">This clan's brain is a small neural network: 11 senses (the season, hunger, food stores, the fruit, game and fish
+        nearby, warmth, the clan's size, whether it is settled and the age of the world) feed 8 neurons, which decide each month how the clan shares
+        its work between six jobs, how generous it is with friends and, while it wanders, whether to move on early.
+        It learns by trial: it lives two years with a slightly changed copy of its network and keeps the copy only if the clan ate better and grew
+        (people who left to found daughter clans count as growth). Now and then the copy is a blend with a neighbour that is doing better.</p>
+        <p class="muted">Generation ${br.generation} of its line (each daughter clan is one more than the clan it split from)
+        · ${br.kept} of ${br.tried} changes kept${br.copied ? ` · tried a neighbour's ways ${br.copied} time${br.copied === 1 ? '' : 's'}, kept ${br.copiedKept}` : ''}
+        · its changes are ${bold} now (bigger while they work, smaller while they fail).</p>
       ${br.reactsTo?.length ? `<p class="muted">It reacts most to: <b>${br.reactsTo.map(esc).join('</b>, <b>')}</b>.</p>` : ''}
       ${brainSvg(br as unknown as BrainNet)}
       <div class="barlist">${Object.entries(br.now).sort((x, y) => y[1] - x[1]).map(([k, v]) => `<div class="barrow"><span class="bl-k">${JOB_NAMES[k] ?? k}</span><span class="bl-v">×${v.toFixed(2)} now · ×${(br.weights[k] ?? 0).toFixed(2)} this year</span>
