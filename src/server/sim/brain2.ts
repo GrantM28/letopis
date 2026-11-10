@@ -2,11 +2,12 @@
 //
 // Clans descended from the same first clans form a culture, and a culture shares one deeper network:
 //   18 senses + 6 memory  ->  24 neurons  ->  16 neurons  ->  9 decisions + 6 memory
-// Each clan of a culture lives a two-year period with its own small variation of the shared network (noise drawn
-// from the world's seed, in mirrored pairs: one clan gets +noise, its partner -noise). At the end of the period the
-// culture ranks its clans by how much better they did than in their own previous period, and moves the shared
-// network towards the variations that did best (an evolution strategy, as Salimans et al. 2017 used to teach robots).
-// Twenty clans give twenty tries per step instead of one, so the culture learns from far more than luck.
+// Cultures compete. A culture is the one that learns: all its clans live two years with one small variation of the
+// shared network (noise drawn from the world's seed), then two years with the opposite variation. The culture is judged
+// as a whole (its people's food against need and its total growth), and moves towards whichever of the two did better
+// (a two-sided evolution strategy). Because a culture holds one stretch of land, the fruit and game it spares feed its
+// own clans later: a clan alone gains by stripping the land, a culture does not.
+// And cultures learn from each other: one doing clearly worse than a culture nearby takes up part of its ways.
 //
 // The memory: six numbers the network writes every month and reads back the next. Nobody tells it what to keep there.
 // Big cultures split in two along the land and go their own ways, so the world grows several schools of thought.
@@ -38,8 +39,9 @@ const MOMENTUM = 0.8;
 const DECAY = 0.0005;
 /** a culture bigger than this splits in two */
 const SPLIT_AT = 14;
-/** below this many clans a culture learns the simple way: keep a variation only if it did better */
-const MIN_ES = 4;
+/** a culture this much worse than a neighbouring one (in smoothed score) takes up part of its ways */
+const ENVY = Number((typeof process !== 'undefined' && process.env?.LETOPIS_B2_ENVY) || 0.04);
+const BLEND = 0.25;
 /** how much keeping the land around the camp full of fruit and game counts: food taken today is food missing tomorrow,
  *  for the clan and its neighbours (LETOPIS_B2_STEWARD) */
 const STEWARD = Number((typeof process !== 'undefined' && process.env?.LETOPIS_B2_STEWARD) || 1);
@@ -60,6 +62,14 @@ export interface Culture {
   from?: number;
   /** the clan it is named after */
   name?: string;
+  /** this pair of periods: which noise, which side now, and how the + side did */
+  trial?: { key: number; sign: number; plus?: number };
+  /** people when this period began */
+  pop0?: number;
+  /** the last period's score, and the culture it last learned from (and when) */
+  last?: number;
+  learnedFrom?: string;
+  learnedAt?: number;
 }
 
 export interface Brain2State {
@@ -70,8 +80,6 @@ export interface Brain2State {
 /** what Brain 2 keeps in each clan's Brain */
 export interface Brain2Part {
   culture?: number;
-  /** the clan's variation this period: which pair of noise and which sign */
-  slot?: { period: number; j: number; sign: number };
   mem?: number[];
   /** this period's food and growth */
   pAcc?: number; pN?: number; pSize0?: number; pFounded?: number;
@@ -103,19 +111,19 @@ function noise(seed: number, culture: number, period: number, j: number): Float6
   return v;
 }
 
-/** each clan's weights for this period (shared network + its noise), worked out once a period, never saved */
+/** a culture's weights for this period (shared network + this period's variation), worked out once, never saved */
 const cache = new WeakMap<object, { key: string; w: Float64Array }>();
-function weightsOf(h: Host, br: B2, c: Culture): Float64Array {
-  const s = br.slot;
-  const key = `${c.id}:${c.gen}:${s ? `${s.period}:${s.j}:${s.sign}` : '-'}`;
-  const hit = cache.get(br);
+function weightsOf(h: Host, _br: B2, c: Culture): Float64Array {
+  const t = c.trial;
+  const key = `${c.gen}:${t ? `${t.key}:${t.sign}` : '-'}`;
+  const hit = cache.get(c);
   if (hit && hit.key === key) return hit.w;
   const w = Float64Array.from(c.net);
-  if (s) {
-    const e = noise(h.s.seed, c.id, s.period, s.j);
-    for (let i = 0; i < PARAMS2; i++) w[i] += SIGMA * s.sign * e[i];
+  if (t) {
+    const e = noise(h.s.seed, c.id, t.key, 0);
+    for (let i = 0; i < PARAMS2; i++) w[i] += SIGMA * t.sign * e[i];
   }
-  cache.set(br, { key, w });
+  cache.set(c, { key, w });
   return w;
 }
 
@@ -251,79 +259,92 @@ export function learn2(h: Host, members: Map<number, Person[]>, learn: boolean) 
     if (br?.culture === undefined || !cs[br.culture]) continue;
     (byCulture.get(br.culture) ?? byCulture.set(br.culture, []).get(br.culture)!).push(b);
   }
+  // how each culture did this period
+  const scored = new Map<number, number>();
   for (const [cid, bands] of byCulture) {
     const c = cs[cid];
-    // how each clan did this period, and how much better than last period
-    const tried: { br: B2; f: number }[] = [];
+    let food = 0, w = 0, pop = 0;
     for (const b of bands) {
       const br = brains[b.id];
-      if (!br.pN || br.pN < 12) continue;
       const size = members.get(b.id)?.length ?? 0;
-      const grow = clamp((size + (br.pFounded ?? 0) - (br.pSize0 ?? size)) / Math.max(5, br.pSize0 ?? size), -0.3, 0.5);
-      const score = br.pAcc! / br.pN + grow * GROWTH;
-      if (br.pLast !== undefined) {
-        br.imp = Math.round((score - br.pLast) * 100) / 100;
-        if (br.slot && br.slot.period === period - 0) tried.push({ br, f: score - br.pLast });
-      }
-      br.pLast = score;
+      pop += size;
+      if (br.pN && br.pN >= 6) { food += (br.pAcc! / br.pN) * Math.max(1, size); w += Math.max(1, size); }
       br.pN = 0;
     }
-    if (learn && tried.length) step(h, c, period, tried);
-    // the next period's variations, in mirrored pairs, by clan id
-    const sorted = bands.slice().sort((p, q) => p.id - q.id);
-    sorted.forEach((b, k) => { brains[b.id].slot = learn ? { period: period + 1, j: k >> 1, sign: k & 1 ? -1 : 1 } : undefined; });
-    if (sorted.length > SPLIT_AT) splitCulture(h, c, sorted);
+    if (c.pop0 !== undefined && w > 0) {
+      const grow = clamp((pop - c.pop0) / Math.max(10, c.pop0), -0.3, 0.5);
+      const score = food / w + grow * GROWTH;
+      const imp = c.last !== undefined ? Math.round((score - c.last) * 100) / 100 : 0;
+      for (const b of bands) brains[b.id].imp = imp;
+      c.last = score;
+      c.score = Math.round((c.score ? c.score * 0.8 + score * 0.2 : score) * 1000) / 1000;
+      scored.set(cid, score);
+      if (learn) learnStep(h, c, score, period);
+    }
+    c.pop0 = pop;
+    if (!learn) c.trial = undefined;
   }
-  // forget the cultures nobody follows any more
-  // (counted again: a culture that split this period has members the list above does not know of)
+  // cultures learn from each other: one doing clearly worse than a culture nearby takes up part of its ways
+  if (learn) compete(h, byCulture, scored);
+  for (const [cid, bands] of byCulture) {
+    if (bands.length > SPLIT_AT) splitCulture(h, cs[cid], bands.slice().sort((p, q) => p.id - q.id), members);
+  }
+  // forget the cultures nobody follows any more (counted again: a culture that split has members the list above does not know of)
   const followed = new Set(h.s.bands.map((b) => brains[b.id]?.culture));
   for (const id of Object.keys(cs)) if (!followed.has(Number(id))) delete cs[Number(id)];
 }
 
-/** one learning step of a culture from how its clans' variations did */
-function step(h: Host, c: Culture, period: number, tried: { br: B2; f: number }[]) {
-  const n = tried.length;
-  // the slots were given out at the end of the last period, for this one
-  const valid = tried.filter((t) => t.br.slot && t.br.slot.period === period);
-  if (!valid.length) return;
-  let improved = 0;
-  for (const t of valid) improved += t.f;
-  c.score = Math.round((c.score * 0.8 + (improved / valid.length) * 0.2) * 1000) / 1000;
-  if (valid.length < MIN_ES) {
-    // a small culture: take the best variation if it did clearly better, otherwise stay
-    const best = valid.reduce((a, t) => (t.f > a.f ? t : a));
-    if (best.f > 0.02) {
-      const e = noise(h.s.seed, c.id, period, best.br.slot!.j);
-      for (let i = 0; i < PARAMS2; i++) c.net[i] += SIGMA * best.br.slot!.sign * e[i];
-      c.gen++;
-    }
-    return;
-  }
-  // ranks from -0.5 (worst) to +0.5 (best): one lucky clan cannot drag the culture along
-  const order = valid.map((t, i) => [t.f, i] as const).sort((a, b) => a[0] - b[0] || a[1] - b[1]);
-  const rank = new Array<number>(valid.length);
-  order.forEach(([, i], r) => { rank[i] = valid.length > 1 ? r / (valid.length - 1) - 0.5 : 0; });
-  const g = new Float64Array(PARAMS2);
-  const byPair = new Map<number, Float64Array>();
-  valid.forEach((t, i) => {
-    const s = t.br.slot!;
-    let e = byPair.get(s.j);
-    if (!e) { e = noise(h.s.seed, c.id, period, s.j); byPair.set(s.j, e); }
-    const k = rank[i] * s.sign;
-    for (let p = 0; p < PARAMS2; p++) g[p] += k * e[p];
-  });
-  const scale = 1 / (valid.length * SIGMA);
+/** the + side was lived, now the - side: the culture moves towards whichever did better */
+function learnStep(h: Host, c: Culture, score: number, period: number) {
+  const t = c.trial;
+  if (!t) { c.trial = { key: period, sign: 1 }; return; }
+  if (t.sign > 0) { t.plus = score; t.sign = -1; return; }
+  const diff = (t.plus ?? score) - score;
+  const e = noise(h.s.seed, c.id, t.key, 0);
+  const k = diff / (2 * SIGMA);
   c.mom ??= new Array(PARAMS2).fill(0);
   for (let p = 0; p < PARAMS2; p++) {
-    c.mom[p] = MOMENTUM * c.mom[p] + (1 - MOMENTUM) * g[p] * scale;
+    c.mom[p] = MOMENTUM * c.mom[p] + (1 - MOMENTUM) * k * e[p];
     c.net[p] = clamp(c.net[p] + RATE * c.mom[p] - DECAY * c.net[p], -6, 6);
   }
   c.gen++;
-  void n;
+  c.trial = { key: period, sign: 1 };
+}
+
+/** a culture doing clearly worse than one within reach blends part of the better one's network into its own */
+function compete(h: Host, byCulture: Map<number, Band[]>, scored: Map<number, number>) {
+  const cs = h.s.cultures!;
+  const centre = new Map<number, [number, number]>();
+  for (const [cid, bands] of byCulture) centre.set(cid, [bands.reduce((a, b) => a + b.cx, 0) / bands.length, bands.reduce((a, b) => a + b.cy, 0) / bands.length]);
+  const ids = [...scored.keys()].sort((a, b) => a - b);
+  for (const id of ids) {
+    const c = cs[id];
+    if (!c.trial || c.trial.sign < 0) continue; // only between pairs of periods, so a learning step is not cut in half
+    const [x, y] = centre.get(id)!;
+    let best: Culture | null = null, bestScore = c.score + ENVY;
+    for (const o of ids) {
+      if (o === id) continue;
+      const oc = cs[o];
+      const [ox, oy] = centre.get(o)!;
+      if (oc.score > bestScore && Math.hypot(ox - x, oy - y) < 35) { best = oc; bestScore = oc.score; }
+    }
+    if (!best) continue;
+    for (let p = 0; p < PARAMS2; p++) c.net[p] = c.net[p] * (1 - BLEND) + best.net[p] * BLEND;
+    if (c.mom) for (let p = 0; p < PARAMS2; p++) c.mom[p] *= 0.5;
+    c.gen++;
+    const year = Math.floor(h.year);
+    const size = byCulture.get(id)!.length;
+    if (size >= 3 && (c.learnedAt === undefined || year - c.learnedAt >= 150)) {
+      const any = byCulture.get(id)![0];
+      h.emit('imitate', 1, `Културата на ${c.name ?? id} пое от обичаите на културата на ${best.name ?? best.id}.`, undefined, undefined, any.id, [],
+        [`The culture of ${c.name ?? id} took up the ways of the culture of ${best.name ?? best.id}, who were doing better.`]);
+    }
+    c.learnedFrom = best.name; c.learnedAt = year;
+  }
 }
 
 /** a culture grown too big parts in two along the land: the clans nearest each of its two farthest clans */
-function splitCulture(h: Host, c: Culture, bands: Band[]) {
+function splitCulture(h: Host, c: Culture, bands: Band[], members: Map<number, Person[]>) {
   let a = bands[0], b = bands[1], far = -1;
   for (let i = 0; i < bands.length; i++) for (let k = i + 1; k < bands.length; k++) {
     const d = Math.hypot(bands[i].cx - bands[k].cx, bands[i].cy - bands[k].cy);
@@ -332,11 +353,16 @@ function splitCulture(h: Host, c: Culture, bands: Band[]) {
   const brains = (h.s.brains ?? {}) as Record<number, B2>;
   const cs = h.s.cultures!;
   const id = (h.s.cultureSeq = (h.s.cultureSeq ?? 0) + 1);
-  const nc: Culture = { id, net: c.net.slice(), gen: c.gen, score: c.score, since: Math.floor(h.year), from: c.id, name: h.bandEnLabel(b) };
+  const nc: Culture = { id, net: c.net.slice(), mom: c.mom?.slice(), gen: c.gen, score: c.score, since: Math.floor(h.year), from: c.id, name: h.bandEnLabel(b),
+    trial: c.trial ? { ...c.trial } : undefined, last: c.last };
   cs[id] = nc;
+  let moved = 0;
   for (const x of bands) {
-    if (Math.hypot(x.cx - b.cx, x.cy - b.cy) < Math.hypot(x.cx - a.cx, x.cy - a.cy)) brains[x.id].culture = id;
+    if (Math.hypot(x.cx - b.cx, x.cy - b.cy) < Math.hypot(x.cx - a.cx, x.cy - a.cy)) { brains[x.id].culture = id; moved += members.get(x.id)?.length ?? 0; }
   }
+  // each half counts its growth from its own people
+  nc.pop0 = moved;
+  c.pop0 = (c.pop0 ?? 0) - moved;
 }
 
 // ---------- for the page ----------
