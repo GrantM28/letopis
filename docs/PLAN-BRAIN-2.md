@@ -136,3 +136,28 @@ Today a month takes about 0.5 ms for all brains. Brain 2 has 8× the weights. Pl
   periods per age. The benchmark measures what the player would see in a day.
 - **Too fast**: clans racing through history. The pace gate stops it, and discovery chances are untouched by the brain.
 - **Harder to explain.** The culture card and the chronicle must say in plain words what a culture learned.
+
+## Findings so far (branch `brain2`)
+
+Benchmark: 6 worlds (seeds 3, 5, 11, 21, 42, 77), average population over the second half of the run (`npm run bench`).
+
+| Run | Learning | Frozen networks |
+| --- | --- | --- |
+| Brain 1 (1.40), 3,000 years | 1,352 | 1,644 |
+| Brain 2, first version, 3,000 years | 1,375 | 1,555 |
+| Brain 2, food-per-need score, six settings, 2,000 years | 694–788 | 795 |
+| Brain 2 with a stewardship reward, 2,000 years | 754–784 | 850 |
+
+Fixed plans for every clan, 2,000 years: herd and fish **1,361** (best in all 6 worlds), even split 731, never move early 737,
+restless 805, mostly forage 389.
+
+What this says:
+- **Decisions matter a lot** (herding and fishing beat an even split by 86%), so there is something to learn.
+- **Neither brain learns it.** Brain 1's learning even costs about 18%. Brain 2 is about even with frozen networks,
+  with more varied ways of life (variety 3.0–3.6 vs 2.2–2.5).
+- **Likely cause: a tragedy of the commons.** For one clan on full land, foraging brings in more than fishing; herding and
+  fishing win only when everyone does them and the shared fruit and game recover. A score that sees one clan cannot see that.
+- The spread between worlds is large (frozen runs 176–1,346), so a 6-world mean moves by about ±100 between runs.
+
+Next options: judge whole cultures against each other (group selection, so a region keeps what it saves), or change the
+game so restraint pays a single clan too (stripped land recovers more slowly, or foraging falls off sooner on worn land).
