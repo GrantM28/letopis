@@ -10,7 +10,7 @@ import { cultureLayer, initCultures } from './cultures';
 import { showCulture } from './culturecard';
 import { initTrade } from './tradelayer';
 import { initHistory } from './history';
-import { initHowTo } from './howto';
+import { initHowTo, openHowTo } from './howto';
 import { initRealms, realmLayer, showRealm } from './realms';
 import { setUi } from './kit';
 import { cardHtml, chip, mountCard } from './cardkit';
@@ -349,6 +349,17 @@ const ICON: Record<string, string> = {
   learned: '🧠', inspired: '💭', prayer: '🙏', imitate: '🎓', move: '🏕️', culture: '🌐', rollback: '⏪', trade: '🛒', realm: '👑', ruler: '👑',
 };
 
+/** the chronicle with a heading whenever the year changes (1.60) */
+function withYears(list: ChronicleEntry[]): string {
+  let year: number | null = null;
+  return list.map((e) => {
+    const y = Math.floor(e.year);
+    const head = y !== year ? `<li class="ev-yearhead">${fmtYear(y)}</li>` : '';
+    year = y;
+    return head + eventHtml(e);
+  }).join('');
+}
+
 function eventHtml(e: ChronicleEntry): string {
   return `<li class="ev imp${e.importance}">
     <span class="ev-icon">${ICON[e.kind] ?? '•'}</span>
@@ -376,14 +387,13 @@ function addEvent(e: ChronicleEntry, live: boolean) {
 /** chronicle filters: which kinds of entries each chip shows */
 const FEED_KINDS: Record<string, { bg: string; en: string; kinds?: string[] }> = {
   all: { bg: 'Всичко', en: 'All' },
-  big: { bg: 'Важно', en: 'Important' },
   story: { bg: 'История', en: 'Story' },
   discovery: { bg: 'Открития', en: 'Discoveries', kinds: ['discovery', 'rediscovery', 'learn', 'era', 'lost'] },
   life: { bg: 'Живот', en: 'Life', kinds: ['death', 'twins', 'marriage', 'milestone', 'genesis', 'plague', 'festival', 'feast'] },
   clans: { bg: 'Родове', en: 'Clans', kinds: ['settle', 'colony', 'split', 'meet', 'merge', 'extinct', 'end', 'wonder', 'expedition', 'alliance', 'rivalry', 'quarrel', 'aid', 'peace', 'estranged', 'learned', 'imitate', 'move', 'culture', 'trade', 'realm', 'ruler'] },
   nature: { bg: 'Природа', en: 'Nature', kinds: ['hunt', 'winter', 'drought', 'secret', 'flood', 'harvest', 'comet', 'eclipse', 'quake', 'fire', 'blessing', 'rain', 'prayer', 'inspired'] },
 };
-let feedKind = store('letopis.feedKind', store('letopis.onlyBig', false) ? 'big' : 'all');
+let feedKind = (() => { const k = store('letopis.feedKind', store('letopis.onlyBig', false) ? 'big' : 'all'); return k === 'big' ? 'story' : k; })(); // (Important became Story in 1.60)
 if (!FEED_KINDS[feedKind]) feedKind = 'all';
 const EVERYDAY = new Set(['move', 'marriage', 'twins', 'chief', 'elder', 'meet', 'learned', 'imitate', 'quarrel', 'aid', 'estranged', 'learn', 'rediscovery', 'merge', 'culture', 'trade', 'ruler']);
 /** older pages fetched by themselves for the current filter */
@@ -424,7 +434,7 @@ function renderSide() {
     const shown = feed.filter(feedFilter);
     body.innerHTML = `<div class="chips" role="group" aria-label="${T('Филтър', 'Filter')}">${Object.entries(FEED_KINDS).map(([k, v]) =>
       `<button class="chip" data-kind="${k}" aria-pressed="${k === feedKind}">${esc(EN ? v.en : v.bg)}</button>`).join('')}</div>
-      <ul id="chronicleList" class="events">${shown.map(eventHtml).join('')}</ul>
+      <ul id="chronicleList" class="events by-year">${withYears(shown)}</ul>
       ${shown.length ? '' : `<p class="empty-note">${T('Няма такива записи наскоро. Зареди по-старите.', 'No entries like this lately. Load older ones.')}</p>`}
       <button id="more" class="btn ghost">${T('По-стари записи', 'Older entries')}</button>`;
     body.querySelectorAll<HTMLButtonElement>('.chip').forEach((c) => {
@@ -736,6 +746,8 @@ async function whileAway(seen: number) {
   const hours = lastVisit ? Math.round((Date.now() - lastVisit) / 3600000) : 0;
   const top = res.events.filter((e) => e.importance >= 3).slice(-12);
   const rest = res.events.filter((e) => e.importance === 2).slice(-8);
+  // nothing worth a card: no highlights and nothing notable (1.60)
+  if (!top.length && !rest.length) return;
   openCard(`<h2>${T('Докато те нямаше', 'While you were away')}${hours ? ` (${hours} ${T('ч.', 'h')})` : ''}</h2>
     <p class="muted">${T(`Записани са ${num(res.total)} нови събития, ${res.big} от тях важни.`, `${num(res.total)} new events were written, ${res.big} of them important.`)}</p>
     ${top.length ? `<h3>${T('Най-важното', 'The highlights')}</h3><ul class="events">${top.map(eventHtml).join('')}</ul>` : ''}
@@ -840,6 +852,19 @@ initCultures(r, mini, () => cam.zoom);
 initTrade(r, () => cam.zoom);
 initHistory();
 initHowTo();
+// the Layers menu (1.60): opens above its button, closes on a click elsewhere
+{
+  const btn = $('#layersBtn'), menu = $('#layersMenu');
+  const setOpen = (open: boolean) => { menu.hidden = !open; btn.setAttribute('aria-expanded', String(open)); };
+  btn.onclick = (e) => { e.stopPropagation(); setOpen(menu.hidden); };
+  menu.addEventListener('click', (e) => e.stopPropagation());
+  document.addEventListener('click', () => setOpen(false));
+  // the button shows how many layers are on
+  const count = () => { const n = menu.querySelectorAll('[aria-pressed="true"]').length; btn.classList.toggle('has-on', n > 0); btn.dataset.on = String(n); };
+  new MutationObserver(count).observe(menu, { subtree: true, attributes: true, attributeFilter: ['aria-pressed'] });
+  count();
+  $('#howBtn').onclick = () => openHowTo();
+}
 initRealms(r, () => cam.zoom);
 api<{ found: SecretFind[] }>('/api/secrets').then((s) => r.setSecrets(s.found.map((f) => f.k))).catch(() => r.setSecrets([]));
 const snap = await api<SnapshotMessage>('/api/snapshot');
