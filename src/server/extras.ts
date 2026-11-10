@@ -11,6 +11,7 @@ import { ACTS, ACT_COOLDOWN_MIN, ActKind, PRAYER_TTL_MS } from './sim/events';
 import { brainSummary, brainView } from './sim/brain';
 import { cultureCard, cultureMap } from './sim/brain2';
 import { tradeRoutes } from './sim/trade';
+import { realmCard, realmMap } from './sim/realms';
 import { causeEn, personEn, bandTextEn, deedEn } from '../shared/i18n';
 import { bookHtml, mapPng } from './book';
 import { TECHS } from './sim/tech';
@@ -26,7 +27,7 @@ interface Records {
 }
 
 /** the kinds of great events the history view keeps for good (the chronicle lets them go after 100 years) */
-const KEEP_HISTORY = new Set(['wonder', 'plague', 'flood', 'quake', 'drought', 'winter', 'fire', 'comet', 'eclipse', 'harvest', 'hunt', 'expedition', 'festival', 'lost', 'milestone', 'extinct', 'rollback']);
+const KEEP_HISTORY = new Set(['wonder', 'plague', 'flood', 'quake', 'drought', 'winter', 'fire', 'comet', 'eclipse', 'harvest', 'hunt', 'expedition', 'festival', 'lost', 'milestone', 'extinct', 'rollback', 'realm']);
 
 export class Extras {
   private db: DatabaseSync;
@@ -261,6 +262,14 @@ export class Extras {
     if (p === '/api/book/map.png') {
       res.writeHead(200, { 'content-type': 'image/png', 'cache-control': 'no-cache' });
       res.end(mapPng(sim));
+      return true;
+    }
+    if (p === '/api/realms') { json(res, realmMap(sim)); return true; }
+    if (p.startsWith('/api/realm/')) {
+      const sizes = new Map<number, number>();
+      for (const x of sim.s.people) sizes.set(x.bandId, (sizes.get(x.bandId) ?? 0) + 1);
+      const c = realmCard(sim.host() as never, Number(p.split('/').pop()), sizes);
+      json(res, c ?? { error: 'no such realm' }, c ? 200 : 404);
       return true;
     }
     if (p === '/api/trade') { json(res, tradeRoutes(sim)); return true; }

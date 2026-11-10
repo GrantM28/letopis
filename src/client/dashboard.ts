@@ -33,7 +33,7 @@ const EVENT_NAMES: Record<string, string> = {
   expedition: 'Expeditions', secret: 'Secrets found', era: 'New ages', milestone: 'Population milestones', blessing: 'Blessings',
   rain: 'Rains sent', feast: 'Feasts', lost: 'Knowledge lost',
   alliance: 'Alliances sworn', rivalry: 'Rivalries', quarrel: 'Quarrels', aid: 'Food sent to friends', peace: 'Feuds ended', estranged: 'Friendships faded',
-  learned: 'Clans changing their way of life', culture: 'Cultures parting', trade: 'Trade roads opened and fallen quiet', rollback: 'Worlds turned back', inspired: 'Inventors inspired', prayer: 'Prayers', imitate: 'Clans learning from neighbours', move: 'Camps moved',
+  learned: 'Clans changing their way of life', culture: 'Cultures parting', trade: 'Trade roads opened and fallen quiet', realm: 'Realms rising, changing and falling', ruler: 'New rulers', rollback: 'Worlds turned back', inspired: 'Inventors inspired', prayer: 'Prayers', imitate: 'Clans learning from neighbours', move: 'Camps moved',
 };
 
 const css = (v: string, fb: string) => getComputedStyle(document.documentElement).getPropertyValue(v).trim() || fb;

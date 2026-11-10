@@ -3,6 +3,7 @@
 import { CultureInfo, CultureLayer, hueCss } from './culturelayer';
 import type { Minimap } from './minimap';
 import type { WorldRenderer } from './render';
+import { syncTags } from './overlays';
 import { $, api, save, store } from './kit';
 
 export let cultureLayer: CultureLayer | null = null;
@@ -26,5 +27,5 @@ export function initCultures(r: WorldRenderer, mini: Minimap | null, zoom: () =>
   apply(store('letopis.cultures', false));
   // cultures split and copy each other every few years of the world: a fresh list now and then while the layer is on
   setInterval(() => { if (layer.on) void refresh(); }, 15000);
-  r.app.ticker.add(() => layer.frame(zoom()));
+  r.app.ticker.add(() => { layer.frame(zoom()); syncTags(r, zoom()); });
 }

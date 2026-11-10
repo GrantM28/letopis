@@ -6,9 +6,16 @@ import { TASK } from './lang';
 import { $, api, esc } from './kit';
 import { useAct } from './help';
 import { BrainNet, DeepNet, brainSvg, deepSvg } from './brainview';
+import { realmOfBand } from './realms';
 import type { PersonListRow } from './people';
 
 export function fillBandCard(b: BandView) {
+  // its realm, if it has one (realms.ts): a line under the card's title
+  void realmOfBand(b.id).then((rm) => {
+    const head = document.querySelector('#cardBody h2');
+    if (!rm || !head || document.getElementById('bandRealm')) return;
+    head.insertAdjacentHTML('afterend', `<div class="muted" id="bandRealm">♛ ${rm.capital === b.id ? 'capital' : 'part'} of the <a href="#" class="ref" data-realm="${rm.id}">${esc(rm.name)}</a>${rm.ruler ? `, ruled by ${esc(rm.ruler)}` : ''}</div>`);
+  });
   const hex = (c: number) => `#${c.toString(16).padStart(6, '0')}`;
   // help aimed at this clan
   document.querySelectorAll<HTMLButtonElement>('#bandHelp [data-help]').forEach((btn) => {

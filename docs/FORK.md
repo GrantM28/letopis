@@ -12,6 +12,7 @@ If a merge from the original conflicts, the conflict should be in one of the hoo
 | English words for the fork's events | `src/shared/event_words.ts` |
 | World events, watchers' powers, prayers, camp-move news | `src/server/sim/events.ts` |
 | Friendships and rivalries between clans | `src/server/sim/relations.ts` |
+| Realms of allied villages: capitals, rulers and houses | `src/server/sim/realms.ts`, `src/client/realms.ts` |
 | Trade routes between allied villages joined by road | `src/server/sim/trade.ts`, `src/client/tradelayer.ts` |
 | The brains: Brain 2 (cultures sharing a deep network that learns from growth) and Brain 1 (one small network per clan, `LETOPIS_BRAIN=1`) | `src/server/sim/brain2.ts`, `src/server/sim/brain.ts` |
 | Pasture: herds need grass shared with nearby herders (experiment, off unless `LETOPIS_PASTURE` is set) | `src/server/sim/pasture.ts` |
@@ -31,6 +32,7 @@ If a merge from the original conflicts, the conflict should be in one of the hoo
 | Page: minimap, landmarks | `src/client/minimap.ts`, `src/client/landmarks.ts` |
 | The book of the world (`/book`, its map PNG) | `src/server/book.ts`, `src/shared/biomecolors.ts` |
 | Page: the History view | `src/client/history.ts` (great events kept in `x_history`, `/api/timeline` in `extras.ts`) |
+| Page: the map layers share one rule for clan name tags | `src/client/overlays.ts` |
 | Page: cultures on the map (the Cultures button) and the culture card | `src/client/cultures.ts`, `src/client/culturelayer.ts`, `src/client/culturecard.ts` |
 | Styles | `public/fork.css` (loaded after `style.css`) |
 | Tests | `tests/` (`npm test`; CI runs them before building the image) |
@@ -44,7 +46,7 @@ If a merge from the original conflicts, the conflict should be in one of the hoo
 - `SimState` gains optional fields: `relations`, `relState`, `brains`, `inspired`, `prayers`, `moveNews`, `cultures`, `cultureSeq`. Old saves load without them.
 - Each month: `brainStep`, `relationsStep`, `worldEvents`, `prayersStep`; jobs are steered by `steerJobs`, restless moves by `wantsToMove`, camp moves told by `announceMove`.
 - Food: `laterFarming()` (later farming techs), diminishing returns for herding and fishing, spoilage reduced by canning/refrigeration, medicine chain for longevity.
-- Once a year, after the roads are built, `tradeStep()` opens and closes trade routes; `host()` also gives the add-ons `roads`.
+- Once a year, after the roads are built, `tradeStep()` opens and closes trade routes and `realmsStep()` keeps the realms; `host()` also gives the add-ons `roads`.
 - Herding: `herdF` is multiplied by `pastureShare()` (1 unless the pasture experiment is on).
 - `bandViews()` adds each clan's `culture`.
 - Clans split when crowded, and a desperate split at three times the limit (a guard against runaway clans).

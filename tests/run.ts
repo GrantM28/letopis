@@ -12,9 +12,10 @@ import { forget } from './forget';
 import { backups } from './backups';
 import { admin } from './admin';
 import { trade } from './trade';
+import { realms } from './realms';
 
 const ALL: [string, () => Promise<void> | void][] = [
-  ['techtree', techtree], ['english', english], ['determinism', determinism], ['saveload', saveload], ['smoke', smoke], ['brain2', brain2], ['brainsForgotten', brainsForgotten], ['forget', forget], ['backups', backups], ['trade', trade], ['api', api], ['admin', admin],
+  ['techtree', techtree], ['english', english], ['determinism', determinism], ['saveload', saveload], ['smoke', smoke], ['brain2', brain2], ['brainsForgotten', brainsForgotten], ['forget', forget], ['backups', backups], ['trade', trade], ['realms', realms], ['api', api], ['admin', admin],
 ];
 
 const only = process.argv.slice(2);

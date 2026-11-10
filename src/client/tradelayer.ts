@@ -3,6 +3,7 @@
 import { Container, Graphics } from 'pixi.js';
 import type { WorldRenderer } from './render';
 import { $, api, save, store } from './kit';
+import { markOverlay } from './overlays';
 
 interface Route { a: number; b: number; since: number; path: number[] }
 interface Line { pts: { x: number; y: number }[]; len: number; seed: number }
@@ -17,6 +18,7 @@ export class TradeLayer {
   constructor(private r: WorldRenderer) {
     // above the culture tint (index 0), below every name tag
     r.labelLayer.addChildAt(this.c, Math.min(1, r.labelLayer.children.length));
+    markOverlay(this.c);
     this.c.addChild(this.roadsG, this.carts);
     this.c.visible = false;
     this.c.eventMode = 'none';

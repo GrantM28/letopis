@@ -4,6 +4,7 @@
 import { AlphaFilter, BlurFilter, Container, Graphics, Text } from 'pixi.js';
 import type { BandView } from '../shared/types';
 import { TH, TW, type WorldRenderer } from './render';
+import { markOverlay, wantsQuietTags } from './overlays';
 
 export interface CultureInfo { id: number; name: string; hue: number; from: number | null; clans: number; steps: number }
 
@@ -33,6 +34,8 @@ export class CultureLayer {
 
   constructor(private r: WorldRenderer) {
     r.labelLayer.addChildAt(this.c, 0);
+    markOverlay(this.c);
+    wantsQuietTags({ on: () => this.on });
     this.c.addChild(this.shapes, this.names);
     // drawn solid, then made see-through as a whole (so overlaps do not darken) with soft edges
     this.shapes.filters = [new BlurFilter({ strength: 8, quality: 2 }), new AlphaFilter({ alpha: 0.42 })];
@@ -65,16 +68,8 @@ export class CultureLayer {
     if (this.on || this.focused !== null) this.draw(bands);
   }
 
-  private tagsHidden = false;
-
   /** names only far out, where the colours alone could be anyone's */
   frame(zoom: number) {
-    // far out the culture map reads better without every clan's name tag over it; close in the tags come back
-    const hide = this.on && zoom < 0.9;
-    if (hide || this.tagsHidden) {
-      for (const ch of this.r.labelLayer.children) if (ch !== this.c) ch.visible = !hide;
-      this.tagsHidden = hide;
-    }
     if (!this.on) return;
     this.names.visible = zoom < 0.9;
     // the names keep their size on screen

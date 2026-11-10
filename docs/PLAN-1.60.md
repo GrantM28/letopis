@@ -22,7 +22,7 @@ released on its own (1.51 to 1.59), each one tested and pushed when it is ready.
 | 1.56 | Trade routes between allied villages | medium |
 | 1.57 | History view (done) | medium |
 | 1.58 | Book of the world (print and share) (done) | small |
-| 1.59 | Realms: how they form, rulers and succession, what a realm does, on the map and in the chronicle | large |
+| 1.59 | Realms: how they form, rulers and succession, what a realm does, on the map and in the chronicle (done) | large |
 | 1.60 | **The whole page reworked** (your request): the clan card and the brain drawing easy to read, and the rest of the UI; then everything together (long run, speed, polish) | large |
 
 The sections below keep their first numbers: 1.55 trade routes is now 1.56, and so on. Both realm steps (1.58 and 1.59 below) are now one release, 1.59, and 1.60 is the UI rework.

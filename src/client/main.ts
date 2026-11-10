@@ -10,6 +10,7 @@ import { cultureLayer, initCultures } from './cultures';
 import { showCulture } from './culturecard';
 import { initTrade } from './tradelayer';
 import { initHistory } from './history';
+import { initRealms, realmLayer, showRealm } from './realms';
 import { setUi } from './kit';
 import { clockFromServer } from './clock';
 import { GATES, eraName, knownNow, techLabel, updateAgeProgress } from './ages';
@@ -186,8 +187,10 @@ function pick(sx: number, sy: number) {
   }
   if (bestBand) showBand(bestBand);
   else {
-    const c = cultureLayer?.on ? cultureLayer.cultureAt((wx / (TW / 2) + wy / (TH / 2)) / 2, (wy / (TH / 2) - wx / (TW / 2)) / 2) : null;
-    if (c) void showCulture(c.id); else closeCard();
+    const tx = (wx / (TW / 2) + wy / (TH / 2)) / 2, ty = (wy / (TH / 2) - wx / (TW / 2)) / 2;
+    const rl = realmLayer?.on ? realmLayer.realmAt(tx, ty) : null;
+    const c = !rl && cultureLayer?.on ? cultureLayer.cultureAt(tx, ty) : null;
+    if (rl) void showRealm(rl.id); else if (c) void showCulture(c.id); else closeCard();
   }
 }
 
@@ -341,7 +344,7 @@ const ICON: Record<string, string> = {
   // clan relations (relations.ts)
   alliance: '🤝', rivalry: '😠', quarrel: '🗯️', aid: '🎁', peace: '🕊️', estranged: '🍂',
   // learning clans and the watchers' help (brain.ts, events.ts)
-  learned: '🧠', inspired: '💭', prayer: '🙏', imitate: '🎓', move: '🏕️', culture: '🌐', rollback: '⏪', trade: '🛒',
+  learned: '🧠', inspired: '💭', prayer: '🙏', imitate: '🎓', move: '🏕️', culture: '🌐', rollback: '⏪', trade: '🛒', realm: '👑', ruler: '👑',
 };
 
 function eventHtml(e: ChronicleEntry): string {
@@ -375,12 +378,12 @@ const FEED_KINDS: Record<string, { bg: string; en: string; kinds?: string[] }> =
   story: { bg: 'История', en: 'Story' },
   discovery: { bg: 'Открития', en: 'Discoveries', kinds: ['discovery', 'rediscovery', 'learn', 'era', 'lost'] },
   life: { bg: 'Живот', en: 'Life', kinds: ['death', 'twins', 'marriage', 'milestone', 'genesis', 'plague', 'festival', 'feast'] },
-  clans: { bg: 'Родове', en: 'Clans', kinds: ['settle', 'colony', 'split', 'meet', 'merge', 'extinct', 'end', 'wonder', 'expedition', 'alliance', 'rivalry', 'quarrel', 'aid', 'peace', 'estranged', 'learned', 'imitate', 'move', 'culture', 'trade'] },
+  clans: { bg: 'Родове', en: 'Clans', kinds: ['settle', 'colony', 'split', 'meet', 'merge', 'extinct', 'end', 'wonder', 'expedition', 'alliance', 'rivalry', 'quarrel', 'aid', 'peace', 'estranged', 'learned', 'imitate', 'move', 'culture', 'trade', 'realm', 'ruler'] },
   nature: { bg: 'Природа', en: 'Nature', kinds: ['hunt', 'winter', 'drought', 'secret', 'flood', 'harvest', 'comet', 'eclipse', 'quake', 'fire', 'blessing', 'rain', 'prayer', 'inspired'] },
 };
 let feedKind = store('letopis.feedKind', store('letopis.onlyBig', false) ? 'big' : 'all');
 if (!FEED_KINDS[feedKind]) feedKind = 'all';
-const EVERYDAY = new Set(['move', 'marriage', 'twins', 'chief', 'elder', 'meet', 'learned', 'imitate', 'quarrel', 'aid', 'estranged', 'learn', 'rediscovery', 'merge', 'culture', 'trade']);
+const EVERYDAY = new Set(['move', 'marriage', 'twins', 'chief', 'elder', 'meet', 'learned', 'imitate', 'quarrel', 'aid', 'estranged', 'learn', 'rediscovery', 'merge', 'culture', 'trade', 'ruler']);
 /** older pages fetched by themselves for the current filter */
 let autoLoads = 0;
 const feedFilter = (e: ChronicleEntry) => {
@@ -396,7 +399,7 @@ function toast(e: ChronicleEntry) {
   t.className = `toast imp${e.importance}${e.kind === 'era' ? ' era' : ''}`;
   t.innerHTML = `<span class="ev-icon">${ICON[e.kind] ?? '•'}</span><div><div class="ev-year">${fmtYear(e.year)}</div>${linkedText(e)}</div>`;
   t.onclick = (ev) => {
-    const el = (ev.target as HTMLElement).closest<HTMLElement>('[data-person],[data-band],[data-culture]');
+    const el = (ev.target as HTMLElement).closest<HTMLElement>('[data-person],[data-band],[data-culture],[data-realm]');
     if (el) { ev.preventDefault(); openRef(el); }
   };
   $('#toasts').prepend(t);
@@ -518,7 +521,7 @@ document.querySelectorAll<HTMLButtonElement>('.tab').forEach((b) => {
 $('#sideBody').addEventListener('click', (e) => {
   const tech = (e.target as HTMLElement).closest<HTMLElement>('li[data-tech]');
   if (tech && !(e.target as HTMLElement).closest('[data-person]')) { e.preventDefault(); void showTech(tech.dataset.tech!); return; }
-  const el = (e.target as HTMLElement).closest<HTMLElement>('[data-person],[data-band],[data-culture]');
+  const el = (e.target as HTMLElement).closest<HTMLElement>('[data-person],[data-band],[data-culture],[data-realm]');
   if (!el) return;
   e.preventDefault();
   openRef(el);
@@ -535,8 +538,9 @@ function childList(cs: PersonDetail['children']): string {
 
 /** a name was clicked: go there if it still lives, otherwise just tell about it */
 function openRef(el: HTMLElement) {
-  const pid = Number(el.dataset.person), bid = Number(el.dataset.band), cid = Number(el.dataset.culture);
-  if (cid) void showCulture(cid);
+  const pid = Number(el.dataset.person), bid = Number(el.dataset.band), cid = Number(el.dataset.culture), rid = Number(el.dataset.realm);
+  if (rid) void showRealm(rid);
+  else if (cid) void showCulture(cid);
   else if (pid) showPerson(pid);
   else if (bid) {
     const b = bands.find((x) => x.id === bid);
@@ -585,7 +589,7 @@ function closeCard() {
 $('#cardClose').onclick = closeCard;
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeCard(); });
 $('#card').addEventListener('click', (e) => {
-  const el = (e.target as HTMLElement).closest<HTMLElement>('[data-person],[data-tree],[data-band],[data-culture]');
+  const el = (e.target as HTMLElement).closest<HTMLElement>('[data-person],[data-tree],[data-band],[data-culture],[data-realm]');
   if (!el) return;
   e.preventDefault();
   if (el.dataset.tree) showTree(Number(el.dataset.tree));
@@ -844,6 +848,7 @@ mini.onPick = (x, y) => { stopTour(); follow = null; lookAt(x, y); };
 initCultures(r, mini, () => cam.zoom);
 initTrade(r, () => cam.zoom);
 initHistory();
+initRealms(r, () => cam.zoom);
 api<{ found: SecretFind[] }>('/api/secrets').then((s) => r.setSecrets(s.found.map((f) => f.k))).catch(() => r.setSecrets([]));
 const snap = await api<SnapshotMessage>('/api/snapshot');
 onSnapshot(snap);

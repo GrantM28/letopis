@@ -81,6 +81,16 @@ and a reworked, English-only interface. Upstream changes are merged in from time
   The **Trade** button draws the routes as gold dashes on the roads, with little carts going to and fro. Trading
   neighbours even out a good and a bad harvest, as before; the chronicle tells when a trade road opens or falls quiet
   (in the Clans filter; Story leaves it out).
+- **Realms**: from the New Stone Age, villages allied for 30 years and joined by road become one realm: a chiefdom,
+  later a kingdom, and in later ages an empire when it holds eight villages or more. Its biggest village is the capital
+  and the capital's elder its first ruler. Rulers reign for life; when one dies, their oldest grown child in the realm
+  follows and carries on the house ("the third of the House of Stoyan"), or else the capital's elder starts a new house.
+  Other long allies join; a village that turns against its capital leaves; a realm whose capital is gone moves it to
+  its biggest village, and one left with a single village ends. In a hungry year a realm's villages send food to the
+  hungriest of them. No wars: rivals quarrel, as ever. The **Realms** button draws each realm's land with a border and
+  its name over a crowned capital; a realm card tells its ruler and house, the rulers before, its capital and villages,
+  and a village's card says which realm it belongs to. A world from before 1.59 gets its realms at once, quietly, with
+  one line in the chronicle.
 - **History**: the **History** button opens the whole world on one page: the population over time with the ages shaded,
   then one timeline of the ages, every first discovery and who made it, the great events (great buildings, plagues,
   floods, comets and the like, kept for good from 1.57 on; the chronicle itself lets them go after 100 years), the

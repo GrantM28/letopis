@@ -16,14 +16,14 @@ interface Timeline {
 }
 interface Item { year: number; order: number; kind: string; icon: string; html: string; ref: string; big: boolean; group: string }
 
-const FILTERS: [string, string][] = [['all', 'Everything'], ['ages', 'Ages'], ['discoveries', 'Discoveries'], ['events', 'Great events'], ['cultures', 'Cultures'], ['villages', 'Villages']];
+const FILTERS: [string, string][] = [['all', 'Everything'], ['ages', 'Ages'], ['discoveries', 'Discoveries'], ['events', 'Great events'], ['cultures', 'Cultures'], ['realms', 'Realms'], ['villages', 'Villages']];
 const ICON: Record<string, string> = {
   genesis: '🌅', era: '⭐', discovery: '💡', settle: '🏘️', wonder: '🏛️', plague: '🦠', flood: '🌊', quake: '🌋', drought: '☀️', winter: '❄️',
   fire: '🔥', comet: '☄️', eclipse: '🌘', harvest: '🌾', hunt: '🦣', expedition: '🧭', festival: '🎉', lost: '📜', milestone: '👥', extinct: '🌑',
-  culture: '🌐', 'culture-begins': '🌐', rollback: '⏪',
+  culture: '🌐', 'culture-begins': '🌐', rollback: '⏪', realm: '👑',
 };
 const group = (kind: string) => (kind === 'era' || kind === 'genesis' ? 'ages' : kind === 'discovery' ? 'discoveries' : kind === 'settle' ? 'villages'
-  : kind === 'culture' || kind === 'culture-begins' ? 'cultures' : 'events');
+  : kind === 'culture' || kind === 'culture-begins' ? 'cultures' : kind === 'realm' ? 'realms' : 'events');
 
 let filter = store('letopis.histFilter', 'all');
 let newestFirst = store('letopis.histNewest', false);

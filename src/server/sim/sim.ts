@@ -16,6 +16,7 @@ import { BIG, startStage, treeKinds } from '../../shared/trees';
 import { findRoad } from './roads';
 import { pastureShare } from './pasture';
 import { tradeStep } from './trade';
+import { realmsStep } from './realms';
 import { BEAST_EN, ERAS_EN, FEATURE_EN, SECRET_HEROES_EN, SECRET_KINDS_EN, TECH_EN, bandEn, bandLabelEn, bandThe, causeEn, chiefEn, deedEn, personEn, translit } from '../../shared/i18n';
 
 export const START_YEAR = -12000;
@@ -131,6 +132,10 @@ export interface SimState {
   cultureSeq?: number;
   /** trade routes between allied villages joined by road, 'a-b' (fork: trade.ts) */
   trade?: Record<string, import('./trade').TradeRoute>;
+  /** realms of allied villages, the next realm id, and since when each alliance holds (fork: realms.ts) */
+  realms?: Record<number, import('./realms').Realm>;
+  realmSeq?: number;
+  allySince?: Record<string, number>;
 }
 
 export interface DeadRecord {
@@ -703,7 +708,7 @@ export class Simulation {
     this.contact();
     if (this.s.tick % 3 === 0) relationsStep(this.host(), members);
     brainStep(this.host(), members);
-    if (this.month === 6) { this.buildRoads(); tradeStep(this.host() as never); }
+    if (this.month === 6) { this.buildRoads(); tradeStep(this.host() as never); realmsStep(this.host() as never, members); }
     if (this.s.tick % 6 === 0) this.explore();
     this.randomEvents(members);
     this.checkEra();
